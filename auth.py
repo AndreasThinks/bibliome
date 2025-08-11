@@ -17,7 +17,6 @@ class BlueskyAuth:
     
     def create_login_form(self, error_msg: str = None):
         """Create the login form with optional error message."""
-        from components import AlClientert
         
         content = []
         if error_msg:
@@ -54,18 +53,26 @@ class BlueskyAuth:
     async def authenticate_user(self, handle: str, password: str) -> Optional[Dict[str, Any]]:
         """Authenticate user with Bluesky and return user info."""
         try:
+            print(f"Starting authentication for handle: {handle}")
+            
             # Ensure handle has proper format
             if not handle.endswith('.bsky.social') and '.' not in handle:
                 handle = f"{handle}.bsky.social"
+                print(f"Formatted handle: {handle}")
             
             # Login to Bluesky - this returns a profile object
+            print("Attempting Bluesky login...")
             profile = self.client.login(handle, password)
+            print(f"Login successful, profile: {profile is not None}")
             
             # The client.me contains the session info after login
             if not self.client.me:
+                print("No client.me after login")
                 return None
             
-            return {
+            print(f"Client.me found: {self.client.me.handle}")
+            
+            user_data = {
                 'did': self.client.me.did,
                 'handle': self.client.me.handle,
                 'display_name': profile.display_name or self.client.me.handle,
@@ -73,8 +80,12 @@ class BlueskyAuth:
                 'access_jwt': getattr(self.client.me, 'access_jwt', ''),
                 'refresh_jwt': getattr(self.client.me, 'refresh_jwt', '')
             }
+            print(f"Returning user data for: {user_data['handle']}")
+            return user_data
         except Exception as e:
             print(f"Authentication error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def restore_session(self, auth_data: Dict[str, Any]) -> bool:

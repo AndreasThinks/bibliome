@@ -326,9 +326,11 @@ def static_files(fname: str, ext: str):
 @rt("/")
 def index(auth):
     """Homepage - shows public shelves or user's shelves if logged in."""
+
+    bookshelves = db_tables['bookshelves']
+
     if not auth:
         # Show public bookshelves for anonymous users
-        bookshelves = db_tables['bookshelves']
         # example users(where="name='Alma'")
         public_shelves = bookshelves(where="privacy='public'", limit=12)    
         content = [
@@ -343,7 +345,7 @@ def index(auth):
         ]
     else:
         # Show user's bookshelves
-        user_shelves = list(db_tables['bookshelves'].where(owner_did=auth['did']))
+        user_shelves = bookshelves("owner_did=?", (auth['did'],))
         content = [
             Div(
                 H1(f"Welcome back, {auth.get('display_name', auth['handle'])}! 👋"),
@@ -361,33 +363,52 @@ def index(auth):
     return NavBar(auth), Container(*content)
 
 # Authentication routes
-@rt("/auth/login")
+@app.get("/auth/login")
 def login_page(sess):
     """Display login form."""
     error_msg = sess.pop('error', None)
-    return NavBar(), Container(bluesky_auth.create_login_form(error_msg))
+    return NavBar(), bluesky_auth.create_login_form(error_msg)
 
-@rt("/auth/login", methods=["POST"])
+@app.post("/auth/login")
 async def login_handler(handle: str, password: str, sess):
     """Handle login form submission."""
+    print(f"Login attempt - Handle: {handle}, Password length: {len(password) if password else 0}")
+    
     user_data = await bluesky_auth.authenticate_user(handle, password)
+    print(f"Authentication result: {user_data is not None}")
     
     if user_data:
+        # Prepare database data (exclude JWT fields)
+        db_user_data = {
+            'did': user_data['did'],
+            'handle': user_data['handle'],
+            'display_name': user_data['display_name'],
+            'avatar_url': user_data['avatar_url'],
+            'created_at': datetime.now(),
+            'last_login': datetime.now()
+        }
+        
         # Store user in database
         try:
-            # Add timestamps for new user
-            user_data['created_at'] = datetime.now()
-            user_data['last_login'] = datetime.now()
-            db_tables['users'].insert(**user_data)
+            db_tables['users'].insert(**db_user_data)
+            print("New user created in database")
         except:
             # User already exists, update their info and last login
-            user_data['last_login'] = datetime.now()
-            db_tables['users'].update(user_data, user_data['did'])
+            update_data = {
+                'handle': user_data['handle'],
+                'display_name': user_data['display_name'],
+                'avatar_url': user_data['avatar_url'],
+                'last_login': datetime.now()
+            }
+            db_tables['users'].update(update_data, user_data['did'])
+            print("Existing user updated in database")
         
-        # Store auth in session
+        # Store full auth data (including JWTs) in session
         sess['auth'] = user_data
+        print(f"User authenticated successfully: {user_data['handle']}")
         return RedirectResponse('/', status_code=303)
     else:
+        print("Authentication failed")
         sess['error'] = "Invalid credentials. Please check your handle and app password."
         return RedirectResponse('/auth/login', status_code=303)
 
