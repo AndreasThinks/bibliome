@@ -1,0 +1,135 @@
+"""Bluesky/AT-Proto authentication for BookdIt."""
+
+from atproto import models
+from atproto import Client as AtprotoClient
+from fasthtml.common import *
+from typing import Optional, Dict, Any
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class BlueskyAuth:
+    """Handle Bluesky authentication and session management."""
+    
+    def __init__(self):
+        self.client = AtprotoClient()
+    
+    def create_login_form(self, error_msg: str = None):
+        """Create the login form with optional error message."""
+        from components import AlClientert
+        
+        content = []
+        if error_msg:
+            content.append(Alert(error_msg, "error"))
+        
+        content.extend([
+            Form(
+                action="/auth/login",
+                method="post"
+            )(
+                Fieldset(
+                    Label("Bluesky Handle", Input(
+                        name="handle",
+                        type="text",
+                        placeholder="your-handle.bsky.social",
+                        required=True
+                    )),
+                    Label("App Password", Input(
+                        name="password",
+                        type="password",
+                        placeholder="Your Bluesky app password",
+                        required=True
+                    )),
+                    Small("You'll need to create an app password in your Bluesky settings.")
+                ),
+                Button("Login", type="submit", cls="primary")
+            ),
+            P("Don't have a Bluesky account? ", 
+              A("Sign up here", href="https://bsky.app", target="_blank"))
+        ])
+        
+        return Titled("Login with Bluesky", *content)
+    
+    async def authenticate_user(self, handle: str, password: str) -> Optional[Dict[str, Any]]:
+        """Authenticate user with Bluesky and return user info."""
+        try:
+            # Ensure handle has proper format
+            if not handle.endswith('.bsky.social') and '.' not in handle:
+                handle = f"{handle}.bsky.social"
+            
+            # Login to Bluesky - this returns a profile object
+            profile = self.client.login(handle, password)
+            
+            # The client.me contains the session info after login
+            if not self.client.me:
+                return None
+            
+            return {
+                'did': self.client.me.did,
+                'handle': self.client.me.handle,
+                'display_name': profile.display_name or self.client.me.handle,
+                'avatar_url': profile.avatar or '',
+                'access_jwt': getattr(self.client.me, 'access_jwt', ''),
+                'refresh_jwt': getattr(self.client.me, 'refresh_jwt', '')
+            }
+        except Exception as e:
+            print(f"Authentication error: {e}")
+            return None
+    
+    def restore_session(self, auth_data: Dict[str, Any]) -> bool:
+        """Restore a session from stored auth data."""
+        try:
+            # For now, we'll just validate that the auth data looks correct
+            # In a production app, you might want to validate the JWT tokens
+            required_fields = ['did', 'handle']
+            if all(field in auth_data for field in required_fields):
+                return True
+            return False
+        except Exception as e:
+            print(f"Session restore error: {e}")
+            return False
+
+def auth_beforeware(req, sess, db_tables):
+    """Beforeware to handle authentication state."""
+    # Skip auth for static files and login pages
+    skip_paths = ['/static/', '/auth/login', '/favicon.ico', '/', '/shelf/']
+    
+    if any(req.url.path.startswith(path) for path in skip_paths):
+        req.scope['auth'] = sess.get('auth')
+        return None
+    
+    # Check if user is authenticated
+    auth_data = sess.get('auth')
+    if not auth_data:
+        return RedirectResponse('/auth/login', status_code=303)
+    
+    # Validate session is still good (optional - could be expensive)
+    # For now, just trust the session data
+    req.scope['auth'] = auth_data
+    
+    # Update user's last login time periodically
+    try:
+        user = db_tables['users'][auth_data['did']]
+        # Update last login if it's been more than an hour
+        from datetime import datetime, timedelta
+        if datetime.now() - user.last_login > timedelta(hours=1):
+            db_tables['users'].update({'last_login': datetime.now()}, auth_data['did'])
+    except:
+        pass  # User might not exist in DB yet
+    
+    return None
+
+def require_auth(f):
+    """Decorator to require authentication for a route."""
+    def wrapper(*args, **kwargs):
+        # This assumes auth is passed as a parameter
+        auth = kwargs.get('auth')
+        if not auth:
+            return RedirectResponse('/auth/login', status_code=303)
+        return f(*args, **kwargs)
+    return wrapper
+
+def get_current_user_did(auth) -> Optional[str]:
+    """Extract user DID from auth data."""
+    return auth.get('did') if auth else None
