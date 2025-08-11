@@ -27,65 +27,37 @@ def NavBar(auth=None):
     )
 
 def BookshelfCard(bookshelf, is_owner=False, can_edit=False):
-    """Render a bookshelf card."""
-    privacy_icon = {
-        'public': '🌍',
-        'link-only': '🔗', 
-        'private': '🔒'
-    }.get(bookshelf.privacy, '🌍')
-    
-    actions = []
+    """Render a bookshelf card with edit options if needed."""
     if can_edit:
-        actions.append(
-            A("Edit", href=f"/shelf/{bookshelf.slug}/edit", cls="secondary")
-        )
-    actions.append(
-        A("View", href=f"/shelf/{bookshelf.slug}", cls="primary")
-    )
-    
-    return Article(
-        cls="bookshelf-card"
-    )(
-        Header(
+        # For owners, add edit button to the footer
+        privacy_icon = {
+            'public': '🌍',
+            'link-only': '🔗', 
+            'private': '🔒'
+        }.get(bookshelf.privacy, '🌍')
+        
+        return Card(
             H3(bookshelf.name),
-            P(f"{privacy_icon} {bookshelf.privacy.replace('-', ' ').title()}", cls="privacy-badge")
-        ),
-        P(bookshelf.description) if bookshelf.description else None,
-        Footer(*actions) if actions else None
-    )
+            P(f"{privacy_icon} {bookshelf.privacy.replace('-', ' ').title()}", cls="privacy-badge"),
+            P(bookshelf.description) if bookshelf.description else None,
+            footer=Div(
+                A("Edit", href=f"/shelf/{bookshelf.slug}/edit", cls="secondary"),
+                A("View", href=f"/shelf/{bookshelf.slug}", cls="primary"),
+                style="display: flex; gap: 0.5rem;"
+            )
+        )
+    else:
+        # Use the model's built-in __ft__ method
+        return bookshelf
 
 def BookCard(book, can_upvote=True, user_has_upvoted=False):
     """Render a book card."""
-    upvote_btn = Button(
-        f"👍 {book.upvotes}",
-        hx_post=f"/book/{book.id}/upvote",
-        hx_target=f"#book-{book.id}",
-        hx_swap="outerHTML",
-        disabled=not can_upvote or user_has_upvoted,
-        cls="upvote-btn" + (" upvoted" if user_has_upvoted else "")
-    ) if can_upvote else Span(f"👍 {book.upvotes}", cls="upvote-count")
-    
-    return Article(
-        Div(
-            Img(
-                src=book.cover_url or "/static/default-book-cover.png",
-                alt=f"Cover of {book.title}",
-                cls="book-cover",
-                loading="lazy"
-            ) if book.cover_url else Div("📖", cls="book-cover-placeholder"),
-            cls="book-cover-container"
-        ),
-        Div(
-            H4(book.title, cls="book-title"),
-            P(book.author, cls="book-author") if book.author else None,
-            P(book.description[:100] + "..." if len(book.description) > 100 else book.description, 
-              cls="book-description") if book.description else None,
-            Div(upvote_btn, cls="book-actions"),
-            cls="book-info"
-        ),
-        cls="book-card",
-        id=f"book-{book.id}"
-    )
+    if can_upvote:
+        # Use the interactive version with upvote functionality
+        return book.as_interactive_card(can_upvote=can_upvote, user_has_upvoted=user_has_upvoted)
+    else:
+        # Use the model's built-in __ft__ method
+        return book
 
 def BookSearchForm(bookshelf_id: int):
     """Book search component with HTMX."""

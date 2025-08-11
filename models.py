@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import Optional
 import secrets
 import string
+from fasthtml.common import *
+from fastcore.all import patch
 
 def generate_slug():
     """Generate a random URL-safe slug."""
@@ -22,6 +24,7 @@ class User:
 
 class Bookshelf:
     """Bookshelf model for organizing books."""
+    id: int = None  # Auto-incrementing primary key
     name: str
     owner_did: str
     slug: str = ""  # URL-friendly identifier
@@ -32,6 +35,7 @@ class Bookshelf:
 
 class Book:
     """Book model with metadata from external APIs."""
+    id: int = None  # Auto-incrementing primary key
     bookshelf_id: int
     title: str
     added_by_did: str
@@ -47,6 +51,7 @@ class Book:
 
 class Permission:
     """Permission model for role-based access to bookshelves."""
+    id: int = None  # Auto-incrementing primary key
     bookshelf_id: int
     user_did: str
     role: str  # 'admin', 'editor', 'viewer'
@@ -64,11 +69,11 @@ def setup_database(db_path: str = 'data/bookdit.db'):
     db = database(db_path)
     
     # Create tables with appropriate primary keys
-    users = db.create(User, pk='did')
-    bookshelves = db.create(Bookshelf)
-    books = db.create(Book)
-    permissions = db.create(Permission)
-    upvotes = db.create(Upvote, pk=['book_id', 'user_did'])
+    users = db.create(User, pk='did', transform=True)
+    bookshelves = db.create(Bookshelf, transform=True)
+    books = db.create(Book, transform=True)
+    permissions = db.create(Permission, transform=True)
+    upvotes = db.create(Upvote, pk=['book_id', 'user_did'], transform=True)
     
     return {
         'db': db,
@@ -90,10 +95,7 @@ def check_permission(bookshelf, user_did: str, required_roles: list[str], db_tab
     
     # Check explicit permissions
     try:
-        perm = db_tables['permissions'].where(
-            bookshelf_id=bookshelf.id, 
-            user_did=user_did
-        ).first()
+        perm = db_tables['permissions']("bookshelf_id=? AND user_did=?", (bookshelf.id, user_did)).first()
         return perm and perm.role in required_roles
     except:
         return False
@@ -114,3 +116,100 @@ def can_edit_bookshelf(bookshelf, user_did: str, db_tables) -> bool:
 def can_admin_bookshelf(bookshelf, user_did: str, db_tables) -> bool:
     """Check if user can admin a bookshelf."""
     return check_permission(bookshelf, user_did, ['admin'], db_tables)
+
+# FT rendering methods for models
+@patch
+def __ft__(self: Bookshelf):
+    """Render a Bookshelf as a Card component."""
+    privacy_icon = {
+        'public': '🌍',
+        'link-only': '🔗', 
+        'private': '🔒'
+    }.get(self.privacy, '🌍')
+    
+    return Card(
+        H3(self.name),
+        P(f"{privacy_icon} {self.privacy.replace('-', ' ').title()}", cls="privacy-badge"),
+        P(self.description) if self.description else None,
+        footer=A("View Shelf", href=f"/shelf/{self.slug}", cls="primary")
+    )
+
+@patch
+def __ft__(self: Book):
+    """Render a Book as a Card component (basic version without upvote functionality)."""
+    cover = Img(
+        src=self.cover_url,
+        alt=f"Cover of {self.title}",
+        cls="book-cover",
+        loading="lazy"
+    ) if self.cover_url else Div("📖", cls="book-cover-placeholder")
+    
+    description = P(
+        self.description[:100] + "..." if len(self.description) > 100 else self.description,
+        cls="book-description"
+    ) if self.description else None
+    
+    return Card(
+        Div(cover, cls="book-cover-container"),
+        Div(
+            H4(self.title, cls="book-title"),
+            P(self.author, cls="book-author") if self.author else None,
+            description,
+            Div(f"👍 {self.upvotes}", cls="upvote-count"),
+            cls="book-info"
+        ),
+        cls="book-card",
+        id=f"book-{self.id}"
+    )
+
+@patch
+def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False):
+    """Render Book as a card with upvote functionality."""
+    cover = Img(
+        src=self.cover_url,
+        alt=f"Cover of {self.title}",
+        cls="book-cover",
+        loading="lazy"
+    ) if self.cover_url else Div("📖", cls="book-cover-placeholder")
+    
+    description = P(
+        self.description[:100] + "..." if len(self.description) > 100 else self.description,
+        cls="book-description"
+    ) if self.description else None
+    
+    upvote_btn = Button(
+        f"👍 {self.upvotes}",
+        hx_post=f"/book/{self.id}/upvote",
+        hx_target=f"#book-{self.id}",
+        hx_swap="outerHTML",
+        disabled=not can_upvote or user_has_upvoted,
+        cls="upvote-btn" + (" upvoted" if user_has_upvoted else "")
+    ) if can_upvote else Div(f"👍 {self.upvotes}", cls="upvote-count")
+    
+    return Card(
+        Div(cover, cls="book-cover-container"),
+        Div(
+            H4(self.title, cls="book-title"),
+            P(self.author, cls="book-author") if self.author else None,
+            description,
+            Div(upvote_btn, cls="book-actions"),
+            cls="book-info"
+        ),
+        cls="book-card",
+        id=f"book-{self.id}"
+    )
+
+@patch
+def __ft__(self: User):
+    """Render a User as a simple profile component."""
+    avatar = Img(
+        src=self.avatar_url, 
+        alt=self.display_name or self.handle, 
+        cls="avatar"
+    ) if self.avatar_url else None
+    
+    return Div(
+        avatar,
+        Strong(self.display_name or self.handle),
+        cls="user-profile"
+    )

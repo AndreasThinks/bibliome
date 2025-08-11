@@ -331,12 +331,11 @@ def index(auth):
 
     if not auth:
         # Show public bookshelves for anonymous users
-        # example users(where="name='Alma'")
         public_shelves = bookshelves(where="privacy='public'", limit=12)    
         content = [
             H1("Welcome to BookdIt! 📚"),
             P("Discover and share amazing book collections from the community."),
-            Div(*[BookshelfCard(shelf) for shelf in public_shelves], cls="bookshelf-grid") if public_shelves else EmptyState(
+            Div(*public_shelves, cls="bookshelf-grid") if public_shelves else EmptyState(
                 "No public bookshelves yet",
                 "Be the first to create and share a bookshelf!",
                 "Get Started",
@@ -345,7 +344,11 @@ def index(auth):
         ]
     else:
         # Show user's bookshelves
-        user_shelves = bookshelves("owner_did=?", (auth['did'],))
+        current_auth_did = get_current_user_did(auth)
+        print(f"Current user DID: {current_auth_did}")
+        # Use parameterized query to handle DIDs with colons safely
+        user_shelves = bookshelves("owner_did=?", (current_auth_did,), limit=12)
+
         content = [
             Div(
                 H1(f"Welcome back, {auth.get('display_name', auth['handle'])}! 👋"),
@@ -460,7 +463,7 @@ def create_shelf(name: str, description: str, privacy: str, auth, sess):
 def view_shelf(slug: str, auth):
     """Display a bookshelf."""
     try:
-        shelf = db_tables['bookshelves'].where(slug=slug).first()
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0] if db_tables['bookshelves']("slug=?", (slug,)) else None
         if not shelf:
             return NavBar(auth), Container(
                 H1("Bookshelf Not Found"),
@@ -480,12 +483,12 @@ def view_shelf(slug: str, auth):
         can_edit = can_edit_bookshelf(shelf, user_did, db_tables)
         
         # Get books in this shelf
-        shelf_books = list(db_tables['books'].where(bookshelf_id=shelf.id))
+        shelf_books = list(db_tables['books']("bookshelf_id=?", (shelf.id,)))
         
         # Check which books user has upvoted
         user_upvotes = set()
         if user_did:
-            upvotes = db_tables['upvotes'].where(user_did=user_did)
+            upvotes = db_tables['upvotes']("user_did=?", (user_did,))
             user_upvotes = {upvote.book_id for upvote in upvotes}
         
         content = [
@@ -607,7 +610,7 @@ def upvote_book(book_id: int, auth):
         
         # Check if user already upvoted
         try:
-            existing_upvote = db_tables['upvotes'].where(book_id=book_id, user_did=user_did).first()
+            existing_upvote = db_tables['upvotes']("book_id=? AND user_did=?", (book_id, user_did)).first()
             if existing_upvote:
                 # Remove upvote
                 db_tables['upvotes'].delete((book_id, user_did))
