@@ -1,4 +1,4 @@
-# BookdIt - Collaborative Bookshelf Platform
+# Bibliome - Collaborative Bookshelf Platform
 
 A decentralized, collaborative bookshelf platform with Bluesky (AT-Proto) authentication. Users can create and manage collections of books, set privacy levels, and collaborate with others through role-based permissions.
 
@@ -59,7 +59,7 @@ A decentralized, collaborative bookshelf platform with Bluesky (AT-Proto) authen
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd BookdIt
+   cd Bibliome
    ```
 
 2. **Install dependencies**
@@ -184,7 +184,7 @@ A decentralized, collaborative bookshelf platform with Bluesky (AT-Proto) authen
 
 ### Project Structure
 ```
-BookdIt/
+Bibliome/
 ├── app.py              # Main application
 ├── auth.py             # Authentication logic
 ├── api_clients.py      # External API integrations

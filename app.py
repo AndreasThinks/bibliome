@@ -1,4 +1,4 @@
-"""Main FastHTML application for BookdIt."""
+"""Main FastHTML application for Bibliome."""
 
 from fasthtml.common import *
 from models import setup_database, can_view_bookshelf, can_edit_bookshelf, can_admin_bookshelf
@@ -18,521 +18,6 @@ db_tables = setup_database()
 bluesky_auth = BlueskyAuth()
 book_api = BookAPIClient()
 
-# Custom CSS for the application
-app_css = """
-/* Main Navigation */
-.main-nav {
-    background: var(--primary);
-    padding: 1rem 0;
-    margin-bottom: 2rem;
-}
-
-.nav-container {
-    max-width: 1200px;
-    margin: 0 auto;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 1rem;
-}
-
-.logo {
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: white;
-    text-decoration: none;
-}
-
-.user-menu {
-    display: flex;
-    gap: 1rem;
-    align-items: center;
-    color: white;
-}
-
-.user-menu a {
-    color: white;
-    text-decoration: none;
-    padding: 0.5rem 1rem;
-    border-radius: 0.25rem;
-    transition: background-color 0.2s;
-}
-
-.user-menu a:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-/* Bookshelf Grid */
-.bookshelf-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1.5rem;
-    margin: 2rem 0;
-}
-
-.bookshelf-card {
-    border: 1px solid var(--muted-border-color);
-    border-radius: 0.5rem;
-    padding: 1.5rem;
-    transition: box-shadow 0.2s;
-}
-
-.bookshelf-card:hover {
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-
-/* Book Grid */
-.book-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 1.5rem;
-    margin: 2rem 0;
-}
-
-.book-card {
-    border: 1px solid var(--muted-border-color);
-    border-radius: 0.5rem;
-    overflow: hidden;
-    transition: transform 0.2s;
-}
-
-.book-card:hover {
-    transform: translateY(-2px);
-}
-
-.book-cover-container {
-    height: 250px;
-    overflow: hidden;
-}
-
-.book-cover {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.book-cover-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--muted-color);
-    font-size: 3rem;
-}
-
-.book-info {
-    padding: 1rem;
-}
-
-.book-title {
-    margin: 0 0 0.5rem 0;
-    font-size: 1rem;
-    line-height: 1.3;
-}
-
-.book-author {
-    margin: 0 0 0.5rem 0;
-    color: var(--muted-color);
-    font-size: 0.9rem;
-}
-
-.book-description {
-    margin: 0 0 1rem 0;
-    font-size: 0.8rem;
-    color: var(--muted-color);
-    line-height: 1.4;
-}
-
-.upvote-btn {
-    background: none;
-    border: 1px solid var(--muted-border-color);
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
-    cursor: pointer;
-    font-size: 0.8rem;
-}
-
-.upvote-btn:hover:not(:disabled) {
-    background: var(--primary);
-    color: white;
-}
-
-.upvote-btn.upvoted {
-    background: var(--primary);
-    color: white;
-}
-
-/* Search Results */
-.search-results {
-    max-height: 400px;
-    overflow-y: auto;
-    border: 1px solid var(--muted-border-color);
-    border-radius: 0.5rem;
-    margin-top: 1rem;
-}
-
-.search-result-card {
-    display: flex;
-    gap: 1rem;
-    padding: 1rem;
-    border-bottom: 1px solid var(--muted-border-color);
-}
-
-.search-result-card:last-child {
-    border-bottom: none;
-}
-
-.search-result-cover-container {
-    flex-shrink: 0;
-    width: 80px;
-    height: 120px;
-}
-
-.search-result-cover {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: 0.25rem;
-}
-
-.cover-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--muted-color);
-    border-radius: 0.25rem;
-    font-size: 2rem;
-}
-
-.search-result-info {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.add-book-btn {
-    align-self: flex-start;
-    margin-top: auto;
-}
-
-/* Alerts */
-.alert {
-    padding: 1rem;
-    border-radius: 0.5rem;
-    margin: 1rem 0;
-}
-
-.alert-error {
-    background: #fee;
-    border: 1px solid #fcc;
-    color: #c33;
-}
-
-.alert-success {
-    background: #efe;
-    border: 1px solid #cfc;
-    color: #363;
-}
-
-.alert-info {
-    background: #eef;
-    border: 1px solid #ccf;
-    color: #336;
-}
-
-/* Empty State */
-.empty-state {
-    text-align: center;
-    padding: 3rem 1rem;
-    color: var(--muted-color);
-}
-
-/* Loading */
-.loading-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 1rem;
-    font-size: 0.9rem;
-    color: var(--muted-color);
-}
-
-.spinner {
-    width: 1.5rem;
-    height: 1.5rem;
-    border: 2px solid var(--muted-border-color);
-    border-top: 2px solid var(--primary);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-/* Search form improvements */
-.search-form {
-    margin-bottom: 1rem;
-}
-
-.search-form input {
-    width: 100%;
-    margin-bottom: 0.5rem;
-}
-
-/* HTMX indicator styling */
-.htmx-indicator {
-    opacity: 0;
-    transition: opacity 0.3s ease-in-out;
-}
-
-.htmx-request .htmx-indicator {
-    opacity: 1;
-}
-
-.htmx-request.htmx-indicator {
-    opacity: 1;
-}
-
-/* Share Interface */
-.share-interface {
-    display: flex;
-    flex-direction: column;
-    gap: 2rem;
-}
-
-.privacy-section, .members-section, .pending-section, .invite-section {
-    border: 1px solid var(--muted-border-color);
-    border-radius: 0.5rem;
-    padding: 1.5rem;
-}
-
-.current-privacy {
-    font-size: 1.2rem;
-    font-weight: bold;
-    margin-bottom: 0.5rem;
-    display: block;
-}
-
-.privacy-info p {
-    color: var(--muted-color);
-    margin: 0;
-}
-
-.privacy-form {
-    margin-top: 1rem;
-}
-
-/* Member Cards */
-.members-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1rem;
-    margin-top: 1rem;
-}
-
-.member-card {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1rem;
-    border: 1px solid var(--muted-border-color);
-    border-radius: 0.5rem;
-    background: var(--background-color);
-}
-
-.member-avatar {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    object-fit: cover;
-}
-
-.member-avatar-placeholder {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background: var(--muted-color);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-}
-
-.member-info {
-    flex: 1;
-}
-
-.member-name {
-    margin: 0 0 0.25rem 0;
-    font-size: 1rem;
-}
-
-.member-handle {
-    margin: 0 0 0.5rem 0;
-    color: var(--muted-color);
-    font-size: 0.9rem;
-}
-
-.member-controls {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-}
-
-.member-controls select {
-    min-width: 100px;
-}
-
-.member-controls .small {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.8rem;
-}
-
-/* Role Badges */
-.role-badge {
-    display: inline-block;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
-    font-size: 0.8rem;
-    font-weight: bold;
-    text-transform: uppercase;
-}
-
-.badge-owner {
-    background: #ffd700;
-    color: #000;
-}
-
-.badge-admin {
-    background: #dc3545;
-    color: white;
-}
-
-.badge-editor {
-    background: #007bff;
-    color: white;
-}
-
-.badge-viewer {
-    background: #6c757d;
-    color: white;
-}
-
-.badge-pending {
-    background: #ffc107;
-    color: #000;
-}
-
-/* Invite Interface */
-.invite-form-fields {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
-.invite-card {
-    border: 1px solid var(--muted-border-color);
-    border-radius: 0.5rem;
-    padding: 1rem;
-    margin-bottom: 1rem;
-    background: var(--background-color);
-}
-
-.invite-info {
-    margin-bottom: 1rem;
-}
-
-.invite-info strong {
-    display: block;
-    margin-bottom: 0.5rem;
-}
-
-.invite-info p {
-    margin: 0.25rem 0;
-    color: var(--muted-color);
-    font-size: 0.9rem;
-}
-
-.invite-url-section {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-}
-
-.invite-url {
-    flex: 1;
-    font-family: monospace;
-    font-size: 0.9rem;
-    background: var(--muted-color);
-    border: 1px solid var(--muted-border-color);
-    padding: 0.5rem;
-    border-radius: 0.25rem;
-}
-
-.empty-message {
-    color: var(--muted-color);
-    font-style: italic;
-    text-align: center;
-    padding: 2rem;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-    .nav-container {
-        flex-direction: column;
-        gap: 1rem;
-    }
-    
-    .user-menu {
-        flex-wrap: wrap;
-        justify-content: center;
-    }
-    
-    .bookshelf-grid,
-    .book-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .search-result-card {
-        flex-direction: column;
-    }
-    
-    .search-result-cover-container {
-        width: 100px;
-        height: 150px;
-        align-self: center;
-    }
-    
-    .members-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .member-card {
-        flex-direction: column;
-        text-align: center;
-    }
-    
-    .member-controls {
-        justify-content: center;
-    }
-    
-    .invite-form-fields {
-        grid-template-columns: 1fr;
-    }
-    
-    .invite-url-section {
-        flex-direction: column;
-    }
-}
-"""
 
 # Beforeware function that includes database tables
 def before_handler(req, sess):
@@ -544,7 +29,6 @@ app, rt = fast_app(
     # htmlkw={'data-theme':'light'},
     hdrs=(
         picolink,
-        Style(app_css),
         Link(rel="stylesheet", href="/static/css/styles.css"),
         Script(src="https://unpkg.com/htmx.org@1.9.10")
     )
@@ -558,25 +42,24 @@ def static_files(fname: str, ext: str):
 # Home page
 @rt("/")
 def index(auth):
-    """Homepage - shows public shelves or user's shelves if logged in."""
+    """Homepage - beautiful landing page for visitors, dashboard for logged-in users."""
 
     bookshelves = db_tables['bookshelves']
 
     if not auth:
-        # Show public bookshelves for anonymous users
-        public_shelves = bookshelves(where="privacy='public'", limit=12)    
-        content = [
-            H1("Welcome to BookdIt! 📚"),
-            P("Discover and share amazing book collections from the community."),
-            Div(*public_shelves, cls="bookshelf-grid") if public_shelves else EmptyState(
-                "No public bookshelves yet",
-                "Be the first to create and share a bookshelf!",
-                "Get Started",
-                "/auth/login"
-            )
-        ]
+        # Show beautiful landing page for anonymous users
+        public_shelves = bookshelves(where="privacy='public'", limit=12)
+        
+        return (
+            NavBar(auth),
+            LandingPageHero(),
+            FeaturesSection(),
+            HowItWorksSection(),
+            PublicShelvesPreview(public_shelves),
+            LandingPageFooter()
+        )
     else:
-        # Show user's bookshelves
+        # Show user's dashboard
         current_auth_did = get_current_user_did(auth)
         print(f"Current user DID: {current_auth_did}")
         # Use parameterized query to handle DIDs with colons safely
@@ -585,7 +68,6 @@ def index(auth):
         content = [
             Div(
                 H1(f"Welcome back, {auth.get('display_name', auth['handle'])}! 👋"),
-                A("Create New Shelf", href="/shelf/new", cls="primary"),
                 style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;"
             ),
             Div(*[BookshelfCard(shelf, is_owner=True, can_edit=True) for shelf in user_shelves], cls="bookshelf-grid") if user_shelves else EmptyState(
@@ -595,15 +77,24 @@ def index(auth):
                 "/shelf/new"
             )
         ]
-    
-    return NavBar(auth), Container(*content)
+        
+        return (
+            Title("Dashboard - Bibliome"),
+            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            NavBar(auth),
+            Container(*content)
+        )
 
 # Authentication routes
 @app.get("/auth/login")
 def login_page(sess):
     """Display login form."""
     error_msg = sess.pop('error', None)
-    return NavBar(), bluesky_auth.create_login_form(error_msg)
+    return (
+        Title("Login - Bibliome"),
+        Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+        bluesky_auth.create_login_form(error_msg)
+    )
 
 @app.post("/auth/login")
 async def login_handler(handle: str, password: str, sess):
@@ -661,9 +152,11 @@ def new_shelf_page(auth):
     if not auth:
         return RedirectResponse('/auth/login', status_code=303)
     
-    return NavBar(auth), Container(
-        H1("Create New Bookshelf"),
-        CreateBookshelfForm()
+    return (
+        Title("Create New Bookshelf - Bibliome"),
+        Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+        NavBar(auth),
+        Container(CreateBookshelfForm())
     )
 
 @rt("/shelf/create", methods=["POST"])
@@ -772,13 +265,23 @@ def view_shelf(slug: str, auth):
             )
         )
         
-        return NavBar(auth), Container(*content)
+        return (
+            Title(f"{shelf.name} - Bibliome"),
+            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            NavBar(auth),
+            Container(*content)
+        )
         
     except Exception as e:
-        return NavBar(auth), Container(
-            H1("Error"),
-            P(f"An error occurred: {str(e)}"),
-            A("← Back to Home", href="/")
+        return (
+            Title("Error - Bibliome"),
+            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            NavBar(auth),
+            Container(
+                H1("Error"),
+                P(f"An error occurred: {str(e)}"),
+                A("← Back to Home", href="/")
+            )
         )
 
 # API routes for HTMX
@@ -1178,13 +681,23 @@ def manage_shelf(slug: str, auth):
                 """)
             )
         
-        return NavBar(auth), Container(*content)
+        return (
+            Title(f"Manage: {shelf.name} - Bibliome"),
+            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            NavBar(auth),
+            Container(*content)
+        )
         
     except Exception as e:
-        return NavBar(auth), Container(
-            H1("Error"),
-            P(f"An error occurred: {str(e)}"),
-            A("← Back to Home", href="/")
+        return (
+            Title("Error - Bibliome"),
+            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            NavBar(auth),
+            Container(
+                H1("Error"),
+                P(f"An error occurred: {str(e)}"),
+                A("← Back to Home", href="/")
+            )
         )
 
 @rt("/shelf/{slug}/share")
@@ -1262,13 +775,23 @@ def share_shelf(slug: str, auth):
             )
         ]
         
-        return NavBar(auth), Container(*content)
+        return (
+            Title(f"Share: {shelf.name} - Bibliome"),
+            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            NavBar(auth),
+            Container(*content)
+        )
         
     except Exception as e:
-        return NavBar(auth), Container(
-            H1("Error"),
-            P(f"An error occurred: {str(e)}"),
-            A("← Back to Home", href="/")
+        return (
+            Title("Error - Bibliome"),
+            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            NavBar(auth),
+            Container(
+                H1("Error"),
+                P(f"An error occurred: {str(e)}"),
+                A("← Back to Home", href="/")
+            )
         )
 
 @rt("/shelf/{slug}/update", methods=["POST"])

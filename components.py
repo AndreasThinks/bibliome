@@ -20,7 +20,7 @@ def NavBar(auth=None):
     
     return Nav(
         Div(
-            A("📚 BookdIt", href="/", cls="logo"),
+            A("📚 Bibliome", href="/", cls="logo"),
             user_menu,
             cls="nav-container"
         ),
@@ -464,4 +464,169 @@ def InviteCard(invite, bookshelf_slug):
         ),
         cls="invite-card",
         id=f"invite-{invite.id}"
+    )
+
+def LandingPageHero():
+    """Hero section for the landing page."""
+    return Section(
+        Div(
+            Div(
+                H1("Welcome to Bibliome", cls="hero-title"),
+                P("Your personal library in the cloud. Curate, share, and discover amazing book collections with friends and the community.", cls="hero-subtitle"),
+                Div(
+                    A("Get Started", href="/auth/login", cls="primary hero-cta"),
+                    A("Explore Public Collections", href="#public-shelves", cls="secondary hero-cta-secondary"),
+                    cls="hero-actions"
+                ),
+                cls="hero-content"
+            ),
+            Div(
+                Div("📚", cls="hero-icon"),
+                cls="hero-visual"
+            ),
+            cls="hero-container"
+        ),
+        cls="hero-section"
+    )
+
+def FeaturesSection():
+    """Features section for the landing page."""
+    features = [
+        {
+            "icon": "📚",
+            "title": "Curate Collections",
+            "description": "Create themed bookshelves for any purpose - reading lists, book club selections, or personal favorites."
+        },
+        {
+            "icon": "🤝",
+            "title": "Collaborate & Share",
+            "description": "Share with friends, book clubs, or reading groups. Control who can view and contribute to your collections."
+        },
+        {
+            "icon": "🔒",
+            "title": "Privacy Control",
+            "description": "Choose who sees your collections - make them public, link-only, or completely private."
+        },
+        {
+            "icon": "⭐",
+            "title": "Community Voting",
+            "description": "Discover the best books through community upvotes. See what others are reading and loving."
+        },
+        {
+            "icon": "🔗",
+            "title": "Bluesky Integration",
+            "description": "Login with your decentralized Bluesky identity. No need for another password or account."
+        },
+        {
+            "icon": "🌍",
+            "title": "Rich Book Data",
+            "description": "Powered by Google Books API with covers, descriptions, and detailed metadata for millions of books."
+        }
+    ]
+    
+    feature_cards = [
+        Div(
+            Div(feature["icon"], cls="feature-icon"),
+            H3(feature["title"], cls="feature-title"),
+            P(feature["description"], cls="feature-description"),
+            cls="feature-card"
+        ) for feature in features
+    ]
+    
+    return Section(
+        Container(
+            H2("Why Choose Bibliome?", cls="section-title"),
+            Div(*feature_cards, cls="features-grid"),
+        ),
+        cls="features-section"
+    )
+
+def HowItWorksSection():
+    """How it works section for the landing page."""
+    steps = [
+        {
+            "number": "1",
+            "title": "Sign In",
+            "description": "Connect with your Bluesky account - no new passwords needed."
+        },
+        {
+            "number": "2", 
+            "title": "Create Collections",
+            "description": "Build your first bookshelf with a theme that matters to you."
+        },
+        {
+            "number": "3",
+            "title": "Add Books",
+            "description": "Search our vast library and add books with rich metadata and covers."
+        },
+        {
+            "number": "4",
+            "title": "Share & Collaborate",
+            "description": "Invite others to contribute or keep your collections private."
+        },
+        {
+            "number": "5",
+            "title": "Discover",
+            "description": "Explore public collections and find your next great read."
+        }
+    ]
+    
+    step_cards = [
+        Div(
+            Div(step["number"], cls="step-number"),
+            H3(step["title"], cls="step-title"),
+            P(step["description"], cls="step-description"),
+            cls="step-card"
+        ) for step in steps
+    ]
+    
+    return Section(
+        Container(
+            H2("How It Works", cls="section-title"),
+            Div(*step_cards, cls="steps-grid"),
+        ),
+        cls="how-it-works-section"
+    )
+
+def PublicShelvesPreview(public_shelves):
+    """Preview of public bookshelves for the landing page."""
+    if not public_shelves:
+        return None
+    
+    return Section(
+        Container(
+            H2("Discover Public Collections", cls="section-title"),
+            P("See what the community is reading and sharing", cls="section-subtitle"),
+            Div(*[BookshelfCard(shelf) for shelf in public_shelves[:6]], cls="bookshelf-grid"),
+            Div(
+                A("Explore All Collections", href="/auth/login", cls="primary"),
+                cls="section-cta"
+            ) if len(public_shelves) > 6 else None
+        ),
+        cls="public-shelves-section",
+        id="public-shelves"
+    )
+
+def LandingPageFooter():
+    """Footer for the landing page."""
+    return Footer(
+        Container(
+            Div(
+                Div(
+                    H4("Bibliome"),
+                    P("Your personal library in the cloud"),
+                    cls="footer-brand"
+                ),
+                Div(
+                    H5("Connect"),
+                    P("Built with ❤️ using FastHTML and the AT-Proto ecosystem"),
+                    A("Powered by Bluesky", href="https://bsky.app", target="_blank", rel="noopener"),
+                    cls="footer-links"
+                ),
+                cls="footer-content"
+            ),
+            Hr(),
+            P("© 2024 Bibliome. Open source and decentralized.", cls="footer-copyright"),
+        ),
+        cls="landing-footer"
     )
