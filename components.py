@@ -228,3 +228,244 @@ def Pagination(current_page: int, total_pages: int, base_url: str):
         links.append(A("Next →", href=f"{base_url}?page={current_page + 1}"))
     
     return Nav(*links, cls="pagination")
+
+def MemberCard(user, permission, is_owner=False, can_manage=False, bookshelf_slug=""):
+    """Render a member card with role management."""
+    role_badge_colors = {
+        'owner': 'badge-owner',
+        'admin': 'badge-admin', 
+        'editor': 'badge-editor',
+        'viewer': 'badge-viewer',
+        'pending': 'badge-pending'
+    }
+    
+    # Determine display role
+    display_role = 'owner' if is_owner else permission.role
+    status_text = f" ({permission.status})" if permission.status == 'pending' else ""
+    
+    avatar = Img(
+        src=user.avatar_url,
+        alt=user.display_name or user.handle,
+        cls="member-avatar"
+    ) if user.avatar_url else Div("👤", cls="member-avatar-placeholder")
+    
+    # Role management controls
+    role_controls = None
+    if can_manage and not is_owner and permission.status == 'active':
+        role_controls = Div(
+            Select(
+                Option("Admin", value="admin", selected=(permission.role == "admin")),
+                Option("Editor", value="editor", selected=(permission.role == "editor")),
+                Option("Viewer", value="viewer", selected=(permission.role == "viewer")),
+                name="role",
+                hx_post=f"/api/shelf/{bookshelf_slug}/member/{user.did}/role",
+                hx_target=f"#member-{user.did}",
+                hx_swap="outerHTML"
+            ),
+            Button(
+                "Remove",
+                hx_delete=f"/api/shelf/{bookshelf_slug}/member/{user.did}",
+                hx_target=f"#member-{user.did}",
+                hx_swap="outerHTML",
+                hx_confirm="Are you sure you want to remove this member?",
+                cls="secondary small"
+            ),
+            cls="member-controls"
+        )
+    elif can_manage and permission.status == 'pending':
+        role_controls = Div(
+            Button(
+                "Approve",
+                hx_post=f"/api/shelf/{bookshelf_slug}/member/{user.did}/approve",
+                hx_target=f"#member-{user.did}",
+                hx_swap="outerHTML",
+                cls="primary small"
+            ),
+            Button(
+                "Reject",
+                hx_delete=f"/api/shelf/{bookshelf_slug}/member/{user.did}",
+                hx_target=f"#member-{user.did}",
+                hx_swap="outerHTML",
+                cls="secondary small"
+            ),
+            cls="member-controls"
+        )
+    
+    return Div(
+        avatar,
+        Div(
+            H4(user.display_name or user.handle, cls="member-name"),
+            P(f"@{user.handle}", cls="member-handle"),
+            Span(display_role.title() + status_text, cls=f"role-badge {role_badge_colors.get(display_role, 'badge-viewer')}"),
+            cls="member-info"
+        ),
+        role_controls,
+        cls="member-card",
+        id=f"member-{user.did}"
+    )
+
+def ShareInterface(bookshelf, members, pending_members, invites, can_manage=False, can_generate_invites=False):
+    """Complete share interface for a bookshelf."""
+    privacy_icon = {
+        'public': '🌍',
+        'link-only': '🔗', 
+        'private': '🔒'
+    }.get(bookshelf.privacy, '🌍')
+    
+    # Privacy settings section - build all children first
+    privacy_children = [
+        H3("Privacy Settings"),
+        Div(
+            Span(f"{privacy_icon} {bookshelf.privacy.replace('-', ' ').title()}", cls="current-privacy"),
+            P({
+                'public': "Anyone can find and view this bookshelf",
+                'link-only': "Only people with the link can view this bookshelf", 
+                'private': "Only invited members can view this bookshelf"
+            }.get(bookshelf.privacy, "")),
+            cls="privacy-info"
+        )
+    ]
+    
+    if can_manage:
+        privacy_children.append(
+            Form(
+                Select(
+                    Option("🌍 Public - Anyone can find and view", value="public", selected=(bookshelf.privacy == "public")),
+                    Option("🔗 Link Only - Only people with the link can view", value="link-only", selected=(bookshelf.privacy == "link-only")),
+                    Option("🔒 Private - Only invited members can view", value="private", selected=(bookshelf.privacy == "private")),
+                    name="privacy",
+                    hx_post=f"/api/shelf/{bookshelf.slug}/privacy",
+                    hx_target="#privacy-section",
+                    hx_swap="outerHTML"
+                ),
+                cls="privacy-form"
+            )
+        )
+    
+    privacy_section = Div(*privacy_children, cls="privacy-section")
+    
+    # Members section
+    member_cards = [MemberCard(member['user'], member['permission'], 
+                              is_owner=(member['user'].did == bookshelf.owner_did),
+                              can_manage=can_manage, bookshelf_slug=bookshelf.slug) 
+                   for member in members]
+    
+    members_section = Div(
+        H3(f"Members ({len(members)})"),
+        Div(*member_cards, cls="members-grid", id="members-list") if member_cards else P("No members yet.", cls="empty-message"),
+        cls="members-section"
+    )
+    
+    # Pending members section (for private shelves)
+    pending_section = None
+    if bookshelf.privacy == 'private' and (pending_members or can_manage):
+        pending_cards = [MemberCard(member['user'], member['permission'], 
+                                   can_manage=can_manage, bookshelf_slug=bookshelf.slug) 
+                        for member in pending_members]
+        
+        pending_section = Div(
+            H3(f"Pending Invitations ({len(pending_members)})"),
+            Div(*pending_cards, cls="members-grid", id="pending-list") if pending_cards else P("No pending invitations.", cls="empty-message"),
+            cls="pending-section"
+        )
+    
+    # Invite generation section
+    invite_section = None
+    if can_generate_invites:
+        active_invites = [invite for invite in invites if invite.is_active]
+        
+        invite_section = Div(
+            H3("Invite Links"),
+            Form(
+                Div(
+                    Label("Role for new members:", Select(
+                        Option("Viewer", value="viewer", selected=True),
+                        Option("Editor", value="editor"),
+                        Option("Admin", value="admin") if can_manage else None,
+                        name="role"
+                    )),
+                    Label("Expires in:", Select(
+                        Option("Never", value="", selected=True),
+                        Option("1 day", value="1"),
+                        Option("7 days", value="7"),
+                        Option("30 days", value="30"),
+                        name="expires_days"
+                    )),
+                    Label("Max uses:", Input(
+                        type="number",
+                        name="max_uses",
+                        placeholder="Unlimited",
+                        min="1"
+                    )),
+                    cls="invite-form-fields"
+                ),
+                Button("Generate Invite Link", type="submit", cls="primary"),
+                hx_post=f"/api/shelf/{bookshelf.slug}/invite",
+                hx_target="#active-invites",
+                hx_swap="beforeend",
+                cls="invite-form"
+            ),
+            Div(
+                H4("Active Invite Links"),
+                Div(*[InviteCard(invite, bookshelf.slug) for invite in active_invites], 
+                    id="active-invites") if active_invites else P("No active invites.", cls="empty-message"),
+                cls="invites-list"
+            ),
+            cls="invite-section"
+        )
+    
+    return Div(
+        privacy_section,
+        members_section,
+        pending_section,
+        invite_section,
+        cls="share-interface"
+    )
+
+def InviteCard(invite, bookshelf_slug):
+    """Render an invite link card."""
+    # For now, use a placeholder - this will be replaced with proper URL generation
+    invite_url = f"https://bookdit.app/shelf/join/{invite.invite_code}"
+    
+    expires_text = ""
+    if invite.expires_at:
+        expires_text = f"Expires: {invite.expires_at.strftime('%Y-%m-%d %H:%M')}"
+    
+    uses_text = ""
+    if invite.max_uses:
+        uses_text = f"Uses: {invite.uses_count}/{invite.max_uses}"
+    else:
+        uses_text = f"Uses: {invite.uses_count}"
+    
+    return Div(
+        Div(
+            Strong(f"{invite.role.title()} Invite"),
+            P(expires_text) if expires_text else None,
+            P(uses_text),
+            cls="invite-info"
+        ),
+        Div(
+            Input(
+                value=invite_url,
+                readonly=True,
+                cls="invite-url",
+                onclick="this.select()"
+            ),
+            Button(
+                "Copy",
+                onclick=f"navigator.clipboard.writeText('{invite_url}'); this.textContent='Copied!'; setTimeout(() => this.textContent='Copy', 2000)",
+                cls="secondary small"
+            ),
+            cls="invite-url-section"
+        ),
+        Button(
+            "Revoke",
+            hx_delete=f"/api/shelf/{bookshelf_slug}/invite/{invite.id}",
+            hx_target="closest .invite-card",
+            hx_swap="outerHTML",
+            hx_confirm="Are you sure you want to revoke this invite?",
+            cls="secondary small"
+        ),
+        cls="invite-card",
+        id=f"invite-{invite.id}"
+    )

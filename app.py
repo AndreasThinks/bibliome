@@ -300,6 +300,190 @@ app_css = """
     opacity: 1;
 }
 
+/* Share Interface */
+.share-interface {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.privacy-section, .members-section, .pending-section, .invite-section {
+    border: 1px solid var(--muted-border-color);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+}
+
+.current-privacy {
+    font-size: 1.2rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.privacy-info p {
+    color: var(--muted-color);
+    margin: 0;
+}
+
+.privacy-form {
+    margin-top: 1rem;
+}
+
+/* Member Cards */
+.members-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.member-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid var(--muted-border-color);
+    border-radius: 0.5rem;
+    background: var(--background-color);
+}
+
+.member-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.member-avatar-placeholder {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--muted-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+}
+
+.member-info {
+    flex: 1;
+}
+
+.member-name {
+    margin: 0 0 0.25rem 0;
+    font-size: 1rem;
+}
+
+.member-handle {
+    margin: 0 0 0.5rem 0;
+    color: var(--muted-color);
+    font-size: 0.9rem;
+}
+
+.member-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.member-controls select {
+    min-width: 100px;
+}
+
+.member-controls .small {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+}
+
+/* Role Badges */
+.role-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.badge-owner {
+    background: #ffd700;
+    color: #000;
+}
+
+.badge-admin {
+    background: #dc3545;
+    color: white;
+}
+
+.badge-editor {
+    background: #007bff;
+    color: white;
+}
+
+.badge-viewer {
+    background: #6c757d;
+    color: white;
+}
+
+.badge-pending {
+    background: #ffc107;
+    color: #000;
+}
+
+/* Invite Interface */
+.invite-form-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.invite-card {
+    border: 1px solid var(--muted-border-color);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background: var(--background-color);
+}
+
+.invite-info {
+    margin-bottom: 1rem;
+}
+
+.invite-info strong {
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.invite-info p {
+    margin: 0.25rem 0;
+    color: var(--muted-color);
+    font-size: 0.9rem;
+}
+
+.invite-url-section {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.invite-url {
+    flex: 1;
+    font-family: monospace;
+    font-size: 0.9rem;
+    background: var(--muted-color);
+    border: 1px solid var(--muted-border-color);
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+}
+
+.empty-message {
+    color: var(--muted-color);
+    font-style: italic;
+    text-align: center;
+    padding: 2rem;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .nav-container {
@@ -325,6 +509,27 @@ app_css = """
         width: 100px;
         height: 150px;
         align-self: center;
+    }
+    
+    .members-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .member-card {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .member-controls {
+        justify-content: center;
+    }
+    
+    .invite-form-fields {
+        grid-template-columns: 1fr;
+    }
+    
+    .invite-url-section {
+        flex-direction: column;
     }
 }
 """
@@ -517,6 +722,18 @@ def view_shelf(slug: str, auth):
             upvotes = db_tables['upvotes']("user_did=?", (user_did,))
             user_upvotes = {upvote.book_id for upvote in upvotes}
         
+        # Import the new permission functions
+        from models import can_manage_members, can_generate_invites
+        can_manage = can_manage_members(shelf, user_did, db_tables)
+        can_share = can_generate_invites(shelf, user_did, db_tables)
+        
+        # Build action buttons
+        action_buttons = []
+        if can_edit:
+            action_buttons.append(A("Edit Shelf", href=f"/shelf/{shelf.slug}/edit", cls="secondary"))
+        if can_share:
+            action_buttons.append(A("Share", href=f"/shelf/{shelf.slug}/share", cls="secondary"))
+        
         content = [
             Div(
                 Div(
@@ -525,9 +742,9 @@ def view_shelf(slug: str, auth):
                     P(f"Privacy: {shelf.privacy.replace('-', ' ').title()}", cls="muted")
                 ),
                 Div(
-                    A("Edit Shelf", href=f"/shelf/{shelf.slug}/edit", cls="secondary") if can_edit else None,
-                    style="text-align: right;"
-                ) if can_edit else None,
+                    *action_buttons,
+                    style="display: flex; gap: 0.5rem; text-align: right;"
+                ) if action_buttons else None,
                 style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem;"
             )
         ]
@@ -753,5 +970,90 @@ def upvote_book(book_id: int, auth):
             
     except Exception as e:
         return Div(f"Error: {str(e)}", cls="error")
+
+# Share management routes
+@rt("/shelf/{slug}/share")
+def share_shelf(slug: str, auth):
+    """Display share interface for a bookshelf."""
+    if not auth:
+        return RedirectResponse('/auth/login', status_code=303)
+    
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0] if db_tables['bookshelves']("slug=?", (slug,)) else None
+        if not shelf:
+            return NavBar(auth), Container(
+                H1("Bookshelf Not Found"),
+                P("The bookshelf you're looking for doesn't exist."),
+                A("← Back to Home", href="/")
+            )
+        
+        user_did = get_current_user_did(auth)
+        from models import can_manage_members, can_generate_invites
+        
+        can_manage = can_manage_members(shelf, user_did, db_tables)
+        can_generate = can_generate_invites(shelf, user_did, db_tables)
+        
+        if not can_generate:
+            return NavBar(auth), Container(
+                H1("Access Denied"),
+                P("You don't have permission to manage sharing for this bookshelf."),
+                A("← Back to Shelf", href=f"/shelf/{shelf.slug}")
+            )
+        
+        # Get all members (active permissions + owner)
+        permissions = list(db_tables['permissions']("bookshelf_id=?", (shelf.id,)))
+        members = []
+        pending_members = []
+        
+        # Add owner to members list
+        try:
+            owner = db_tables['users'][shelf.owner_did]
+            members.append({
+                'user': owner,
+                'permission': type('obj', (object,), {'role': 'owner', 'status': 'active'})()
+            })
+        except:
+            pass
+        
+        # Add other members
+        for perm in permissions:
+            try:
+                user = db_tables['users'][perm.user_did]
+                member_data = {'user': user, 'permission': perm}
+                
+                if perm.status == 'pending':
+                    pending_members.append(member_data)
+                else:
+                    members.append(member_data)
+            except:
+                continue
+        
+        # Get active invites
+        invites = list(db_tables['bookshelf_invites']("bookshelf_id=? AND is_active=1", (shelf.id,)))
+        
+        content = [
+            Div(
+                H1(f"Share: {shelf.name}"),
+                A("← Back to Shelf", href=f"/shelf/{shelf.slug}", cls="secondary"),
+                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;"
+            ),
+            ShareInterface(
+                bookshelf=shelf,
+                members=members,
+                pending_members=pending_members,
+                invites=invites,
+                can_manage=can_manage,
+                can_generate_invites=can_generate
+            )
+        ]
+        
+        return NavBar(auth), Container(*content)
+        
+    except Exception as e:
+        return NavBar(auth), Container(
+            H1("Error"),
+            P(f"An error occurred: {str(e)}"),
+            A("← Back to Home", href="/")
+        )
 
 serve()

@@ -55,8 +55,24 @@ class Permission:
     bookshelf_id: int
     user_did: str
     role: str  # 'admin', 'editor', 'viewer'
+    status: str = "active"  # 'active', 'pending'
     granted_by_did: str
     granted_at: datetime = None
+    invited_at: datetime = None
+    joined_at: datetime = None
+
+class BookshelfInvite:
+    """Invitation model for sharing bookshelves."""
+    id: int = None  # Auto-incrementing primary key
+    bookshelf_id: int
+    invite_code: str  # Unique random string
+    role: str  # Role to assign when invite is redeemed
+    created_by_did: str
+    created_at: datetime = None
+    expires_at: datetime = None  # Optional expiration
+    max_uses: int = None  # Optional usage limit
+    uses_count: int = 0
+    is_active: bool = True
 
 class Upvote:
     """Track user upvotes on books."""
@@ -73,6 +89,7 @@ def setup_database(db_path: str = 'data/bookdit.db'):
     bookshelves = db.create(Bookshelf, transform=True)
     books = db.create(Book, transform=True)
     permissions = db.create(Permission, transform=True)
+    bookshelf_invites = db.create(BookshelfInvite, transform=True)
     upvotes = db.create(Upvote, pk=['book_id', 'user_did'], transform=True)
     
     return {
@@ -81,8 +98,13 @@ def setup_database(db_path: str = 'data/bookdit.db'):
         'bookshelves': bookshelves,
         'books': books,
         'permissions': permissions,
+        'bookshelf_invites': bookshelf_invites,
         'upvotes': upvotes
     }
+
+def generate_invite_code():
+    """Generate a secure random invite code."""
+    return ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(12))
 
 def check_permission(bookshelf, user_did: str, required_roles: list[str], db_tables) -> bool:
     """Check if user has required permission for a bookshelf."""
@@ -93,9 +115,9 @@ def check_permission(bookshelf, user_did: str, required_roles: list[str], db_tab
     if bookshelf.owner_did == user_did:
         return True
     
-    # Check explicit permissions
+    # Check explicit permissions (only active permissions)
     try:
-        perm = db_tables['permissions']("bookshelf_id=? AND user_did=?", (bookshelf.id, user_did)).first()
+        perm = db_tables['permissions']("bookshelf_id=? AND user_did=? AND status='active'", (bookshelf.id, user_did)).first()
         return perm and perm.role in required_roles
     except:
         return False
@@ -116,6 +138,47 @@ def can_edit_bookshelf(bookshelf, user_did: str, db_tables) -> bool:
 def can_admin_bookshelf(bookshelf, user_did: str, db_tables) -> bool:
     """Check if user can admin a bookshelf."""
     return check_permission(bookshelf, user_did, ['admin'], db_tables)
+
+def can_manage_members(bookshelf, user_did: str, db_tables) -> bool:
+    """Check if user can manage members (owner or admin)."""
+    if not user_did:
+        return False
+    return bookshelf.owner_did == user_did or check_permission(bookshelf, user_did, ['admin'], db_tables)
+
+def can_generate_invites(bookshelf, user_did: str, db_tables) -> bool:
+    """Check if user can generate invites (owner, admin, or editor for non-private shelves)."""
+    if not user_did:
+        return False
+    
+    # Owner can always generate invites
+    if bookshelf.owner_did == user_did:
+        return True
+    
+    # For private shelves, only owner and admin can generate invites
+    if bookshelf.privacy == 'private':
+        return check_permission(bookshelf, user_did, ['admin'], db_tables)
+    
+    # For public/link-only shelves, editors can also generate invites
+    return check_permission(bookshelf, user_did, ['admin', 'editor'], db_tables)
+
+def validate_invite(invite_code: str, db_tables) -> Optional[object]:
+    """Validate an invite code and return the invite if valid."""
+    try:
+        invite = db_tables['bookshelf_invites']("invite_code=? AND is_active=1", (invite_code,)).first()
+        if not invite:
+            return None
+        
+        # Check if expired
+        if invite.expires_at and datetime.now() > invite.expires_at:
+            return None
+        
+        # Check if max uses reached
+        if invite.max_uses and invite.uses_count >= invite.max_uses:
+            return None
+        
+        return invite
+    except:
+        return None
 
 # FT rendering methods for models
 @patch
