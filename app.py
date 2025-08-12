@@ -61,7 +61,7 @@ def static_files(fname: str, ext: str):
 
 # Home page
 @rt("/")
-def index(auth):
+async def index(auth):
     """Homepage - beautiful landing page for visitors, dashboard for logged-in users."""
 
     bookshelves = db_tables['bookshelves']
@@ -91,14 +91,32 @@ def index(auth):
             Div(
                 H1(f"Welcome back, {auth.get('display_name', auth['handle'])}! 👋"),
                 style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;"
-            ),
+            )
+        ]
+        
+        # Add network activity feed
+        try:
+            from models import get_network_activity
+            logger.info(f"Attempting to load network activity for user: {auth.get('handle')}")
+            network_activities = await get_network_activity(auth, db_tables, bluesky_auth, limit=10)
+            logger.info(f"Network activities loaded: {len(network_activities)} activities found")
+            
+            # Always show the network activity section (with empty state if no activities)
+            content.append(NetworkActivityFeed(network_activities, auth))
+        except Exception as e:
+            logger.error(f"Could not load network activity: {e}", exc_info=True)
+            # Show empty state even if there's an error
+            content.append(NetworkActivityFeed([], auth))
+        
+        # Add user's shelves
+        content.append(
             Div(*[BookshelfCard(shelf, is_owner=True, can_edit=True) for shelf in user_shelves], cls="bookshelf-grid") if user_shelves else EmptyState(
                 "You haven't created any bookshelves yet",
                 "Start building your first collection of books!",
                 "Create Your First Shelf",
                 "/shelf/new"
             )
-        ]
+        )
         
         return (
             Title("Dashboard - Bibliome"),
@@ -202,6 +220,14 @@ def create_shelf(name: str, description: str, privacy: str, auth, sess):
         )
         
         created_shelf = db_tables['bookshelves'].insert(shelf)
+        
+        # Log activity for social feed
+        try:
+            from models import log_activity
+            log_activity(auth['did'], 'bookshelf_created', db_tables, bookshelf_id=created_shelf.id)
+        except Exception as e:
+            logger.warning(f"Could not log bookshelf creation activity: {e}")
+        
         return RedirectResponse(f'/shelf/{created_shelf.slug}', status_code=303)
     except Exception as e:
         sess['error'] = f"Error creating bookshelf: {str(e)}"
@@ -465,6 +491,13 @@ def add_book_api(bookshelf_id: int, title: str, author: str, isbn: str, descript
                 created_at=datetime.now()
             )
             db_tables['upvotes'].insert(upvote)
+            
+            # Log activity for social feed
+            try:
+                from models import log_activity
+                log_activity(user_did, 'book_added', db_tables, bookshelf_id=bookshelf_id, book_id=created_book.id)
+            except Exception as e:
+                logger.warning(f"Could not log book addition activity: {e}")
             
             # Set the computed attributes and return the book card
             created_book.upvote_count = 1

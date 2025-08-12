@@ -42,7 +42,7 @@ h1, h2, h3, h4, h5, h6 {
     padding: 1rem 0;
     margin-bottom: 2rem;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    border-bottom: 1px solid var(--brand-border);
+    border-bottom: 1px solid var(--brand-border);u
 }
 
 .nav-container {
@@ -953,4 +953,243 @@ html {
 /* Ensure proper spacing between sections */
 section + section {
     margin-top: 0;
+}
+
+/* ===== NETWORK ACTIVITY FEED STYLES ===== */
+
+.network-feed-section {
+    background: var(--brand-white);
+    border-radius: 0.75rem;
+    padding: 2rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--brand-border);
+}
+
+.network-activity-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.activity-card {
+    background: var(--brand-light);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    border: 1px solid var(--brand-border);
+    transition: box-shadow 0.2s ease;
+}
+
+.activity-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.activity-user {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.activity-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.activity-avatar-placeholder {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--brand-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+}
+
+.activity-user-info h4,
+.activity-user-info strong {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--brand-text);
+}
+
+.activity-handle {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--brand-muted);
+}
+
+.activity-content {
+    margin-left: 4rem;
+}
+
+.activity-action {
+    margin: 0 0 1rem 0;
+    color: var(--brand-muted);
+    font-size: 0.95rem;
+}
+
+.activity-bookshelf-ref {
+    font-weight: 600;
+    color: var(--brand-navy);
+}
+
+/* Bookshelf Activity Cards */
+.activity-bookshelf-card {
+    background: var(--brand-white);
+    border: 1px solid var(--brand-border);
+    border-radius: 0.5rem;
+    padding: 1rem;
+}
+
+.activity-bookshelf-name {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.1rem;
+    color: var(--brand-navy);
+}
+
+.activity-privacy {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.9rem;
+    color: var(--brand-muted);
+}
+
+/* Book Activity Cards */
+.activity-book-card {
+    background: var(--brand-white);
+    border: 1px solid var(--brand-border);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    display: flex;
+    gap: 1rem;
+}
+
+.activity-book-cover {
+    width: 60px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: 0.25rem;
+    flex-shrink: 0;
+}
+
+.activity-book-cover-placeholder {
+    width: 60px;
+    height: 90px;
+    background: var(--brand-muted);
+    border-radius: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.activity-book-info {
+    flex: 1;
+}
+
+.activity-book-title {
+    margin: 0 0 0.5rem 0;
+    font-size: 1rem;
+    color: var(--brand-navy);
+    line-height: 1.3;
+}
+
+.activity-book-author {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.9rem;
+    color: var(--brand-muted);
+}
+
+.activity-link {
+    color: var(--brand-amber);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.activity-link:hover {
+    text-decoration: underline;
+}
+
+.activity-timestamp {
+    margin: 1rem 0 0 4rem;
+    font-size: 0.85rem;
+    color: var(--brand-muted);
+}
+
+/* Empty Network State */
+.empty-network-state {
+    text-align: center;
+    padding: 3rem 2rem;
+    background: var(--brand-light);
+    border-radius: 0.75rem;
+    border: 2px dashed var(--brand-border);
+}
+
+.empty-network-title {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    color: var(--brand-navy);
+}
+
+.empty-network-description {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    color: var(--brand-text);
+}
+
+.empty-network-suggestion {
+    font-size: 1rem;
+    margin-bottom: 2rem;
+    color: var(--brand-muted);
+}
+
+.empty-network-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+/* Responsive Design for Activity Feed */
+@media (max-width: 768px) {
+    .network-feed-section {
+        padding: 1.5rem;
+        margin: 0 -1rem;
+        border-radius: 0;
+    }
+    
+    .activity-content {
+        margin-left: 0;
+    }
+    
+    .activity-timestamp {
+        margin-left: 0;
+    }
+    
+    .activity-book-card {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+    
+    .activity-book-cover,
+    .activity-book-cover-placeholder {
+        width: 80px;
+        height: 120px;
+    }
+    
+    .empty-network-actions {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .empty-network-actions a {
+        width: 100%;
+        max-width: 250px;
+        text-align: center;
+    }
 }

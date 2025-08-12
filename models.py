@@ -79,6 +79,17 @@ class Upvote:
     user_did: str
     created_at: datetime = None
 
+class Activity:
+    """Track user activity for social feed."""
+    id: int = None  # Auto-incrementing primary key
+    user_did: str
+    activity_type: str  # 'bookshelf_created', 'book_added'
+    bookshelf_id: int = None
+    book_id: int = None
+    created_at: datetime = None
+    # JSON field for additional metadata
+    metadata: str = ""  # JSON string for flexible data
+
 def setup_database(db_path: str = 'data/bookdit.db'):
     """Initialize the database with all tables."""
     db = database(db_path)
@@ -90,6 +101,7 @@ def setup_database(db_path: str = 'data/bookdit.db'):
     permissions = db.create(Permission, transform=True)
     bookshelf_invites = db.create(BookshelfInvite, transform=True)
     upvotes = db.create(Upvote, pk=['book_id', 'user_did'], transform=True)
+    activities = db.create(Activity, transform=True)
     
     return {
         'db': db,
@@ -98,7 +110,8 @@ def setup_database(db_path: str = 'data/bookdit.db'):
         'books': books,
         'permissions': permissions,
         'bookshelf_invites': bookshelf_invites,
-        'upvotes': upvotes
+        'upvotes': upvotes,
+        'activities': activities
     }
 
 def generate_invite_code():
@@ -261,6 +274,86 @@ def get_books_with_upvotes(bookshelf_id: int, user_did: str = None, db_tables=No
         return books_with_votes
     except Exception as e:
         print(f"Error getting books with upvotes: {e}")
+        return []
+
+def log_activity(user_did: str, activity_type: str, db_tables, bookshelf_id: int = None, book_id: int = None, metadata: str = ""):
+    """Log user activity for the social feed."""
+    try:
+        activity = Activity(
+            user_did=user_did,
+            activity_type=activity_type,
+            bookshelf_id=bookshelf_id,
+            book_id=book_id,
+            created_at=datetime.now(),
+            metadata=metadata
+        )
+        db_tables['activities'].insert(activity)
+    except Exception as e:
+        print(f"Error logging activity: {e}")
+
+async def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 20):
+    """Get recent activity from users in the current user's network."""
+    try:
+        # Get list of users the current user follows
+        following_dids = await bluesky_auth.get_following_list(auth_data, limit=100)
+        
+        if not following_dids:
+            return []
+        
+        # Get recent activities from followed users
+        # Only show activities for public/link-only shelves
+        activities = []
+        
+        # Build query to get activities from followed users
+        placeholders = ','.join(['?' for _ in following_dids])
+        query = f"""
+            SELECT a.*, b.name as bookshelf_name, b.slug as bookshelf_slug, b.privacy,
+                   bk.title as book_title, bk.author as book_author, bk.cover_url as book_cover_url
+            FROM activities a
+            LEFT JOIN bookshelves b ON a.bookshelf_id = b.id
+            LEFT JOIN books bk ON a.book_id = bk.id
+            WHERE a.user_did IN ({placeholders})
+            AND (b.privacy = 'public' OR b.privacy = 'link-only')
+            ORDER BY a.created_at DESC
+            LIMIT ?
+        """
+        
+        # Execute raw SQL query
+        cursor = db_tables['db'].execute(query, following_dids + [limit])
+        raw_activities = cursor.fetchall()
+        
+        # Get profiles for the users who created these activities
+        activity_user_dids = list(set([row[1] for row in raw_activities]))  # user_did is column 1
+        profiles = await bluesky_auth.get_profiles_batch(activity_user_dids)
+        
+        # Format activities with user profiles
+        for row in raw_activities:
+            activity_data = {
+                'id': row[0],
+                'user_did': row[1],
+                'activity_type': row[2],
+                'bookshelf_id': row[3],
+                'book_id': row[4],
+                'created_at': row[5],
+                'metadata': row[6],
+                'bookshelf_name': row[7],
+                'bookshelf_slug': row[8],
+                'bookshelf_privacy': row[9],
+                'book_title': row[10],
+                'book_author': row[11],
+                'book_cover_url': row[12],
+                'user_profile': profiles.get(row[1], {
+                    'handle': 'unknown',
+                    'display_name': 'Unknown User',
+                    'avatar_url': ''
+                })
+            }
+            activities.append(activity_data)
+        
+        return activities
+        
+    except Exception as e:
+        print(f"Error getting network activity: {e}")
         return []
 
 # FT rendering methods for models

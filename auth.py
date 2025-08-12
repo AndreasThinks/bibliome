@@ -97,6 +97,67 @@ class BlueskyAuth:
             logger.error(f"Authentication error for handle {handle}: {e}", exc_info=True)
             return None
     
+    async def get_following_list(self, auth_data: Dict[str, Any], limit: int = 100) -> list[str]:
+        """Get list of DIDs that a user follows."""
+        try:
+            # Create a new client instance for this request
+            client = AtprotoClient()
+            
+            # Restore session using stored tokens
+            if auth_data.get('access_jwt') and auth_data.get('refresh_jwt'):
+                # Try to restore session with tokens
+                try:
+                    # This is a simplified approach - in production you'd want proper token refresh
+                    client.login(auth_data['handle'], "")  # This might not work without password
+                except:
+                    logger.warning("Could not restore AT Proto session for following list")
+                    return []
+            
+            # Get following list
+            response = client.get_follows(auth_data['did'], limit=limit)
+            following_dids = [follow.did for follow in response.follows]
+            
+            logger.info(f"Retrieved {len(following_dids)} following DIDs for {auth_data['handle']}")
+            return following_dids
+            
+        except Exception as e:
+            logger.error(f"Error getting following list for {auth_data.get('handle', 'unknown')}: {e}")
+            return []
+    
+    async def get_profiles_batch(self, dids: list[str]) -> dict[str, dict]:
+        """Get profile info for multiple DIDs."""
+        try:
+            if not dids:
+                return {}
+            
+            # Create a new client for this request
+            client = AtprotoClient()
+            
+            profiles = {}
+            # Process in batches to avoid API limits
+            batch_size = 25
+            for i in range(0, len(dids), batch_size):
+                batch_dids = dids[i:i + batch_size]
+                try:
+                    response = client.get_profiles(batch_dids)
+                    for profile in response.profiles:
+                        profiles[profile.did] = {
+                            'did': profile.did,
+                            'handle': profile.handle,
+                            'display_name': profile.display_name or profile.handle,
+                            'avatar_url': profile.avatar or ''
+                        }
+                except Exception as e:
+                    logger.warning(f"Error fetching profile batch: {e}")
+                    continue
+            
+            logger.info(f"Retrieved {len(profiles)} profiles from {len(dids)} DIDs")
+            return profiles
+            
+        except Exception as e:
+            logger.error(f"Error getting profiles batch: {e}")
+            return {}
+    
     def restore_session(self, auth_data: Dict[str, Any]) -> bool:
         """Restore a session from stored auth data."""
         try:

@@ -635,3 +635,166 @@ def LandingPageFooter():
         ),
         cls="landing-footer"
     )
+
+def NetworkActivityFeed(activities: List[Dict], auth=None):
+    """Display network activity feed from followed users."""
+    if not activities:
+        return EmptyNetworkState()
+    
+    activity_cards = []
+    for activity in activities:
+        activity_cards.append(ActivityCard(activity))
+    
+    return Div(
+        H2("📚 Activity from your network", style="margin-bottom: 1.5rem;"),
+        Div(*activity_cards, cls="network-activity-feed"),
+        cls="network-feed-section",
+        style="margin-bottom: 3rem;"
+    )
+
+def ActivityCard(activity: Dict):
+    """Render a single activity card."""
+    user_profile = activity['user_profile']
+    activity_type = activity['activity_type']
+    created_at = activity['created_at']
+    
+    # Format timestamp
+    if isinstance(created_at, str):
+        from datetime import datetime
+        try:
+            created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+        except:
+            created_at = datetime.now()
+    
+    time_ago = format_time_ago(created_at)
+    
+    # User avatar and name
+    avatar = Img(
+        src=user_profile['avatar_url'],
+        alt=user_profile['display_name'],
+        cls="activity-avatar"
+    ) if user_profile['avatar_url'] else Div("👤", cls="activity-avatar-placeholder")
+    
+    user_info = Div(
+        avatar,
+        Div(
+            Strong(user_profile['display_name']),
+            P(f"@{user_profile['handle']}", cls="activity-handle"),
+            cls="activity-user-info"
+        ),
+        cls="activity-user"
+    )
+    
+    # Activity content based on type
+    if activity_type == 'bookshelf_created':
+        content = ActivityBookshelfCreated(activity)
+    elif activity_type == 'book_added':
+        content = ActivityBookAdded(activity)
+    else:
+        content = P(f"Unknown activity: {activity_type}")
+    
+    return Div(
+        user_info,
+        content,
+        P(time_ago, cls="activity-timestamp"),
+        cls="activity-card"
+    )
+
+def ActivityBookshelfCreated(activity: Dict):
+    """Render bookshelf creation activity."""
+    bookshelf_name = activity['bookshelf_name']
+    bookshelf_slug = activity['bookshelf_slug']
+    privacy_icon = {
+        'public': '🌍',
+        'link-only': '🔗',
+        'private': '🔒'
+    }.get(activity['bookshelf_privacy'], '🌍')
+    
+    return Div(
+        P("created a new bookshelf", cls="activity-action"),
+        Div(
+            H4(bookshelf_name, cls="activity-bookshelf-name"),
+            P(f"{privacy_icon} {activity['bookshelf_privacy'].replace('-', ' ').title()}", cls="activity-privacy"),
+            A("View Shelf", href=f"/shelf/{bookshelf_slug}", cls="activity-link"),
+            cls="activity-bookshelf-card"
+        ),
+        cls="activity-content"
+    )
+
+def ActivityBookAdded(activity: Dict):
+    """Render book addition activity."""
+    book_title = activity['book_title']
+    book_author = activity['book_author']
+    book_cover_url = activity['book_cover_url']
+    bookshelf_name = activity['bookshelf_name']
+    bookshelf_slug = activity['bookshelf_slug']
+    
+    cover = Img(
+        src=book_cover_url,
+        alt=f"Cover of {book_title}",
+        cls="activity-book-cover"
+    ) if book_cover_url else Div("📖", cls="activity-book-cover-placeholder")
+    
+    return Div(
+        P(f"added a book to ", Span(bookshelf_name, cls="activity-bookshelf-ref"), cls="activity-action"),
+        Div(
+            cover,
+            Div(
+                H4(book_title, cls="activity-book-title"),
+                P(f"by {book_author}", cls="activity-book-author") if book_author else None,
+                A("View Shelf", href=f"/shelf/{bookshelf_slug}", cls="activity-link"),
+                cls="activity-book-info"
+            ),
+            cls="activity-book-card"
+        ),
+        cls="activity-content"
+    )
+
+def EmptyNetworkState():
+    """Empty state when no network activity is available."""
+    return Div(
+        Div(
+            Div("📚✨", cls="empty-network-icon", style="font-size: 3rem; margin-bottom: 1rem;"),
+            H3("Your reading network is quiet", cls="empty-network-title"),
+            P("We don't see any recent book activity from people you follow on Bluesky.", cls="empty-network-description"),
+            P("📢 Invite your Bluesky followers to join Bibliome and discover what they're reading!", cls="empty-network-suggestion", style="font-weight: 500; color: #0066cc;"),
+            Div(
+                P("💡 Share Bibliome with your network:", style="margin-bottom: 0.5rem; font-weight: 500;"),
+                P("\"Hey! I'm using Bibliome to organize my reading lists and discover new books. Join me at bibliome.app! 📚\"", 
+                  style="font-style: italic; background: #f8f9fa; padding: 1rem; border-radius: 0.5rem; border-left: 4px solid #0066cc; margin: 1rem 0;"),
+                cls="invite-suggestion"
+            ),
+            Div(
+                A("Create Your First Shelf", href="/shelf/new", cls="primary"),
+                A("Browse Public Collections", href="/", cls="secondary"),
+                cls="empty-network-actions"
+            ),
+            cls="empty-network-content"
+        ),
+        cls="empty-network-state",
+        style="text-align: center; padding: 2rem; background: #ffffff; border: 2px dashed #e9ecef; border-radius: 1rem; margin: 2rem 0;"
+    )
+
+def format_time_ago(dt):
+    """Format datetime as 'time ago' string."""
+    from datetime import datetime, timedelta
+    
+    now = datetime.now()
+    if dt.tzinfo is not None:
+        # Convert to naive datetime for comparison
+        dt = dt.replace(tzinfo=None)
+    
+    diff = now - dt
+    
+    if diff.days > 7:
+        return dt.strftime("%b %d")
+    elif diff.days > 0:
+        return f"{diff.days}d ago"
+    elif diff.seconds > 3600:
+        hours = diff.seconds // 3600
+        return f"{hours}h ago"
+    elif diff.seconds > 60:
+        minutes = diff.seconds // 60
+        return f"{minutes}m ago"
+    else:
+        return "just now"
