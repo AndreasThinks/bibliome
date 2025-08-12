@@ -508,8 +508,8 @@ def view_shelf(slug: str, auth):
         
         can_edit = can_edit_bookshelf(shelf, user_did, db_tables)
         
-        # Get books in this shelf
-        shelf_books = list(db_tables['books']("bookshelf_id=?", (shelf.id,)))
+        # Get books in this shelf that have at least 1 upvote
+        shelf_books = list(db_tables['books']("bookshelf_id=? AND upvotes > 0", (shelf.id,)))
         
         # Check which books user has upvoted
         user_upvotes = set()
@@ -541,11 +541,14 @@ def view_shelf(slug: str, auth):
                                for book in shelf_books]
         else:
             book_grid_content = [
-                EmptyState(
-                    "No books yet",
-                    "This bookshelf is waiting for its first book!" if can_edit else "This bookshelf doesn't have any books yet.",
-                    "Add a Book" if can_edit else None,
-                    "#" if can_edit else None
+                Div(
+                    EmptyState(
+                        "No books yet",
+                        "This bookshelf is waiting for its first book!" if can_edit else "This bookshelf doesn't have any books yet.",
+                        "Add a Book" if can_edit else None,
+                        "#" if can_edit else None
+                    ),
+                    id="empty-state-container"
                 )
             ]
         
@@ -622,31 +625,89 @@ def add_book_api(bookshelf_id: int, title: str, author: str, isbn: str, descript
         if not can_edit_bookshelf(shelf, get_current_user_did(auth), db_tables):
             return Div("Permission denied.", cls="error")
         
-        # Create book
-        from models import Book
-        book = Book(
-            bookshelf_id=bookshelf_id,
-            isbn=isbn,
-            title=title,
-            author=author,
-            cover_url=cover_url,
-            description=description,
-            publisher=publisher,
-            published_date=published_date,
-            page_count=page_count,
-            added_by_did=auth['did'],
-            added_at=datetime.now()
-        )
+        user_did = auth['did']
         
-        created_book = db_tables['books'].insert(book)
-        return BookCard(created_book, can_upvote=True, user_has_upvoted=False)
+        # Check if book already exists on this shelf (by ISBN first, then by title+author)
+        existing_book = None
+        if isbn and isbn.strip():
+            # Try to find by ISBN first
+            existing_books = list(db_tables['books']("bookshelf_id=? AND isbn=?", (bookshelf_id, isbn.strip())))
+            if existing_books:
+                existing_book = existing_books[0]
+        
+        if not existing_book:
+            # Try to find by title and author combination
+            existing_books = list(db_tables['books']("bookshelf_id=? AND title=? AND author=?", 
+                                                   (bookshelf_id, title.strip(), author.strip())))
+            if existing_books:
+                existing_book = existing_books[0]
+        
+        if existing_book:
+            # Book already exists - check if user has already voted
+            existing_upvote = None
+            try:
+                existing_upvote = db_tables['upvotes']("book_id=? AND user_did=?", 
+                                                     (existing_book.id, user_did)).first()
+            except:
+                pass
+            
+            if existing_upvote:
+                # User has already voted for this book
+                return Div("You've already added this book to the shelf!", cls="alert alert-info")
+            else:
+                # Add user's vote to existing book
+                from models import Upvote
+                upvote = Upvote(
+                    book_id=existing_book.id,
+                    user_did=user_did,
+                    created_at=datetime.now()
+                )
+                db_tables['upvotes'].insert(upvote)
+                
+                # Update vote count
+                new_vote_count = existing_book.upvotes + 1
+                db_tables['books'].update({'upvotes': new_vote_count}, existing_book.id)
+                
+                # Get updated book and return it
+                updated_book = db_tables['books'][existing_book.id]
+                return BookCard(updated_book, can_upvote=True, user_has_upvoted=True)
+        else:
+            # Create new book with initial upvote count of 1
+            from models import Book, Upvote
+            book = Book(
+                bookshelf_id=bookshelf_id,
+                isbn=isbn,
+                title=title,
+                author=author,
+                cover_url=cover_url,
+                description=description,
+                publisher=publisher,
+                published_date=published_date,
+                page_count=page_count,
+                added_by_did=user_did,
+                added_at=datetime.now(),
+                upvotes=1  # Start with 1 upvote from the person who added it
+            )
+            
+            created_book = db_tables['books'].insert(book)
+            
+            # Create the initial upvote record from the person who added the book
+            upvote = Upvote(
+                book_id=created_book.id,
+                user_did=user_did,
+                created_at=datetime.now()
+            )
+            db_tables['upvotes'].insert(upvote)
+            
+            # Return the book card showing the user has already upvoted
+            return BookCard(created_book, can_upvote=True, user_has_upvoted=True)
         
     except Exception as e:
         return Div(f"Error adding book: {str(e)}", cls="error")
 
 @rt("/book/{book_id}/upvote", methods=["POST"])
 def upvote_book(book_id: int, auth):
-    """HTMX endpoint to upvote a book."""
+    """HTMX endpoint to upvote/downvote a book. Hides book from view if votes reach 0."""
     if not auth:
         return Div("Authentication required.", cls="error")
     
@@ -658,11 +719,21 @@ def upvote_book(book_id: int, auth):
         try:
             existing_upvote = db_tables['upvotes']("book_id=? AND user_did=?", (book_id, user_did)).first()
             if existing_upvote:
-                # Remove upvote
+                # Remove upvote (downvote)
                 db_tables['upvotes'].delete((book_id, user_did))
-                db_tables['books'].update({'upvotes': book.upvotes - 1}, book_id)
-                updated_book = db_tables['books'][book_id]
-                return BookCard(updated_book, can_upvote=True, user_has_upvoted=False)
+                new_vote_count = book.upvotes - 1
+                
+                # Update vote count in database
+                db_tables['books'].update({'upvotes': new_vote_count}, book_id)
+                
+                # If votes reach 0, hide book from view (return empty response)
+                if new_vote_count <= 0:
+                    print(f"Book '{book.title}' hidden from shelf due to 0 votes")
+                    return ""
+                else:
+                    # Return updated card
+                    updated_book = db_tables['books'][book_id]
+                    return BookCard(updated_book, can_upvote=True, user_has_upvoted=False)
             else:
                 # Add upvote
                 from models import Upvote

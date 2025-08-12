@@ -177,14 +177,18 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False):
         cls="book-description"
     ) if self.description else None
     
-    upvote_btn = Button(
-        f"👍 {self.upvotes}",
-        hx_post=f"/book/{self.id}/upvote",
-        hx_target=f"#book-{self.id}",
-        hx_swap="outerHTML",
-        disabled=not can_upvote or user_has_upvoted,
-        cls="upvote-btn" + (" upvoted" if user_has_upvoted else "")
-    ) if can_upvote else Div(f"👍 {self.upvotes}", cls="upvote-count")
+    if can_upvote:
+        # Show different text based on whether user has upvoted
+        btn_text = f"👎 Remove Vote ({self.upvotes})" if user_has_upvoted else f"👍 Upvote ({self.upvotes})"
+        upvote_btn = Button(
+            btn_text,
+            hx_post=f"/book/{self.id}/upvote",
+            hx_target=f"#book-{self.id}",
+            hx_swap="outerHTML",
+            cls="upvote-btn" + (" upvoted" if user_has_upvoted else "")
+        )
+    else:
+        upvote_btn = Div(f"👍 {self.upvotes}", cls="upvote-count")
     
     return Card(
         Div(cover, cls="book-cover-container"),

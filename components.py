@@ -123,7 +123,7 @@ def SearchResultCard(book_data: Dict[str, Any], bookshelf_id: int):
                 hx_post="/api/add-book",
                 hx_target="#book-grid",
                 hx_swap="afterbegin",
-                hx_on_after_request="if (document.querySelector('#book-grid .empty-state')) { document.querySelector('#book-grid .empty-state').remove(); }"
+                hx_on_after_request="const emptyState = document.getElementById('empty-state-container'); if (emptyState) { emptyState.remove(); }"
             ),
             cls="search-result-info"
         )
