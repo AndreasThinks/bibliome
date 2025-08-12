@@ -256,13 +256,15 @@ app_css = """
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1rem;
-    padding: 2rem;
+    gap: 0.5rem;
+    padding: 1rem;
+    font-size: 0.9rem;
+    color: var(--muted-color);
 }
 
 .spinner {
-    width: 2rem;
-    height: 2rem;
+    width: 1.5rem;
+    height: 1.5rem;
     border: 2px solid var(--muted-border-color);
     border-top: 2px solid var(--primary);
     border-radius: 50%;
@@ -272,6 +274,30 @@ app_css = """
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+/* Search form improvements */
+.search-form {
+    margin-bottom: 1rem;
+}
+
+.search-form input {
+    width: 100%;
+    margin-bottom: 0.5rem;
+}
+
+/* HTMX indicator styling */
+.htmx-indicator {
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+}
+
+.htmx-request .htmx-indicator {
+    opacity: 1;
+}
+
+.htmx-request.htmx-indicator {
+    opacity: 1;
 }
 
 /* Responsive */
@@ -509,24 +535,27 @@ def view_shelf(slug: str, auth):
         if can_edit:
             content.append(BookSearchForm(shelf.id))
         
+        # Always include the book-grid div, even when empty
         if shelf_books:
-            content.append(
-                Div(
-                    *[BookCard(book, can_upvote=can_edit, user_has_upvoted=book.id in user_upvotes) 
-                      for book in shelf_books],
-                    cls="book-grid",
-                    id="book-grid"
-                )
-            )
+            book_grid_content = [BookCard(book, can_upvote=can_edit, user_has_upvoted=book.id in user_upvotes) 
+                               for book in shelf_books]
         else:
-            content.append(
+            book_grid_content = [
                 EmptyState(
                     "No books yet",
                     "This bookshelf is waiting for its first book!" if can_edit else "This bookshelf doesn't have any books yet.",
                     "Add a Book" if can_edit else None,
                     "#" if can_edit else None
                 )
+            ]
+        
+        content.append(
+            Div(
+                *book_grid_content,
+                cls="book-grid",
+                id="book-grid"
             )
+        )
         
         return NavBar(auth), Container(*content)
         
@@ -541,8 +570,12 @@ def view_shelf(slug: str, auth):
 @rt("/api/search-books", methods=["POST"])
 async def search_books_api(query: str, bookshelf_id: int, auth):
     """HTMX endpoint for book search."""
-    if not auth or not query.strip():
-        return Div("Please enter a search term.", cls="search-message")
+    if not auth:
+        return Div("Authentication required.", cls="search-message")
+    
+    # If query is empty, clear results
+    if not query.strip():
+        return Div("", cls="search-results-list")
     
     try:
         # Check if user can edit this bookshelf
@@ -550,17 +583,30 @@ async def search_books_api(query: str, bookshelf_id: int, auth):
         if not can_edit_bookshelf(shelf, get_current_user_did(auth), db_tables):
             return Div("You don't have permission to add books to this shelf.", cls="search-message")
         
+        print(f"Searching for books with query: '{query.strip()}'")
         results = await book_api.search_books(query.strip(), max_results=8)
         
         if results:
+            print(f"Found {len(results)} books")
             return Div(
                 *[SearchResultCard(book, bookshelf_id) for book in results],
                 cls="search-results-list"
             )
         else:
-            return Div("No books found. Try a different search term.", cls="search-message")
+            print("No books found")
+            return Div(
+                P("No books found. Try a different search term."),
+                P("Tips:", style="margin-top: 1rem; font-weight: bold;"),
+                Ul(
+                    Li("Try searching by book title"),
+                    Li("Use fewer words for broader results"),
+                    Li("Check spelling of author or title names")
+                ),
+                cls="search-message"
+            )
             
     except Exception as e:
+        print(f"Search error: {e}")
         return Div(f"Search error: {str(e)}", cls="search-message")
 
 @rt("/api/add-book", methods=["POST"])

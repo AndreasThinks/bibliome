@@ -26,26 +26,67 @@ class BookAPIClient:
         return await self._search_open_library(query, max_results)
     
     async def _search_google_books(self, query: str, max_results: int) -> List[Dict[str, Any]]:
-        """Search Google Books API."""
+        """Search Google Books API with title-focused search."""
         try:
-            params = {
-                "q": query,
-                "maxResults": min(max_results, 40),  # Google Books limit
-                "printType": "books"
-            }
-            
-            if self.google_api_key:
-                params["key"] = self.google_api_key
-            
             async with httpx.AsyncClient(timeout=10.0) as client:
+                # First try a title-focused search using proper Google Books API format
+                # According to the docs, intitle: should be used with proper spacing
+                title_query = f"intitle:{query.replace(' ', '+')}"
+                params = {
+                    "q": title_query,
+                    "maxResults": min(max_results, 40),  # Google Books limit
+                    "printType": "books"
+                }
+                
+                if self.google_api_key:
+                    params["key"] = self.google_api_key
+                
+                print(f"Trying title search with query: '{title_query}'")
                 response = await client.get(self.google_books_url, params=params)
+                print(f"Title search response status: {response.status_code}")
                 
                 if response.status_code == 200:
                     data = response.json()
-                    return self._parse_google_books(data.get('items', []))
+                    results = self._parse_google_books(data.get('items', []))
+                    
+                    # If title search returns results, use them
+                    if results:
+                        print(f"Google Books title search returned {len(results)} results")
+                        return results
+                    else:
+                        print("Title search returned 0 results")
+                elif response.status_code == 400:
+                    print(f"Title search got 400 error, response: {response.text[:200]}")
                 else:
-                    print(f"Google Books API error: {response.status_code}")
+                    print(f"Title search failed with status {response.status_code}")
+                
+                # If title search fails or returns no results, try general search
+                print("Trying general search...")
+                general_query = query.replace(' ', '+')
+                general_params = {
+                    "q": general_query,
+                    "maxResults": min(max_results, 40),
+                    "printType": "books"
+                }
+                
+                if self.google_api_key:
+                    general_params["key"] = self.google_api_key
+                
+                print(f"General search query: '{general_query}'")
+                general_response = await client.get(self.google_books_url, params=general_params)
+                print(f"General search response status: {general_response.status_code}")
+                
+                if general_response.status_code == 200:
+                    general_data = general_response.json()
+                    general_results = self._parse_google_books(general_data.get('items', []))
+                    print(f"Google Books general search returned {len(general_results)} results")
+                    return general_results
+                else:
+                    print(f"Google Books API error: {general_response.status_code}")
+                    if general_response.status_code == 400:
+                        print(f"General search 400 error: {general_response.text[:200]}")
                     return []
+                    
         except Exception as e:
             print(f"Google Books search error: {e}")
             return []

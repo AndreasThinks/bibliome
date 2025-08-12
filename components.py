@@ -64,14 +64,25 @@ def BookSearchForm(bookshelf_id: int):
     return Div(
         H3("Add Books"),
         Form(
-            Input(
-                name="query",
-                placeholder="Search for books to add...",
-                hx_post="/api/search-books",
-                hx_trigger="keyup changed delay:500ms",
-                hx_target="#search-results",
-                hx_vals=f'{{"bookshelf_id": {bookshelf_id}}}',
-                autocomplete="off"
+            Div(
+                Input(
+                    name="query",
+                    placeholder="Search for books to add...",
+                    hx_post="/api/search-books",
+                    hx_trigger="keyup changed delay:500ms",
+                    hx_target="#search-results",
+                    hx_vals=f'{{"bookshelf_id": {bookshelf_id}}}',
+                    hx_indicator="#search-loading",
+                    autocomplete="off"
+                ),
+                Div(
+                    Div(cls="spinner"),
+                    "Searching...",
+                    id="search-loading",
+                    cls="htmx-indicator loading-container",
+                    style="display: none;"
+                ),
+                style="position: relative;"
             ),
             cls="search-form"
         ),
@@ -98,23 +109,21 @@ def SearchResultCard(book_data: Dict[str, Any], bookshelf_id: int):
             P(book_data.get('author', 'Unknown Author'), cls="author"),
             P(book_data.get('description', '')[:150] + "..." if len(book_data.get('description', '')) > 150 
               else book_data.get('description', ''), cls="description") if book_data.get('description') else None,
-            Button(
-                "Add to Shelf",
+            Form(
+                Hidden(name="bookshelf_id", value=bookshelf_id),
+                Hidden(name="title", value=book_data.get('title', '')),
+                Hidden(name="author", value=book_data.get('author', '')),
+                Hidden(name="isbn", value=book_data.get('isbn', '')),
+                Hidden(name="description", value=book_data.get('description', '')[:500]),
+                Hidden(name="cover_url", value=book_data.get('cover_url', '')),
+                Hidden(name="publisher", value=book_data.get('publisher', '')),
+                Hidden(name="published_date", value=book_data.get('published_date', '')),
+                Hidden(name="page_count", value=book_data.get('page_count', 0)),
+                Button("Add to Shelf", type="submit", cls="add-book-btn"),
                 hx_post="/api/add-book",
-                hx_vals='{{' + f'''
-                    "bookshelf_id": {bookshelf_id},
-                    "title": "{book_data.get('title', '').replace('"', '&quot;')}",
-                    "author": "{book_data.get('author', '').replace('"', '&quot;')}",
-                    "isbn": "{book_data.get('isbn', '')}",
-                    "description": "{book_data.get('description', '').replace('"', '&quot;')[:500]}",
-                    "cover_url": "{book_data.get('cover_url', '')}",
-                    "publisher": "{book_data.get('publisher', '').replace('"', '&quot;')}",
-                    "published_date": "{book_data.get('published_date', '')}",
-                    "page_count": {book_data.get('page_count', 0)}
-                ''' + '}}',
                 hx_target="#book-grid",
                 hx_swap="afterbegin",
-                cls="add-book-btn"
+                hx_on_after_request="if (document.querySelector('#book-grid .empty-state')) { document.querySelector('#book-grid .empty-state').remove(); }"
             ),
             cls="search-result-info"
         )
