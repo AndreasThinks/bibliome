@@ -88,9 +88,7 @@ async def index(auth):
         user_shelves = bookshelves("owner_did=?", (current_auth_did,), limit=12)
 
         content = [
-            Div(
-                H1(f"Welcome back, {auth.get('display_name', auth['handle'])}! 👋"),
-                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;"
+            Div(style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;"
             )
         ]
         

@@ -408,7 +408,7 @@ def ShareInterface(bookshelf, members, pending_members, invites, can_manage=Fals
             Div(
                 H4("Active Invite Links"),
                 Div(*[InviteCard(invite, bookshelf.slug) for invite in active_invites], 
-                    id="active-invites") if active_invites else P("No active invites.", id="active-invites", cls="empty-message"),
+                    id="active-invites") if active_invites else P("No active invites.", dcls="empty-message"),
                 cls="invites-list"
             ),
             cls="invite-section"
@@ -477,7 +477,7 @@ def LandingPageHero():
         Div(
             Div(
                 H1("Welcome to Bibliome", cls="hero-title"),
-                P("Building the very best reading lists, together.", cls="hero-subtitle"),
+                P("The books you love, shared with your network.", cls="hero-subtitle"),
                 Div(
                     A("Join the Community", href="/auth/login", cls="primary hero-cta"),
                     A("Browse Collections", href="#public-shelves", cls="secondary hero-cta-secondary"),
@@ -505,27 +505,12 @@ def FeaturesSection():
         {
             "icon": "🤝",
             "title": "Collaborate & Share",
-            "description": "Share with friends, book clubs, or reading groups. Control who can view and contribute to your collections."
-        },
-        {
-            "icon": "🔒",
-            "title": "Privacy Control",
-            "description": "Choose who sees your collections - make them public, link-only, or completely private."
-        },
-        {
-            "icon": "⭐",
-            "title": "Community Voting",
-            "description": "Discover the best books through community upvotes. See what others are reading and loving."
+            "description": "Keep your ists private, or invite your network to contribute: friends, family, your class, or open it to the entire world."
         },
         {
             "icon": "🔗",
-            "title": "Bluesky Integration",
-            "description": "Login with your decentralized Bluesky identity. No need for another password or account."
-        },
-        {
-            "icon": "🌍",
-            "title": "Rich Book Data",
-            "description": "Powered by Google Books API with covers, descriptions, and detailed metadata for millions of books."
+            "title": "Decentralised and Open-source",
+            "description": "Bibliome is open-source and built on AT-Proto, the protocol behind Bluesky: your followers and your data stays secure and belongs to you."
         }
     ]
     
@@ -540,7 +525,6 @@ def FeaturesSection():
     
     return Section(
         Container(
-            H2("Why Choose Bibliome?", cls="section-title"),
             Div(*feature_cards, cls="features-grid"),
         ),
         cls="features-section"
@@ -618,12 +602,6 @@ def LandingPageFooter():
         Container(
             Div(
                 Div(
-                    H4("Bibliome"),
-                    P("Your personal library in the cloud"),
-                    cls="footer-brand"
-                ),
-                Div(
-                    H5("Connect"),
                     P("Built with ❤️ using FastHTML and the AT-Proto ecosystem"),
                     A("A project by AndreasThinks and some ✨vibes✨", href="https://andreasthinks.me/", target="_blank", rel="noopener"),
                     cls="footer-links"
