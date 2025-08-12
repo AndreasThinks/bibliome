@@ -44,11 +44,14 @@ def BookshelfCard(bookshelf, is_owner=False, can_edit=False):
 
 def BookCard(book, can_upvote=True, user_has_upvoted=False):
     """Render a book card."""
+    # Get upvote count from the book object (should be set by get_books_with_upvotes)
+    upvote_count = getattr(book, 'upvote_count', 0)
+    
     if can_upvote:
         # Use the interactive version with upvote functionality
-        return book.as_interactive_card(can_upvote=can_upvote, user_has_upvoted=user_has_upvoted)
+        return book.as_interactive_card(can_upvote=can_upvote, user_has_upvoted=user_has_upvoted, upvote_count=upvote_count)
     else:
-        # Use the model's built-in __ft__ method
+        # Use the model's built-in __ft__ method (which will use getattr for upvote_count)
         return book
 
 def BookSearchForm(bookshelf_id: int):

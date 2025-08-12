@@ -47,7 +47,6 @@ class Book:
     published_date: str = ""
     page_count: int = 0
     added_at: datetime = None
-    upvotes: int = 0
 
 class Permission:
     """Permission model for role-based access to bookshelves."""
@@ -117,7 +116,7 @@ def check_permission(bookshelf, user_did: str, required_roles: list[str], db_tab
     
     # Check explicit permissions (only active permissions)
     try:
-        perm = db_tables['permissions']("bookshelf_id=? AND user_did=? AND status='active'", (bookshelf.id, user_did)).first()
+        perm = db_tables['permissions']("bookshelf_id=? AND user_did=? AND status='active'", (bookshelf.id, user_did))[0]
         return perm and perm.role in required_roles
     except:
         return False
@@ -164,7 +163,7 @@ def can_generate_invites(bookshelf, user_did: str, db_tables) -> bool:
 def validate_invite(invite_code: str, db_tables) -> Optional[object]:
     """Validate an invite code and return the invite if valid."""
     try:
-        invite = db_tables['bookshelf_invites']("invite_code=? AND is_active=1", (invite_code,)).first()
+        invite = db_tables['bookshelf_invites']("invite_code=? AND is_active=1", (invite_code,))[0]
         if not invite:
             return None
         
@@ -179,6 +178,44 @@ def validate_invite(invite_code: str, db_tables) -> Optional[object]:
         return invite
     except:
         return None
+
+def get_books_with_upvotes(bookshelf_id: int, user_did: str = None, db_tables=None):
+    """Get books for a bookshelf with upvote counts and user voting status using MiniDataAPI."""
+    if not db_tables:
+        return []
+    
+    try:
+        # Get all books for this bookshelf
+        all_books = db_tables['books']("bookshelf_id=?", (bookshelf_id,))
+        
+        books_with_votes = []
+        for book in all_books:
+            # Count upvotes for this book
+            upvote_count = len(db_tables['upvotes']("book_id=?", (book.id,)))
+            
+            # Skip books with no upvotes
+            if upvote_count == 0:
+                continue
+            
+            # Check if current user has upvoted this book
+            user_has_upvoted = False
+            if user_did:
+                user_upvote = db_tables['upvotes']("book_id=? AND user_did=?", (book.id, user_did))[0]
+                user_has_upvoted = user_upvote is not None
+            
+            # Add computed attributes to the book object
+            book.upvote_count = upvote_count
+            book.user_has_upvoted = user_has_upvoted
+            
+            books_with_votes.append(book)
+        
+        # Sort by upvote count (descending) then by title
+        books_with_votes.sort(key=lambda b: (-b.upvote_count, b.title))
+        
+        return books_with_votes
+    except Exception as e:
+        print(f"Error getting books with upvotes: {e}")
+        return []
 
 # FT rendering methods for models
 @patch
@@ -220,6 +257,9 @@ def __ft__(self: Book):
         cls="book-description"
     ) if self.description else None
     
+    # Note: upvote count should be passed from the calling code since it's no longer stored in the book
+    upvote_count = getattr(self, 'upvote_count', 0)
+    
     return A(
         href=google_books_url,
         target="_blank",
@@ -231,7 +271,7 @@ def __ft__(self: Book):
                 H4(self.title, cls="book-title"),
                 P(self.author, cls="book-author") if self.author else None,
                 description,
-                Div(f"👍 {self.upvotes}", cls="upvote-count"),
+                Div(f"👍 {upvote_count}", cls="upvote-count"),
                 cls="book-info"
             ),
             cls="book-card clickable-book",
@@ -240,7 +280,7 @@ def __ft__(self: Book):
     )
 
 @patch
-def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False):
+def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0):
     """Render Book as a card with upvote functionality."""
     # Generate Google Books URL
     if self.isbn:
@@ -264,7 +304,7 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False):
     
     if can_upvote:
         # Show different text based on whether user has upvoted
-        btn_text = f"👎 Remove Vote ({self.upvotes})" if user_has_upvoted else f"👍 Upvote ({self.upvotes})"
+        btn_text = f"👎 Remove Vote ({upvote_count})" if user_has_upvoted else f"👍 Upvote ({upvote_count})"
         upvote_btn = Button(
             btn_text,
             hx_post=f"/book/{self.id}/upvote",
@@ -274,7 +314,7 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False):
             onclick="event.stopPropagation()"  # Prevent card click when upvoting
         )
     else:
-        upvote_btn = Div(f"👍 {self.upvotes}", cls="upvote-count")
+        upvote_btn = Div(f"👍 {upvote_count}", cls="upvote-count")
     
     return Card(
         Div(cover, cls="book-cover-container"),
