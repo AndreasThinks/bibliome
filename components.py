@@ -408,7 +408,7 @@ def ShareInterface(bookshelf, members, pending_members, invites, can_manage=Fals
             Div(
                 H4("Active Invite Links"),
                 Div(*[InviteCard(invite, bookshelf.slug) for invite in active_invites], 
-                    id="active-invites") if active_invites else P("No active invites.", cls="empty-message"),
+                    id="active-invites") if active_invites else P("No active invites.", id="active-invites", cls="empty-message"),
                 cls="invites-list"
             ),
             cls="invite-section"
@@ -754,25 +754,17 @@ def EmptyNetworkState():
     """Empty state when no network activity is available."""
     return Div(
         Div(
-            Div("📚✨", cls="empty-network-icon", style="font-size: 3rem; margin-bottom: 1rem;"),
-            H3("Your reading network is quiet", cls="empty-network-title"),
-            P("We don't see any recent book activity from people you follow on Bluesky.", cls="empty-network-description"),
-            P("📢 Invite your Bluesky followers to join Bibliome and discover what they're reading!", cls="empty-network-suggestion", style="font-weight: 500; color: #0066cc;"),
+            H3("🌐 Connect with your network!", cls="empty-network-title"),
+            P("We don't see any recent activity from people you follow on Bluesky.", cls="empty-network-description"),
+            P("Invite your friends to join Bibliome and start sharing book recommendations!", cls="empty-network-suggestion"),
             Div(
-                P("💡 Share Bibliome with your network:", style="margin-bottom: 0.5rem; font-weight: 500;"),
-                P("\"Hey! I'm using Bibliome to organize my reading lists and discover new books. Join me at bibliome.app! 📚\"", 
-                  style="font-style: italic; background: #f8f9fa; padding: 1rem; border-radius: 0.5rem; border-left: 4px solid #0066cc; margin: 1rem 0;"),
-                cls="invite-suggestion"
-            ),
-            Div(
-                A("Create Your First Shelf", href="/shelf/new", cls="primary"),
-                A("Browse Public Collections", href="/", cls="secondary"),
+                A("Invite Friends", href="/invite", cls="primary"),
+                A("Explore Public Shelves", href="/explore", cls="secondary"),
                 cls="empty-network-actions"
             ),
             cls="empty-network-content"
         ),
-        cls="empty-network-state",
-        style="text-align: center; padding: 2rem; background: #ffffff; border: 2px dashed #e9ecef; border-radius: 1rem; margin: 2rem 0;"
+        cls="empty-network-state"
     )
 
 def format_time_ago(dt):
