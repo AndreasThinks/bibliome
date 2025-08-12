@@ -601,15 +601,10 @@ def LandingPageFooter():
     return Footer(
         Container(
             Div(
-                Div(
-                    P("Built with ❤️ using FastHTML and the AT-Proto ecosystem"),
-                    A("A project by AndreasThinks and some ✨vibes✨", href="https://andreasthinks.me/", target="_blank", rel="noopener"),
-                    cls="footer-links"
-                ),
+                P("A project by ", A("AndreasThinks", href="https://andreasthinks.me/", target="_blank", rel="noopener"), ", built with ❤️ using FastHTML, AT-Proto, and some ✨vibes✨", cls="footer-text"),
+                P("© 2024 Bibliome. Open source and decentralized.", cls="footer-copyright"),
                 cls="footer-content"
             ),
-            Hr(),
-            P("© 2024 Bibliome. Open source and decentralized.", cls="footer-copyright"),
         ),
         cls="landing-footer"
     )

@@ -42,7 +42,7 @@ h1, h2, h3, h4, h5, h6 {
     padding: 1rem 0;
     margin-bottom: 2rem;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    border-bottom: 1px solid var(--brand-border);u
+    border-bottom: 1px solid var(--brand-border);
 }
 
 .nav-container {
@@ -757,40 +757,28 @@ h1, h2, h3, h4, h5, h6 {
 .landing-footer {
     background: #333;
     color: white;
-    padding: 3rem 0 1rem 0;
+    padding: 2rem 0;
     margin-top: 0;
 }
 
 .footer-content {
-    display: flex;
-    justify-content: space-around; /* This will put space between elements and on either side */
+    text-align: center;
 }
 
-.footer-brand h4 {
-    font-size: 1.5rem;
-    margin-bottom: 0.5rem;
-}
-
-.footer-brand p {
+.footer-text {
     color: #ccc;
-    margin-bottom: 0;
-}
-
-.footer-links h5 {
     margin-bottom: 1rem;
+    font-size: 1rem;
+    line-height: 1.5;
 }
 
-.footer-links p {
-    color: #ccc;
-    margin-bottom: 0.5rem;
-}
-
-.footer-links a {
-    color: #667eea;
+.footer-text a {
+    color: var(--brand-amber);
     text-decoration: none;
+    font-weight: 600;
 }
 
-.footer-links a:hover {
+.footer-text a:hover {
     text-decoration: underline;
 }
 
@@ -799,7 +787,6 @@ h1, h2, h3, h4, h5, h6 {
     color: #999;
     font-size: 0.9rem;
     margin: 0;
-    padding-top: 1rem;
 }
 
 /* Container for landing page */
