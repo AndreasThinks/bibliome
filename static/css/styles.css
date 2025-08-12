@@ -53,6 +53,7 @@ h1, h2, h3, h4, h5, h6 {
     align-items: center;
     padding: 0 1rem;
     min-height: 60px;
+    width: 100%;
 }
 
 .logo {
@@ -64,6 +65,7 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--brand-navy);
     text-decoration: none;
     flex-shrink: 0;
+    margin-right: auto;
 }
 
 .logo-img {
@@ -77,6 +79,7 @@ h1, h2, h3, h4, h5, h6 {
     align-items: center;
     color: var(--brand-navy);
     flex-shrink: 0;
+    margin-left: auto;
 }
 
 .user-menu a {

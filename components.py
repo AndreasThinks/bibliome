@@ -473,7 +473,8 @@ def InviteCard(invite, bookshelf_slug):
 
 def LandingPageHero():
     """Hero section for the landing page."""
-    return Section(
+    return Title('Bibliome'),
+Section(
         Div(
             Div(
                 H1("Welcome to Bibliome", cls="hero-title"),
