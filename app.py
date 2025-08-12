@@ -5,11 +5,23 @@ from models import setup_database, can_view_bookshelf, can_edit_bookshelf, can_a
 from api_clients import BookAPIClient
 from components import *
 import os
+import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from auth import BlueskyAuth, get_current_user_did, auth_beforeware
 
 load_dotenv()
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('bibliome.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Initialize database
 db_tables = setup_database()
@@ -26,9 +38,12 @@ def before_handler(req, sess):
 # Initialize FastHTML app
 app, rt = fast_app(
     before=Beforeware(before_handler, skip=[r'/static/.*', r'/favicon\.ico']),
-    # htmlkw={'data-theme':'light'},
+    htmlkw={'data-theme':'light'},
     hdrs=(
         picolink,
+        Link(rel="preconnect", href="https://fonts.googleapis.com"),
+        Link(rel="preconnect", href="https://fonts.gstatic.com", crossorigin=""),
+        Link(rel="stylesheet", href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap"),
         Link(rel="stylesheet", href="/static/css/styles.css"),
         Script(src="https://unpkg.com/htmx.org@1.9.10")
     )
@@ -61,7 +76,7 @@ def index(auth):
     else:
         # Show user's dashboard
         current_auth_did = get_current_user_did(auth)
-        print(f"Current user DID: {current_auth_did}")
+        logger.debug(f"Loading dashboard for user DID: {current_auth_did}")
         # Use parameterized query to handle DIDs with colons safely
         user_shelves = bookshelves("owner_did=?", (current_auth_did,), limit=12)
 
@@ -99,12 +114,13 @@ def login_page(sess):
 @app.post("/auth/login")
 async def login_handler(handle: str, password: str, sess):
     """Handle login form submission."""
-    print(f"Login attempt - Handle: {handle}, Password length: {len(password) if password else 0}")
+    logger.info(f"Login attempt for handle: {handle}")
     
     user_data = await bluesky_auth.authenticate_user(handle, password)
-    print(f"Authentication result: {user_data is not None}")
     
     if user_data:
+        logger.info(f"Authentication successful for user: {user_data['handle']}")
+        
         # Prepare database data (exclude JWT fields)
         db_user_data = {
             'did': user_data['did'],
@@ -118,8 +134,8 @@ async def login_handler(handle: str, password: str, sess):
         # Store user in database
         try:
             db_tables['users'].insert(**db_user_data)
-            print("New user created in database")
-        except:
+            logger.info(f"New user created in database: {user_data['handle']}")
+        except Exception as e:
             # User already exists, update their info and last login
             update_data = {
                 'handle': user_data['handle'],
@@ -128,14 +144,13 @@ async def login_handler(handle: str, password: str, sess):
                 'last_login': datetime.now()
             }
             db_tables['users'].update(update_data, user_data['did'])
-            print("Existing user updated in database")
+            logger.debug(f"Existing user updated in database: {user_data['handle']}")
         
         # Store full auth data (including JWTs) in session
         sess['auth'] = user_data
-        print(f"User authenticated successfully: {user_data['handle']}")
         return RedirectResponse('/', status_code=303)
     else:
-        print("Authentication failed")
+        logger.warning(f"Authentication failed for handle: {handle}")
         sess['error'] = "Invalid credentials. Please check your handle and app password."
         return RedirectResponse('/auth/login', status_code=303)
 
@@ -301,17 +316,17 @@ async def search_books_api(query: str, bookshelf_id: int, auth):
         if not can_edit_bookshelf(shelf, get_current_user_did(auth), db_tables):
             return Div("You don't have permission to add books to this shelf.", cls="search-message")
         
-        print(f"Searching for books with query: '{query.strip()}'")
+        logger.info(f"Book search request: '{query.strip()}' for shelf {bookshelf_id}")
         results = await book_api.search_books(query.strip(), max_results=8)
         
         if results:
-            print(f"Found {len(results)} books")
+            logger.debug(f"Book search returned {len(results)} results")
             return Div(
                 *[SearchResultCard(book, bookshelf_id) for book in results],
                 cls="search-results-list"
             )
         else:
-            print("No books found")
+            logger.debug(f"No books found for query: '{query.strip()}'")
             return Div(
                 P("No books found. Try a different search term."),
                 P("Tips:", style="margin-top: 1rem; font-weight: bold;"),
@@ -324,7 +339,7 @@ async def search_books_api(query: str, bookshelf_id: int, auth):
             )
             
     except Exception as e:
-        print(f"Search error: {e}")
+        logger.error(f"Book search error for query '{query.strip()}': {e}", exc_info=True)
         return Div(f"Search error: {str(e)}", cls="search-message")
 
 @rt("/api/add-book", methods=["POST"])
@@ -440,7 +455,7 @@ def upvote_book(book_id: int, auth):
                 
                 # If votes reach 0, hide book from view (return empty response)
                 if new_vote_count <= 0:
-                    print(f"Book '{book.title}' hidden from shelf due to 0 votes")
+                    logger.info(f"Book '{book.title}' hidden from shelf due to 0 votes")
                     return ""
                 else:
                     # Return updated card with new count

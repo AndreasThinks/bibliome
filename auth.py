@@ -5,9 +5,13 @@ from atproto import Client as AtprotoClient
 from fasthtml.common import *
 from typing import Optional, Dict, Any
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 class BlueskyAuth:
     """Handle Bluesky authentication and session management."""
@@ -40,7 +44,14 @@ class BlueskyAuth:
                         placeholder="Your Bluesky app password",
                         required=True
                     )),
-                    Small("You'll need to create an app password in your Bluesky settings.")
+                    Small(
+                        "You'll need to create an app password in your Bluesky settings. ",
+                        A("Get your app password here", 
+                          href="https://bsky.app/settings/app-passwords", 
+                          target="_blank", 
+                          rel="noopener noreferrer",
+                          style="color: var(--brand-amber); text-decoration: underline;")
+                    )
                 ),
                 Button("Login", type="submit", cls="primary")
             ),
@@ -53,24 +64,24 @@ class BlueskyAuth:
     async def authenticate_user(self, handle: str, password: str) -> Optional[Dict[str, Any]]:
         """Authenticate user with Bluesky and return user info."""
         try:
-            print(f"Starting authentication for handle: {handle}")
+            logger.info(f"Starting authentication for handle: {handle}")
             
             # Ensure handle has proper format
             if not handle.endswith('.bsky.social') and '.' not in handle:
                 handle = f"{handle}.bsky.social"
-                print(f"Formatted handle: {handle}")
+                logger.debug(f"Formatted handle: {handle}")
             
             # Login to Bluesky - this returns a profile object
-            print("Attempting Bluesky login...")
+            logger.info("Attempting Bluesky login...")
             profile = self.client.login(handle, password)
-            print(f"Login successful, profile: {profile is not None}")
+            logger.debug(f"Login successful, profile: {profile is not None}")
             
             # The client.me contains the session info after login
             if not self.client.me:
-                print("No client.me after login")
+                logger.error("No client.me after login")
                 return None
             
-            print(f"Client.me found: {self.client.me.handle}")
+            logger.debug(f"Client.me found: {self.client.me.handle}")
             
             user_data = {
                 'did': self.client.me.did,
@@ -80,12 +91,10 @@ class BlueskyAuth:
                 'access_jwt': getattr(self.client.me, 'access_jwt', ''),
                 'refresh_jwt': getattr(self.client.me, 'refresh_jwt', '')
             }
-            print(f"Returning user data for: {user_data['handle']}")
+            logger.info(f"Authentication successful for user: {user_data['handle']}")
             return user_data
         except Exception as e:
-            print(f"Authentication error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Authentication error for handle {handle}: {e}", exc_info=True)
             return None
     
     def restore_session(self, auth_data: Dict[str, Any]) -> bool:
@@ -95,10 +104,12 @@ class BlueskyAuth:
             # In a production app, you might want to validate the JWT tokens
             required_fields = ['did', 'handle']
             if all(field in auth_data for field in required_fields):
+                logger.debug(f"Session restored for user: {auth_data.get('handle')}")
                 return True
+            logger.warning("Session restore failed: missing required fields")
             return False
         except Exception as e:
-            print(f"Session restore error: {e}")
+            logger.error(f"Session restore error: {e}", exc_info=True)
             return False
 
 def auth_beforeware(req, sess, db_tables):

@@ -20,7 +20,12 @@ def NavBar(auth=None):
     
     return Nav(
         Div(
-            A("📚 Bibliome", href="/", cls="logo"),
+            A(
+                Img(src="/static/bibliome_transparent_no_text.png", alt="Bibliome", cls="logo-img"),
+                "Bibliome",
+                href="/", 
+                cls="logo"
+            ),
             user_menu,
             cls="nav-container"
         ),
@@ -472,16 +477,16 @@ def LandingPageHero():
         Div(
             Div(
                 H1("Welcome to Bibliome", cls="hero-title"),
-                P("Your personal library in the cloud. Curate, share, and discover amazing book collections with friends and the community.", cls="hero-subtitle"),
+                P("Building the very best reading lists, together.", cls="hero-subtitle"),
                 Div(
-                    A("Get Started", href="/auth/login", cls="primary hero-cta"),
-                    A("Explore Public Collections", href="#public-shelves", cls="secondary hero-cta-secondary"),
+                    A("Join the Community", href="/auth/login", cls="primary hero-cta"),
+                    A("Browse Collections", href="#public-shelves", cls="secondary hero-cta-secondary"),
                     cls="hero-actions"
                 ),
                 cls="hero-content"
             ),
             Div(
-                Div("📚", cls="hero-icon"),
+                Img(src="/static/bibliome_transparent_no_text.png", alt="Bibliome Logo", cls="hero-logo"),
                 cls="hero-visual"
             ),
             cls="hero-container"

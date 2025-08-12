@@ -3,9 +3,13 @@
 import httpx
 from typing import Optional, List, Dict, Any
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 class BookAPIClient:
     """Client for fetching book metadata from external APIs."""
@@ -41,9 +45,9 @@ class BookAPIClient:
                 if self.google_api_key:
                     params["key"] = self.google_api_key
                 
-                print(f"Trying title search with query: '{title_query}'")
+                logger.info(f"Trying Google Books title search with query: '{title_query}'")
                 response = await client.get(self.google_books_url, params=params)
-                print(f"Title search response status: {response.status_code}")
+                logger.debug(f"Title search response status: {response.status_code}")
                 
                 if response.status_code == 200:
                     data = response.json()
@@ -51,17 +55,17 @@ class BookAPIClient:
                     
                     # If title search returns results, use them
                     if results:
-                        print(f"Google Books title search returned {len(results)} results")
+                        logger.info(f"Google Books title search returned {len(results)} results")
                         return results
                     else:
-                        print("Title search returned 0 results")
+                        logger.debug("Title search returned 0 results")
                 elif response.status_code == 400:
-                    print(f"Title search got 400 error, response: {response.text[:200]}")
+                    logger.warning(f"Title search got 400 error, response: {response.text[:200]}")
                 else:
-                    print(f"Title search failed with status {response.status_code}")
+                    logger.warning(f"Title search failed with status {response.status_code}")
                 
                 # If title search fails or returns no results, try general search
-                print("Trying general search...")
+                logger.info("Trying Google Books general search...")
                 general_query = query.replace(' ', '+')
                 general_params = {
                     "q": general_query,
@@ -72,23 +76,23 @@ class BookAPIClient:
                 if self.google_api_key:
                     general_params["key"] = self.google_api_key
                 
-                print(f"General search query: '{general_query}'")
+                logger.debug(f"General search query: '{general_query}'")
                 general_response = await client.get(self.google_books_url, params=general_params)
-                print(f"General search response status: {general_response.status_code}")
+                logger.debug(f"General search response status: {general_response.status_code}")
                 
                 if general_response.status_code == 200:
                     general_data = general_response.json()
                     general_results = self._parse_google_books(general_data.get('items', []))
-                    print(f"Google Books general search returned {len(general_results)} results")
+                    logger.info(f"Google Books general search returned {len(general_results)} results")
                     return general_results
                 else:
-                    print(f"Google Books API error: {general_response.status_code}")
+                    logger.error(f"Google Books API error: {general_response.status_code}")
                     if general_response.status_code == 400:
-                        print(f"General search 400 error: {general_response.text[:200]}")
+                        logger.error(f"General search 400 error: {general_response.text[:200]}")
                     return []
                     
         except Exception as e:
-            print(f"Google Books search error: {e}")
+            logger.error(f"Google Books search error: {e}", exc_info=True)
             return []
     
     async def _search_open_library(self, query: str, max_results: int) -> List[Dict[str, Any]]:
@@ -102,16 +106,20 @@ class BookAPIClient:
             }
             
             async with httpx.AsyncClient(timeout=10.0) as client:
+                logger.info(f"Trying Open Library search with query: '{query}'")
                 response = await client.get(search_url, params=params)
+                logger.debug(f"Open Library response status: {response.status_code}")
                 
                 if response.status_code == 200:
                     data = response.json()
-                    return self._parse_open_library(data.get('docs', []))
+                    results = self._parse_open_library(data.get('docs', []))
+                    logger.info(f"Open Library search returned {len(results)} results")
+                    return results
                 else:
-                    print(f"Open Library API error: {response.status_code}")
+                    logger.error(f"Open Library API error: {response.status_code}")
                     return []
         except Exception as e:
-            print(f"Open Library search error: {e}")
+            logger.error(f"Open Library search error: {e}", exc_info=True)
             return []
     
     def _parse_google_books(self, items: List[Dict]) -> List[Dict[str, Any]]:
@@ -189,16 +197,23 @@ class BookAPIClient:
             if self.google_api_key:
                 params["key"] = self.google_api_key
             
+            logger.info(f"Looking up book by ISBN: {isbn}")
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(self.google_books_url, params=params)
+                logger.debug(f"ISBN lookup response status: {response.status_code}")
                 
                 if response.status_code == 200:
                     data = response.json()
                     items = data.get('items', [])
                     if items:
                         parsed = self._parse_google_books(items)
+                        logger.info(f"Found book details for ISBN {isbn}")
                         return parsed[0] if parsed else None
+                    else:
+                        logger.warning(f"No book found for ISBN {isbn}")
+                else:
+                    logger.error(f"ISBN lookup failed with status {response.status_code}")
         except Exception as e:
-            print(f"ISBN lookup error: {e}")
+            logger.error(f"ISBN lookup error: {e}", exc_info=True)
         
         return None
