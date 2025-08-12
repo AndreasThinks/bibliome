@@ -35,10 +35,15 @@ book_api = BookAPIClient()
 def before_handler(req, sess):
     return auth_beforeware(req, sess, db_tables)
 
-# Initialize FastHTML app
+# Initialize FastHTML app with persistent sessions
 app, rt = fast_app(
     before=Beforeware(before_handler, skip=[r'/static/.*', r'/favicon\.ico']),
     htmlkw={'data-theme':'light'},
+    # Session configuration for persistent login
+    max_age=30*24*60*60,  # 30 days in seconds
+    session_cookie='bibliome_session',
+    same_site='lax',  # Good balance of security and functionality
+    sess_https_only=False,  # Set to True in production with HTTPS
     hdrs=(
         picolink,
         Link(rel="preconnect", href="https://fonts.googleapis.com"),
