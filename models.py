@@ -371,9 +371,11 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
         if upvote_count > 1:
             remove_btn_text = f"🗑️ Remove ({upvote_count} votes)"
         
+        # Escape the title for JavaScript
+        escaped_title = self.title.replace("'", "\\'").replace('"', '\\"')
         action_buttons.append(Button(
             remove_btn_text,
-            onclick=f"confirmRemoveBook({self.id}, '{self.title.replace("'", "\\'")}', {upvote_count})",
+            onclick=f"confirmRemoveBook({self.id}, '{escaped_title}', {upvote_count})",
             cls="remove-btn danger",
             style="background: #dc3545; color: white; margin-left: 0.5rem;"
         ))

@@ -1,7 +1,7 @@
 """Main FastHTML application for Bibliome."""
 
 from fasthtml.common import *
-from models import setup_database, can_view_bookshelf, can_edit_bookshelf, can_admin_bookshelf
+from models import setup_database, can_view_bookshelf, can_edit_bookshelf
 from api_clients import BookAPIClient
 from components import *
 import os
