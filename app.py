@@ -71,6 +71,8 @@ def index(auth):
         public_shelves = bookshelves(where="privacy='public'", limit=12)
         
         return (
+            Title("Bibliome - Building the very best reading lists, together"),
+            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
             NavBar(auth),
             LandingPageHero(),
             FeaturesSection(),
