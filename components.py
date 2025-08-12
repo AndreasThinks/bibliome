@@ -3,6 +3,7 @@
 from fasthtml.common import *
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+import os
 
 def NavBar(auth=None):
     """Main navigation bar."""
@@ -27,28 +28,19 @@ def NavBar(auth=None):
     )
 
 def BookshelfCard(bookshelf, is_owner=False, can_edit=False):
-    """Render a bookshelf card with edit options if needed."""
-    if can_edit:
-        # For owners, add edit button to the footer
-        privacy_icon = {
-            'public': '🌍',
-            'link-only': '🔗', 
-            'private': '🔒'
-        }.get(bookshelf.privacy, '🌍')
-        
-        return Card(
-            H3(bookshelf.name),
-            P(f"{privacy_icon} {bookshelf.privacy.replace('-', ' ').title()}", cls="privacy-badge"),
-            P(bookshelf.description) if bookshelf.description else None,
-            footer=Div(
-                A("Edit", href=f"/shelf/{bookshelf.slug}/edit", cls="secondary"),
-                A("View", href=f"/shelf/{bookshelf.slug}", cls="primary"),
-                style="display: flex; gap: 0.5rem;"
-            )
-        )
-    else:
-        # Use the model's built-in __ft__ method
-        return bookshelf
+    """Render a bookshelf card."""
+    privacy_icon = {
+        'public': '🌍',
+        'link-only': '🔗', 
+        'private': '🔒'
+    }.get(bookshelf.privacy, '🌍')
+    
+    return Card(
+        H3(bookshelf.name),
+        P(f"{privacy_icon} {bookshelf.privacy.replace('-', ' ').title()}", cls="privacy-badge"),
+        P(bookshelf.description) if bookshelf.description else None,
+        footer=A("View", href=f"/shelf/{bookshelf.slug}", cls="primary")
+    )
 
 def BookCard(book, can_upvote=True, user_has_upvoted=False):
     """Render a book card."""
@@ -424,8 +416,9 @@ def ShareInterface(bookshelf, members, pending_members, invites, can_manage=Fals
 
 def InviteCard(invite, bookshelf_slug):
     """Render an invite link card."""
-    # For now, use a placeholder - this will be replaced with proper URL generation
-    invite_url = f"https://bookdit.app/shelf/join/{invite.invite_code}"
+    # Use BASE_URL from environment variable
+    base_url = os.getenv('BASE_URL', 'http://0.0.0.0:5001/').rstrip('/')
+    invite_url = f"{base_url}/shelf/join/{invite.invite_code}"
     
     expires_text = ""
     if invite.expires_at:

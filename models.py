@@ -200,6 +200,14 @@ def __ft__(self: Bookshelf):
 @patch
 def __ft__(self: Book):
     """Render a Book as a Card component (basic version without upvote functionality)."""
+    # Generate Google Books URL
+    if self.isbn:
+        google_books_url = f"https://books.google.com/books?isbn={self.isbn}"
+    else:
+        # Fallback to search query if no ISBN
+        search_query = f"{self.title} {self.author}".replace(" ", "+")
+        google_books_url = f"https://books.google.com/books?q={search_query}"
+    
     cover = Img(
         src=self.cover_url,
         alt=f"Cover of {self.title}",
@@ -212,22 +220,36 @@ def __ft__(self: Book):
         cls="book-description"
     ) if self.description else None
     
-    return Card(
-        Div(cover, cls="book-cover-container"),
-        Div(
-            H4(self.title, cls="book-title"),
-            P(self.author, cls="book-author") if self.author else None,
-            description,
-            Div(f"👍 {self.upvotes}", cls="upvote-count"),
-            cls="book-info"
-        ),
-        cls="book-card",
-        id=f"book-{self.id}"
+    return A(
+        href=google_books_url,
+        target="_blank",
+        rel="noopener noreferrer"
+    )(
+        Card(
+            Div(cover, cls="book-cover-container"),
+            Div(
+                H4(self.title, cls="book-title"),
+                P(self.author, cls="book-author") if self.author else None,
+                description,
+                Div(f"👍 {self.upvotes}", cls="upvote-count"),
+                cls="book-info"
+            ),
+            cls="book-card clickable-book",
+            id=f"book-{self.id}"
+        )
     )
 
 @patch
 def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False):
     """Render Book as a card with upvote functionality."""
+    # Generate Google Books URL
+    if self.isbn:
+        google_books_url = f"https://books.google.com/books?isbn={self.isbn}"
+    else:
+        # Fallback to search query if no ISBN
+        search_query = f"{self.title} {self.author}".replace(" ", "+")
+        google_books_url = f"https://books.google.com/books?q={search_query}"
+    
     cover = Img(
         src=self.cover_url,
         alt=f"Cover of {self.title}",
@@ -248,7 +270,8 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False):
             hx_post=f"/book/{self.id}/upvote",
             hx_target=f"#book-{self.id}",
             hx_swap="outerHTML",
-            cls="upvote-btn" + (" upvoted" if user_has_upvoted else "")
+            cls="upvote-btn" + (" upvoted" if user_has_upvoted else ""),
+            onclick="event.stopPropagation()"  # Prevent card click when upvoting
         )
     else:
         upvote_btn = Div(f"👍 {self.upvotes}", cls="upvote-count")
@@ -262,7 +285,8 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False):
             Div(upvote_btn, cls="book-actions"),
             cls="book-info"
         ),
-        cls="book-card",
+        A("View on Google Books", href=google_books_url, target="_blank", rel="noopener noreferrer", cls="google-books-link"),
+        cls="book-card interactive-book",
         id=f"book-{self.id}"
     )
 

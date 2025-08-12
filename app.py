@@ -544,6 +544,7 @@ app, rt = fast_app(
     hdrs=(
         picolink,
         Style(app_css),
+        Link(rel="stylesheet", href="/static/css/styles.css"),
         Script(src="https://unpkg.com/htmx.org@1.9.10")
     )
 )
@@ -729,10 +730,8 @@ def view_shelf(slug: str, auth):
         
         # Build action buttons
         action_buttons = []
-        if can_edit:
-            action_buttons.append(A("Edit Shelf", href=f"/shelf/{shelf.slug}/edit", cls="secondary"))
-        if can_share:
-            action_buttons.append(A("Share", href=f"/shelf/{shelf.slug}/share", cls="secondary"))
+        if can_edit or can_share:
+            action_buttons.append(A("Manage", href=f"/shelf/{shelf.slug}/manage", cls="secondary"))
         
         content = [
             Div(
@@ -971,7 +970,219 @@ def upvote_book(book_id: int, auth):
     except Exception as e:
         return Div(f"Error: {str(e)}", cls="error")
 
-# Share management routes
+# Management routes
+@rt("/shelf/{slug}/manage")
+def manage_shelf(slug: str, auth):
+    """Display unified management interface for a bookshelf."""
+    if not auth:
+        return RedirectResponse('/auth/login', status_code=303)
+    
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0] if db_tables['bookshelves']("slug=?", (slug,)) else None
+        if not shelf:
+            return NavBar(auth), Container(
+                H1("Bookshelf Not Found"),
+                P("The bookshelf you're looking for doesn't exist."),
+                A("← Back to Home", href="/")
+            )
+        
+        user_did = get_current_user_did(auth)
+        from models import can_manage_members, can_generate_invites
+        
+        can_edit = can_edit_bookshelf(shelf, user_did, db_tables)
+        can_manage = can_manage_members(shelf, user_did, db_tables)
+        can_generate = can_generate_invites(shelf, user_did, db_tables)
+        is_owner = shelf.owner_did == user_did
+        
+        if not (can_edit or can_generate):
+            return NavBar(auth), Container(
+                H1("Access Denied"),
+                P("You don't have permission to manage this bookshelf."),
+                A("← Back to Shelf", href=f"/shelf/{shelf.slug}")
+            )
+        
+        # Get all members (active permissions + owner)
+        permissions = list(db_tables['permissions']("bookshelf_id=?", (shelf.id,)))
+        members = []
+        pending_members = []
+        
+        # Add owner to members list
+        try:
+            owner = db_tables['users'][shelf.owner_did]
+            members.append({
+                'user': owner,
+                'permission': type('obj', (object,), {'role': 'owner', 'status': 'active'})()
+            })
+        except:
+            pass
+        
+        # Add other members
+        for perm in permissions:
+            try:
+                user = db_tables['users'][perm.user_did]
+                member_data = {'user': user, 'permission': perm}
+                
+                if perm.status == 'pending':
+                    pending_members.append(member_data)
+                else:
+                    members.append(member_data)
+            except:
+                continue
+        
+        # Get active invites
+        invites = list(db_tables['bookshelf_invites']("bookshelf_id=? AND is_active=1", (shelf.id,)))
+        
+        # Build management sections
+        sections = []
+        
+        # Edit Details Section
+        if can_edit:
+            sections.append(
+                Div(
+                    H3("Edit Details"),
+                    Form(
+                        Fieldset(
+                            Label("Shelf Name", Input(
+                                name="name",
+                                type="text",
+                                value=shelf.name,
+                                required=True,
+                                maxlength=100
+                            )),
+                            Label("Description", Textarea(
+                                shelf.description,
+                                name="description",
+                                rows=3,
+                                maxlength=500
+                            )),
+                            Label("Privacy Level", Select(
+                                Option("Public - Anyone can find and view", value="public", selected=(shelf.privacy == "public")),
+                                Option("Link Only - Only people with the link can view", value="link-only", selected=(shelf.privacy == "link-only")),
+                                Option("Private - Only invited people can view", value="private", selected=(shelf.privacy == "private")),
+                                name="privacy"
+                            ))
+                        ),
+                        Button("Save Changes", type="submit", cls="primary"),
+                        action=f"/shelf/{shelf.slug}/update",
+                        method="post"
+                    ),
+                    cls="management-section"
+                )
+            )
+        
+        # Share & Members Section
+        if can_generate:
+            sections.append(
+                Div(
+                    ShareInterface(
+                        bookshelf=shelf,
+                        members=members,
+                        pending_members=pending_members,
+                        invites=invites,
+                        can_manage=can_manage,
+                        can_generate_invites=can_generate
+                    ),
+                    cls="management-section"
+                )
+            )
+        
+        # Delete Section (Owner only)
+        if is_owner:
+            sections.append(
+                Div(
+                    H3("Danger Zone", style="color: #dc3545;"),
+                    P("Once you delete a bookshelf, there is no going back. This will permanently delete the bookshelf, all its books, and all associated data."),
+                    Button(
+                        "Delete Bookshelf",
+                        onclick=f"showDeleteModal('{shelf.name}')",
+                        cls="danger",
+                        style="background: #dc3545; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 0.25rem; cursor: pointer;"
+                    ),
+                    cls="management-section danger-section",
+                    style="border: 2px solid #dc3545; border-radius: 0.5rem; padding: 1.5rem; margin-top: 2rem;"
+                )
+            )
+        
+        content = [
+            Div(
+                H1(f"Manage: {shelf.name}"),
+                A("← Back to Shelf", href=f"/shelf/{shelf.slug}", cls="secondary"),
+                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;"
+            ),
+            *sections
+        ]
+        
+        # Add delete confirmation modal if owner
+        if is_owner:
+            content.append(
+                Div(
+                    Div(
+                        Div(
+                            H3("Delete Bookshelf", style="color: #dc3545; margin-bottom: 1rem;"),
+                            P(f"Are you sure you want to delete '{shelf.name}'? This action cannot be undone."),
+                            P("To confirm, type the bookshelf name below:", style="font-weight: bold; margin-top: 1rem;"),
+                            Form(
+                                Input(
+                                    type="text",
+                                    id="delete-confirmation",
+                                    placeholder="Type bookshelf name here",
+                                    style="width: 100%; margin-bottom: 1rem;",
+                                    oninput="validateDeleteInput(this.value)"
+                                ),
+                                Div(
+                                    Button("Cancel", type="button", onclick="hideDeleteModal()", cls="secondary"),
+                                    Button("Delete Forever", type="submit", id="delete-confirm-btn", disabled=True, 
+                                          style="background: #dc3545; color: white; margin-left: 0.5rem;"),
+                                    style="display: flex; gap: 0.5rem; justify-content: flex-end;"
+                                ),
+                                action=f"/shelf/{shelf.slug}/delete",
+                                method="post"
+                            ),
+                            cls="modal-content",
+                            style="background: white; padding: 2rem; border-radius: 0.5rem; max-width: 500px; width: 90%;"
+                        ),
+                        cls="modal-overlay",
+                        style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 1000;",
+                        onclick="event.target === this && hideDeleteModal()"
+                    ),
+                    id="delete-modal"
+                )
+            )
+            
+            # Add JavaScript for delete modal
+            content.append(
+                Script(f"""
+                function showDeleteModal(shelfName) {{
+                    document.getElementById('delete-modal').style.display = 'flex';
+                    window.expectedShelfName = shelfName;
+                }}
+                
+                function hideDeleteModal() {{
+                    document.getElementById('delete-modal').style.display = 'none';
+                    document.getElementById('delete-confirmation').value = '';
+                    document.getElementById('delete-confirm-btn').disabled = true;
+                }}
+                
+                function validateDeleteInput(value) {{
+                    const confirmBtn = document.getElementById('delete-confirm-btn');
+                    if (value === window.expectedShelfName) {{
+                        confirmBtn.disabled = false;
+                    }} else {{
+                        confirmBtn.disabled = true;
+                    }}
+                }}
+                """)
+            )
+        
+        return NavBar(auth), Container(*content)
+        
+    except Exception as e:
+        return NavBar(auth), Container(
+            H1("Error"),
+            P(f"An error occurred: {str(e)}"),
+            A("← Back to Home", href="/")
+        )
+
 @rt("/shelf/{slug}/share")
 def share_shelf(slug: str, auth):
     """Display share interface for a bookshelf."""
@@ -1055,5 +1266,93 @@ def share_shelf(slug: str, auth):
             P(f"An error occurred: {str(e)}"),
             A("← Back to Home", href="/")
         )
+
+@rt("/shelf/{slug}/update", methods=["POST"])
+def update_shelf(slug: str, name: str, description: str, privacy: str, auth, sess):
+    """Handle bookshelf update."""
+    if not auth:
+        return RedirectResponse('/auth/login', status_code=303)
+    
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0] if db_tables['bookshelves']("slug=?", (slug,)) else None
+        if not shelf:
+            sess['error'] = "Bookshelf not found."
+            return RedirectResponse('/', status_code=303)
+        
+        # Check if user can edit this bookshelf
+        if not can_edit_bookshelf(shelf, get_current_user_did(auth), db_tables):
+            sess['error'] = "You don't have permission to edit this bookshelf."
+            return RedirectResponse(f'/shelf/{shelf.slug}', status_code=303)
+        
+        # Update the bookshelf
+        update_data = {
+            'name': name.strip(),
+            'description': description.strip(),
+            'privacy': privacy,
+            'updated_at': datetime.now()
+        }
+        
+        db_tables['bookshelves'].update(update_data, shelf.id)
+        sess['success'] = "Bookshelf updated successfully!"
+        return RedirectResponse(f'/shelf/{shelf.slug}/manage', status_code=303)
+        
+    except Exception as e:
+        sess['error'] = f"Error updating bookshelf: {str(e)}"
+        return RedirectResponse(f'/shelf/{slug}/manage', status_code=303)
+
+@rt("/shelf/{slug}/delete", methods=["POST"])
+def delete_shelf(slug: str, auth, sess):
+    """Handle bookshelf deletion."""
+    if not auth:
+        return RedirectResponse('/auth/login', status_code=303)
+    
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0] if db_tables['bookshelves']("slug=?", (slug,)) else None
+        if not shelf:
+            sess['error'] = "Bookshelf not found."
+            return RedirectResponse('/', status_code=303)
+        
+        # Check if user is the owner
+        if shelf.owner_did != get_current_user_did(auth):
+            sess['error'] = "Only the owner can delete a bookshelf."
+            return RedirectResponse(f'/shelf/{shelf.slug}', status_code=303)
+        
+        # Delete all related data in correct order
+        # 1. Delete upvotes for books in this shelf
+        shelf_books = list(db_tables['books']("bookshelf_id=?", (shelf.id,)))
+        for book in shelf_books:
+            # Delete upvotes for this book
+            try:
+                db_tables['upvotes'].delete_where("book_id=?", (book.id,))
+            except:
+                pass
+        
+        # 2. Delete books
+        try:
+            db_tables['books'].delete_where("bookshelf_id=?", (shelf.id,))
+        except:
+            pass
+        
+        # 3. Delete permissions
+        try:
+            db_tables['permissions'].delete_where("bookshelf_id=?", (shelf.id,))
+        except:
+            pass
+        
+        # 4. Delete invites
+        try:
+            db_tables['bookshelf_invites'].delete_where("bookshelf_id=?", (shelf.id,))
+        except:
+            pass
+        
+        # 5. Finally delete the bookshelf
+        db_tables['bookshelves'].delete(shelf.id)
+        
+        sess['success'] = f"Bookshelf '{shelf.name}' has been permanently deleted."
+        return RedirectResponse('/', status_code=303)
+        
+    except Exception as e:
+        sess['error'] = f"Error deleting bookshelf: {str(e)}"
+        return RedirectResponse(f'/shelf/{slug}/manage', status_code=303)
 
 serve()
