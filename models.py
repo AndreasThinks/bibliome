@@ -53,7 +53,7 @@ class Permission:
     id: int = None  # Auto-incrementing primary key
     bookshelf_id: int
     user_did: str
-    role: str  # 'admin', 'editor', 'viewer'
+    role: str  # 'viewer', 'contributor', 'moderator', 'owner'
     status: str = "active"  # 'active', 'pending'
     granted_by_did: str
     granted_at: datetime = None
@@ -128,24 +128,32 @@ def can_view_bookshelf(bookshelf, user_did: str, db_tables) -> bool:
     elif bookshelf.privacy == 'link-only':
         return True  # Anyone with the link can view
     else:  # private
-        return check_permission(bookshelf, user_did, ['admin', 'editor', 'viewer'], db_tables)
+        return check_permission(bookshelf, user_did, ['viewer', 'contributor', 'moderator', 'owner'], db_tables)
+
+def can_add_books(bookshelf, user_did: str, db_tables) -> bool:
+    """Check if user can add books and vote (contributor, moderator, owner)."""
+    return check_permission(bookshelf, user_did, ['contributor', 'moderator', 'owner'], db_tables)
+
+def can_vote_books(bookshelf, user_did: str, db_tables) -> bool:
+    """Check if user can vote on books (contributor, moderator, owner)."""
+    return check_permission(bookshelf, user_did, ['contributor', 'moderator', 'owner'], db_tables)
+
+def can_remove_books(bookshelf, user_did: str, db_tables) -> bool:
+    """Check if user can remove books (moderator, owner)."""
+    return check_permission(bookshelf, user_did, ['moderator', 'owner'], db_tables)
 
 def can_edit_bookshelf(bookshelf, user_did: str, db_tables) -> bool:
-    """Check if user can edit a bookshelf."""
-    return check_permission(bookshelf, user_did, ['admin', 'editor'], db_tables)
-
-def can_admin_bookshelf(bookshelf, user_did: str, db_tables) -> bool:
-    """Check if user can admin a bookshelf."""
-    return check_permission(bookshelf, user_did, ['admin'], db_tables)
+    """Check if user can edit bookshelf details (moderator, owner)."""
+    return check_permission(bookshelf, user_did, ['moderator', 'owner'], db_tables)
 
 def can_manage_members(bookshelf, user_did: str, db_tables) -> bool:
-    """Check if user can manage members (owner or admin)."""
+    """Check if user can manage members (moderator with limits, owner full access)."""
     if not user_did:
         return False
-    return bookshelf.owner_did == user_did or check_permission(bookshelf, user_did, ['admin'], db_tables)
+    return bookshelf.owner_did == user_did or check_permission(bookshelf, user_did, ['moderator', 'owner'], db_tables)
 
 def can_generate_invites(bookshelf, user_did: str, db_tables) -> bool:
-    """Check if user can generate invites (owner, admin, or editor for non-private shelves)."""
+    """Check if user can generate invites (moderator, owner)."""
     if not user_did:
         return False
     
@@ -153,12 +161,50 @@ def can_generate_invites(bookshelf, user_did: str, db_tables) -> bool:
     if bookshelf.owner_did == user_did:
         return True
     
-    # For private shelves, only owner and admin can generate invites
-    if bookshelf.privacy == 'private':
-        return check_permission(bookshelf, user_did, ['admin'], db_tables)
+    # Moderators can generate invites
+    return check_permission(bookshelf, user_did, ['moderator', 'owner'], db_tables)
+
+def can_delete_shelf(bookshelf, user_did: str, db_tables) -> bool:
+    """Check if user can delete the entire bookshelf (owner only)."""
+    if not user_did:
+        return False
+    return bookshelf.owner_did == user_did
+
+def get_user_role(bookshelf, user_did: str, db_tables) -> str:
+    """Get the user's role for a bookshelf."""
+    if not user_did:
+        return None
     
-    # For public/link-only shelves, editors can also generate invites
-    return check_permission(bookshelf, user_did, ['admin', 'editor'], db_tables)
+    # Check if owner
+    if bookshelf.owner_did == user_did:
+        return 'owner'
+    
+    # Check explicit permissions
+    try:
+        perm = db_tables['permissions']("bookshelf_id=? AND user_did=? AND status='active'", (bookshelf.id, user_did))[0]
+        return perm.role if perm else None
+    except:
+        return None
+
+def can_invite_role(inviter_role: str, target_role: str) -> bool:
+    """Check if a user with inviter_role can invite someone with target_role."""
+    role_hierarchy = ['viewer', 'contributor', 'moderator', 'owner']
+    
+    if inviter_role not in role_hierarchy or target_role not in role_hierarchy:
+        return False
+    
+    inviter_level = role_hierarchy.index(inviter_role)
+    target_level = role_hierarchy.index(target_role)
+    
+    # Moderators can invite up to moderator level
+    if inviter_role == 'moderator':
+        return target_level <= 2  # viewer, contributor, moderator
+    
+    # Owners can invite anyone
+    if inviter_role == 'owner':
+        return True
+    
+    return False
 
 def validate_invite(invite_code: str, db_tables) -> Optional[object]:
     """Validate an invite code and return the invite if valid."""
@@ -280,8 +326,8 @@ def __ft__(self: Book):
     )
 
 @patch
-def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0):
-    """Render Book as a card with upvote functionality."""
+def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False):
+    """Render Book as a card with upvote and remove functionality."""
     # Generate Google Books URL
     if self.isbn:
         google_books_url = f"https://books.google.com/books?isbn={self.isbn}"
@@ -302,19 +348,35 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
         cls="book-description"
     ) if self.description else None
     
+    # Build action buttons
+    action_buttons = []
+    
     if can_upvote:
         # Show different text based on whether user has upvoted
         btn_text = f"👎 Remove Vote ({upvote_count})" if user_has_upvoted else f"👍 Upvote ({upvote_count})"
-        upvote_btn = Button(
+        action_buttons.append(Button(
             btn_text,
             hx_post=f"/book/{self.id}/upvote",
             hx_target=f"#book-{self.id}",
             hx_swap="outerHTML",
             cls="upvote-btn" + (" upvoted" if user_has_upvoted else ""),
             onclick="event.stopPropagation()"  # Prevent card click when upvoting
-        )
+        ))
     else:
-        upvote_btn = Div(f"👍 {upvote_count}", cls="upvote-count")
+        action_buttons.append(Div(f"👍 {upvote_count}", cls="upvote-count"))
+    
+    if can_remove:
+        # Add remove button for moderators/owners
+        remove_btn_text = "🗑️ Remove"
+        if upvote_count > 1:
+            remove_btn_text = f"🗑️ Remove ({upvote_count} votes)"
+        
+        action_buttons.append(Button(
+            remove_btn_text,
+            onclick=f"confirmRemoveBook({self.id}, '{self.title.replace("'", "\\'")}', {upvote_count})",
+            cls="remove-btn danger",
+            style="background: #dc3545; color: white; margin-left: 0.5rem;"
+        ))
     
     return Card(
         Div(cover, cls="book-cover-container"),
@@ -322,7 +384,7 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
             H4(self.title, cls="book-title"),
             P(self.author, cls="book-author") if self.author else None,
             description,
-            Div(upvote_btn, cls="book-actions"),
+            Div(*action_buttons, cls="book-actions"),
             cls="book-info"
         ),
         A("View on Google Books", href=google_books_url, target="_blank", rel="noopener noreferrer", cls="google-books-link"),

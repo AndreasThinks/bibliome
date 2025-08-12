@@ -226,16 +226,20 @@ def view_shelf(slug: str, auth):
                 A("← Back to Home", href="/")
             )
         
+        # Import the new permission functions
+        from models import (can_add_books, can_vote_books, can_remove_books, 
+                           can_edit_bookshelf, can_manage_members, can_generate_invites)
+        
+        can_add = can_add_books(shelf, user_did, db_tables)
+        can_vote = can_vote_books(shelf, user_did, db_tables)
+        can_remove = can_remove_books(shelf, user_did, db_tables)
         can_edit = can_edit_bookshelf(shelf, user_did, db_tables)
+        can_manage = can_manage_members(shelf, user_did, db_tables)
+        can_share = can_generate_invites(shelf, user_did, db_tables)
         
         # Get books with upvote counts using the new helper function
         from models import get_books_with_upvotes
         shelf_books = get_books_with_upvotes(shelf.id, user_did, db_tables)
-        
-        # Import the new permission functions
-        from models import can_manage_members, can_generate_invites
-        can_manage = can_manage_members(shelf, user_did, db_tables)
-        can_share = can_generate_invites(shelf, user_did, db_tables)
         
         # Build action buttons
         action_buttons = []
@@ -257,21 +261,26 @@ def view_shelf(slug: str, auth):
             )
         ]
         
-        if can_edit:
+        # Show book search form if user can add books
+        if can_add:
             content.append(BookSearchForm(shelf.id))
         
         # Always include the book-grid div, even when empty
         if shelf_books:
-            book_grid_content = [BookCard(book, can_upvote=can_edit, user_has_upvoted=book.user_has_upvoted) 
-                               for book in shelf_books]
+            book_grid_content = [book.as_interactive_card(
+                can_upvote=can_vote, 
+                user_has_upvoted=book.user_has_upvoted,
+                upvote_count=book.upvote_count,
+                can_remove=can_remove
+            ) for book in shelf_books]
         else:
             book_grid_content = [
                 Div(
                     EmptyState(
                         "No books yet",
-                        "This bookshelf is waiting for its first book!" if can_edit else "This bookshelf doesn't have any books yet.",
-                        "Add a Book" if can_edit else None,
-                        "#" if can_edit else None
+                        "This bookshelf is waiting for its first book!" if can_add else "This bookshelf doesn't have any books yet.",
+                        "Add a Book" if can_add else None,
+                        "#" if can_add else None
                     ),
                     id="empty-state-container"
                 )
@@ -284,6 +293,27 @@ def view_shelf(slug: str, auth):
                 id="book-grid"
             )
         )
+        
+        # Add JavaScript for book removal confirmation if user can remove books
+        if can_remove:
+            content.append(
+                Script("""
+                function confirmRemoveBook(bookId, bookTitle, voteCount) {
+                    let message = `Are you sure you want to remove "${bookTitle}" from this shelf?`;
+                    if (voteCount > 1) {
+                        message += `\n\nThis book has ${voteCount} votes and will be permanently removed for all users.`;
+                    }
+                    
+                    if (confirm(message)) {
+                        // Use HTMX to make the removal request
+                        htmx.ajax('POST', `/book/${bookId}/remove`, {
+                            target: `#book-${bookId}`,
+                            swap: 'outerHTML'
+                        });
+                    }
+                }
+                """)
+            )
         
         return (
             Title(f"{shelf.name} - Bibliome"),
@@ -316,9 +346,11 @@ async def search_books_api(query: str, bookshelf_id: int, auth):
         return Div("", cls="search-results-list")
     
     try:
-        # Check if user can edit this bookshelf
+        # Check if user can add books to this bookshelf
         shelf = db_tables['bookshelves'][bookshelf_id]
-        if not can_edit_bookshelf(shelf, get_current_user_did(auth), db_tables):
+        user_did = get_current_user_did(auth)
+        from models import can_add_books
+        if not can_add_books(shelf, user_did, db_tables):
             return Div("You don't have permission to add books to this shelf.", cls="search-message")
         
         logger.info(f"Book search request: '{query.strip()}' for shelf {bookshelf_id}")
@@ -355,9 +387,11 @@ def add_book_api(bookshelf_id: int, title: str, author: str, isbn: str, descript
         return Div("Authentication required.", cls="error")
     
     try:
-        # Check permissions
+        # Check permissions - use can_add_books instead of can_edit_bookshelf
         shelf = db_tables['bookshelves'][bookshelf_id]
-        if not can_edit_bookshelf(shelf, get_current_user_did(auth), db_tables):
+        user_did = get_current_user_did(auth)
+        from models import can_add_books
+        if not can_add_books(shelf, user_did, db_tables):
             return Div("Permission denied.", cls="error")
         
         user_did = auth['did']
@@ -496,6 +530,43 @@ def upvote_book(book_id: int, auth):
             
     except Exception as e:
         return Div(f"Error: {str(e)}", cls="error")
+
+@rt("/book/{book_id}/remove", methods=["POST"])
+def remove_book(book_id: int, auth):
+    """HTMX endpoint to remove a book from a bookshelf (moderator/owner only)."""
+    if not auth:
+        return Div("Authentication required.", cls="error")
+    
+    try:
+        book = db_tables['books'][book_id]
+        shelf = db_tables['bookshelves'][book.bookshelf_id]
+        user_did = get_current_user_did(auth)
+        
+        # Check if user can remove books from this shelf
+        from models import can_remove_books
+        if not can_remove_books(shelf, user_did, db_tables):
+            return Div("You don't have permission to remove books from this shelf.", cls="error")
+        
+        # Get upvote count for logging
+        upvote_count = len(db_tables['upvotes']("book_id=?", (book_id,)))
+        
+        # Delete all upvotes for this book first
+        try:
+            db_tables['upvotes'].delete_where("book_id=?", (book_id,))
+        except:
+            pass
+        
+        # Delete the book
+        db_tables['books'].delete(book_id)
+        
+        logger.info(f"Book '{book.title}' removed from shelf '{shelf.name}' by {auth.get('handle', 'unknown')} (had {upvote_count} votes)")
+        
+        # Return empty response to remove the book card from the UI
+        return ""
+        
+    except Exception as e:
+        logger.error(f"Error removing book {book_id}: {e}", exc_info=True)
+        return Div(f"Error removing book: {str(e)}", cls="error")
 
 # Management routes
 @rt("/shelf/{slug}/manage")

@@ -625,7 +625,7 @@ def LandingPageFooter():
                 Div(
                     H5("Connect"),
                     P("Built with ❤️ using FastHTML and the AT-Proto ecosystem"),
-                    A("Powered by Bluesky", href="https://bsky.app", target="_blank", rel="noopener"),
+                    A("A project by AndreasThinks and some ✨vibes✨", href="https://andreasthinks.me/", target="_blank", rel="noopener"),
                     cls="footer-links"
                 ),
                 cls="footer-content"
