@@ -356,6 +356,45 @@ async def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: 
         print(f"Error getting network activity: {e}")
         return []
 
+def get_shelf_by_slug(slug: str, db_tables):
+    """Get a single bookshelf by its slug, returning None if not found."""
+    try:
+        return db_tables['bookshelves']("slug=?", (slug,))[0]
+    except IndexError:
+        return None
+
+def get_public_shelves(db_tables, limit: int = 20, offset: int = 0):
+    """Fetch a paginated list of public bookshelves."""
+    return db_tables['bookshelves'](where="privacy='public'", limit=limit, offset=offset, order_by='created_at DESC')
+
+def get_user_shelves(user_did: str, db_tables, limit: int = 20, offset: int = 0):
+    """Fetch a paginated list of a user's bookshelves."""
+    return db_tables['bookshelves']("owner_did=?", (user_did,), limit=limit, offset=offset, order_by='updated_at DESC')
+
+def get_public_shelves_with_stats(db_tables, limit: int = 20, offset: int = 0):
+    """Get public shelves with book counts and recent book covers for display."""
+    public_shelves = get_public_shelves(db_tables, limit=limit, offset=offset)
+    
+    for shelf in public_shelves:
+        # Get total book count for the shelf
+        shelf.book_count = len(db_tables['books']("bookshelf_id=?", (shelf.id,)))
+        
+        # Get up to 4 recent book covers
+        recent_books = db_tables['books'](
+            "bookshelf_id=?", (shelf.id,), 
+            limit=4, 
+            order_by='added_at DESC'
+        )
+        shelf.recent_covers = [book.cover_url for book in recent_books if book.cover_url]
+        
+        # Get owner's profile
+        try:
+            shelf.owner = db_tables['users'][shelf.owner_did]
+        except IndexError:
+            shelf.owner = None
+            
+    return public_shelves
+
 # FT rendering methods for models
 @patch
 def __ft__(self: Bookshelf):

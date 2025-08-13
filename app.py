@@ -1,7 +1,11 @@
 """Main FastHTML application for Bibliome."""
 
 from fasthtml.common import *
-from models import setup_database, can_view_bookshelf, can_edit_bookshelf
+from models import (
+    setup_database, can_view_bookshelf, can_edit_bookshelf,
+    get_public_shelves_with_stats, get_user_shelves, get_shelf_by_slug,
+    get_public_shelves
+)
 from api_clients import BookAPIClient
 from components import *
 import os
@@ -63,12 +67,9 @@ def static_files(fname: str, ext: str):
 @rt("/")
 async def index(auth):
     """Homepage - beautiful landing page for visitors, dashboard for logged-in users."""
-
-    bookshelves = db_tables['bookshelves']
-
     if not auth:
         # Show beautiful landing page for anonymous users
-        public_shelves = bookshelves(where="privacy='public'", limit=12)
+        public_shelves = get_public_shelves(db_tables, limit=6)
         
         return (
             Title("Bibliome - Building the very best reading lists, together"),
@@ -84,11 +85,12 @@ async def index(auth):
         # Show user's dashboard
         current_auth_did = get_current_user_did(auth)
         logger.debug(f"Loading dashboard for user DID: {current_auth_did}")
-        # Use parameterized query to handle DIDs with colons safely
-        user_shelves = bookshelves("owner_did=?", (current_auth_did,), limit=12)
+        user_shelves = get_user_shelves(current_auth_did, db_tables, limit=12)
 
         content = [
-            Div(style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;"
+            Div(
+                H1(f"Welcome back, {auth.get('display_name', auth['handle'])}! 👋"),
+                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;"
             )
         ]
         
@@ -231,11 +233,32 @@ def create_shelf(name: str, description: str, privacy: str, auth, sess):
         sess['error'] = f"Error creating bookshelf: {str(e)}"
         return RedirectResponse('/shelf/new', status_code=303)
 
+@rt("/explore")
+def explore_page(auth, page: int = 1):
+    """Public page to explore all public bookshelves."""
+    page = int(page)
+    limit = 12
+    offset = (page - 1) * limit
+    
+    shelves = get_public_shelves_with_stats(db_tables, limit=limit, offset=offset)
+    total_shelves = len(db_tables['bookshelves'](where="privacy='public'"))
+    total_pages = (total_shelves + limit - 1) // limit
+    
+    return (
+        Title("Explore Public Shelves - Bibliome"),
+        Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+        NavBar(auth),
+        Container(
+            ExplorePageHero(),
+            PublicShelvesGrid(shelves, page=page, total_pages=total_pages)
+        )
+    )
+
 @rt("/shelf/{slug}")
 def view_shelf(slug: str, auth):
     """Display a bookshelf."""
     try:
-        shelf = db_tables['bookshelves']("slug=?", (slug,))[0] if db_tables['bookshelves']("slug=?", (slug,)) else None
+        shelf = get_shelf_by_slug(slug, db_tables)
         if not shelf:
             return NavBar(auth), Container(
                 H1("Bookshelf Not Found"),

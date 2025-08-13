@@ -591,9 +591,9 @@ def PublicShelvesPreview(public_shelves):
             P("See what the community is reading and sharing", cls="section-subtitle"),
             Div(*[BookshelfCard(shelf) for shelf in public_shelves[:6]], cls="bookshelf-grid"),
             Div(
-                A("Explore All Collections", href="/auth/login", cls="primary"),
+                A("Explore All Collections", href="/explore", cls="primary"),
                 cls="section-cta"
-            ) if len(public_shelves) > 6 else None
+            )
         ),
         cls="public-shelves-section",
         id="public-shelves"
@@ -766,3 +766,59 @@ def format_time_ago(dt):
         return f"{minutes}m ago"
     else:
         return "just now"
+
+def ExplorePageHero():
+    """Hero section for the public explore page."""
+    return Section(
+        Container(
+            H1("Explore Public Bookshelves", cls="explore-title"),
+            P("Discover what the community is reading and sharing.", cls="explore-subtitle"),
+        ),
+        cls="explore-hero"
+    )
+
+def PublicShelvesGrid(shelves, page=1, total_pages=1):
+    """Grid of public bookshelves with pagination."""
+    if not shelves:
+        return EmptyState(
+            "No Public Shelves Found",
+            "There are no public bookshelves to display at the moment. Why not create one?"
+        )
+    
+    grid = Div(*[ShelfPreviewCard(shelf) for shelf in shelves], cls="public-shelves-grid")
+    
+    pagination = Pagination(current_page=page, total_pages=total_pages, base_url="/explore")
+    
+    return Div(grid, pagination, id="public-shelves-grid")
+
+def ShelfPreviewCard(shelf):
+    """A card for a public bookshelf with book previews."""
+    # Mini book cover previews
+    cover_previews = Div(cls="shelf-preview-covers")
+    if hasattr(shelf, 'recent_covers') and shelf.recent_covers:
+        for cover_url in shelf.recent_covers:
+            cover_previews.append(Img(src=cover_url, alt="Book cover", loading="lazy"))
+    else:
+        cover_previews.append(Div("📚", cls="shelf-preview-placeholder"))
+
+    # Owner info
+    owner_info = Div(cls="shelf-owner-info")
+    if hasattr(shelf, 'owner') and shelf.owner:
+        owner_info.append(Img(src=shelf.owner.avatar_url, alt=shelf.owner.display_name, cls="owner-avatar") if shelf.owner.avatar_url else Div("👤", cls="owner-avatar-placeholder"))
+        owner_info.append(Span(shelf.owner.display_name or shelf.owner.handle))
+
+    return A(
+        href=f"/shelf/{shelf.slug}",
+        cls="shelf-preview-card"
+    )(
+        Card(
+            cover_previews,
+            H3(shelf.name),
+            P(shelf.description, cls="shelf-description") if shelf.description else None,
+            footer=Div(
+                owner_info,
+                Span(f"{getattr(shelf, 'book_count', 0)} books", cls="book-count"),
+                cls="shelf-card-footer"
+            )
+        )
+    )
