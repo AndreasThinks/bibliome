@@ -483,7 +483,7 @@ def LandingPageHero():
                 P("The books you love, shared with your network.", cls="hero-subtitle"),
                 Div(
                     A("Join the Community", href="/auth/login", cls="primary hero-cta"),
-                    A("Browse Collections", href="#public-shelves", cls="secondary hero-cta-secondary"),
+                    A("Browse Collections", href="/explore", cls="secondary hero-cta-secondary"),
                     cls="hero-actions"
                 ),
                 cls="hero-content"
