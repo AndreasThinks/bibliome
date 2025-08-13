@@ -16,9 +16,13 @@ from auth import BlueskyAuth, get_current_user_did, auth_beforeware
 
 load_dotenv()
 
+# Get log level from environment, default to INFO
+log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
+level = getattr(logging, log_level_str, logging.INFO)
+
 # Set up logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=level,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('bibliome.log'),
@@ -26,6 +30,9 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Silence the noisy watchfiles logger
+logging.getLogger('watchfiles.main').setLevel(logging.WARNING)
 
 # Initialize database
 db_tables = setup_database()
