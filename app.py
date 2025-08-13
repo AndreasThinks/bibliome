@@ -98,7 +98,6 @@ async def index(auth):
 
         content = [
             Div(
-                H1(f"Welcome back, {auth.get('display_name', auth['handle'])}! 👋"),
                 style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;"
             )
         ]
