@@ -92,6 +92,10 @@ class Activity:
 
 def setup_database(db_path: str = 'data/bookdit.db'):
     """Initialize the database with all tables."""
+    # Ensure the data directory exists
+    import os
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    
     db = database(db_path)
     
     # Create tables with appropriate primary keys

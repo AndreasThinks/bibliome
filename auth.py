@@ -105,16 +105,18 @@ class BlueskyAuth:
             
             # Restore session using stored tokens
             if auth_data.get('access_jwt') and auth_data.get('refresh_jwt'):
-                # Try to restore session with tokens
-                try:
-                    # This is a simplified approach - in production you'd want proper token refresh
-                    client.login(auth_data['handle'], "")  # This might not work without password
-                except:
-                    logger.warning("Could not restore AT Proto session for following list")
-                    return []
+                client.me = models.ComAtprotoServerDescribeServer.Response(
+                    access_jwt=auth_data['access_jwt'],
+                    did=auth_data['did'],
+                    handle=auth_data['handle'],
+                    refresh_jwt=auth_data['refresh_jwt']
+                )
+            else:
+                logger.warning("Could not restore AT Proto session for following list: missing JWT tokens")
+                return []
             
             # Get following list
-            response = client.get_follows(auth_data['did'], limit=limit)
+            response = await client.get_follows(auth_data['did'], limit=limit)
             following_dids = [follow.did for follow in response.follows]
             
             logger.info(f"Retrieved {len(following_dids)} following DIDs for {auth_data['handle']}")
