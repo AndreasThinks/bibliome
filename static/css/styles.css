@@ -38,10 +38,10 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Main Navigation */
 .main-nav {
-    background: var(--brand-white);
+    background: linear-gradient(135deg, var(--brand-light) 0%, #ffffff 100%);
     padding: 1rem 0;
-    margin-bottom: 2rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 0; /* Remove margin to blend with hero */
+    box-shadow: none; /* Remove shadow for seamless look */
     border-bottom: 1px solid var(--brand-border);
 }
 
@@ -541,7 +541,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Hero Section */
 .hero-section {
-    background: linear-gradient(135deg, var(--brand-light) 0%, #ffffff 100%);
+    background: transparent; /* Remove background, now handled by nav */
     color: var(--brand-navy);
     padding: 4rem 0;
     margin-bottom: 0;
@@ -801,7 +801,7 @@ h1, h2, h3, h4, h5, h6 {
 @media (max-width: 768px) {
     /* Navigation */
     .nav-container {
-        flex-direction: row;
+        flex-wrap: wrap; /* Allow wrapping for long content */
         justify-content: space-between;
         align-items: center;
         padding: 0 1rem;
@@ -826,9 +826,22 @@ h1, h2, h3, h4, h5, h6 {
     }
     
     /* Grids */
-    .bookshelf-grid,
-    .book-grid {
+    .bookshelf-grid {
         grid-template-columns: 1fr;
+    }
+
+    .book-grid {
+        display: flex;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        gap: 1rem;
+        padding-bottom: 1rem; /* Add padding for scrollbar */
+        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+    }
+
+    .book-grid > * {
+        flex: 0 0 80%; /* Each book takes up 80% of the width */
+        scroll-snap-align: start;
     }
     
     .search-result-card {
