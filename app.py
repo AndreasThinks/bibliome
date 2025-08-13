@@ -243,14 +243,24 @@ def create_shelf(name: str, description: str, privacy: str, auth, sess):
         return RedirectResponse('/shelf/new', status_code=303)
 
 @rt("/search")
-def search_page(auth, query: str = "", privacy: str = "public", sort_by: str = "updated_at", page: int = 1):
+def search_page(auth, query: str = "", book_title: str = "", book_author: str = "", book_isbn: str = "", privacy: str = "public", sort_by: str = "updated_at", page: int = 1):
     """Display search page for bookshelves."""
     from models import search_shelves
     
     limit = 12
     offset = (page - 1) * limit
     
-    shelves = search_shelves(db_tables, query=query, privacy=privacy, sort_by=sort_by, limit=limit, offset=offset)
+    shelves = search_shelves(
+        db_tables, 
+        query=query, 
+        book_title=book_title,
+        book_author=book_author,
+        book_isbn=book_isbn,
+        privacy=privacy, 
+        sort_by=sort_by, 
+        limit=limit, 
+        offset=offset
+    )
     
     # For now, we don't have a total count for pagination, so we'll just show next/prev
     
@@ -260,7 +270,7 @@ def search_page(auth, query: str = "", privacy: str = "public", sort_by: str = "
         NavBar(auth),
         Container(
             SearchPageHero(),
-            SearchShelvesForm(query=query, privacy=privacy, sort_by=sort_by),
+            SearchShelvesForm(query=query, book_title=book_title, book_author=book_author, book_isbn=book_isbn, privacy=privacy, sort_by=sort_by),
             SearchResultsGrid(shelves, page=page, query=query, privacy=privacy, sort_by=sort_by)
         )
     )

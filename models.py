@@ -399,23 +399,35 @@ def get_public_shelves_with_stats(db_tables, limit: int = 20, offset: int = 0):
             
     return public_shelves
 
-def search_shelves(db_tables, query: str = "", user_did: str = None, privacy: str = "public", sort_by: str = "updated_at", limit: int = 20, offset: int = 0):
-    """Search for bookshelves based on various criteria."""
+def search_shelves(db_tables, query: str = "", book_title: str = "", book_author: str = "", book_isbn: str = "", user_did: str = None, privacy: str = "public", sort_by: str = "updated_at", limit: int = 20, offset: int = 0):
+    """Search for bookshelves based on various criteria, including contained books."""
     # Base query
     sql_query = """
         SELECT DISTINCT bs.*, u.display_name as owner_name, u.handle as owner_handle
         FROM bookshelf bs
         JOIN user u ON bs.owner_did = u.did
+        LEFT JOIN book b ON bs.id = b.bookshelf_id
     """
     
     # Conditions and parameters
     conditions = []
     params = []
     
-    # Text search
+    # General text search (shelves and books)
     if query:
-        conditions.append("(bs.name LIKE ? OR bs.description LIKE ?)")
-        params.extend([f"%{query}%", f"%{query}%"])
+        conditions.append("(bs.name LIKE ? OR bs.description LIKE ? OR b.title LIKE ? OR b.author LIKE ?)")
+        params.extend([f"%{query}%", f"%{query}%", f"%{query}%", f"%{query}%"])
+        
+    # Advanced book search
+    if book_title:
+        conditions.append("b.title LIKE ?")
+        params.append(f"%{book_title}%")
+    if book_author:
+        conditions.append("b.author LIKE ?")
+        params.append(f"%{book_author}%")
+    if book_isbn:
+        conditions.append("b.isbn = ?")
+        params.append(book_isbn)
     
     # Privacy filter
     if privacy != "all":

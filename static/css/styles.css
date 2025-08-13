@@ -1422,6 +1422,14 @@ section + section {
     align-items: center;
 }
 
+.advanced-search-toggle {
+    display: block;
+    margin-top: 1rem;
+    text-align: right;
+    color: var(--brand-amber);
+    cursor: pointer;
+}
+
 #search-results-grid {
     margin-top: 2rem;
 }

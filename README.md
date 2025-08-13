@@ -8,10 +8,16 @@ A decentralized, collaborative bookshelf platform with Bluesky (AT-Proto) authen
 
 #### Core Functionality
 - **Bookshelf Creation & Management**: Create named bookshelves with unique URLs
+- **Advanced Search**: Search shelves by name, description, and contained books (title, author, ISBN)
 - **Book Search & Addition**: Integrated Google Books API for rich book metadata
 - **Upvoting System**: Community-driven book curation through upvotes
 - **Privacy Controls**: Public, Link-only, and Private bookshelf options
 - **Role-Based Permissions**: Owner, Admin, Editor, and Viewer roles
+
+#### Discovery & Social
+- **Network Activity Feed**: See recent activity from users you follow on Bluesky
+- **Explore Page**: Browse all public bookshelves in the community
+- **Community Reading Section**: Discover recently added books from public shelves
 
 #### Authentication & User Management
 - **Bluesky Authentication**: Secure login via AT-Proto
@@ -31,12 +37,12 @@ A decentralized, collaborative bookshelf platform with Bluesky (AT-Proto) authen
 - **Delete Confirmation**: Type-to-confirm deletion for safety
 
 #### Recent Improvements
-- **Fixed Google Books Integration**: Resolved API search issues
-- **Enhanced Book Display**: Books now link to Google Books for more information
-- **Improved UI/UX**: Better styling, loading indicators, and user feedback
-- **Unified Management Interface**: Combined edit and share functionality
-- **Safe Deletion**: Confirmation modal requiring exact name typing
-- **BASE_URL Configuration**: Proper invite link generation
+- **Advanced Search**: Implemented hybrid search for shelves and books (title, author, ISBN)
+- **Network Activity Feed**: Added a social feed based on Bluesky connections
+- **Community Discovery**: New "Explore" page and community reading sections
+- **Enhanced Navigation**: Integrated search and discovery into the main navigation
+- **Improved UI/UX**: Redesigned search page, better empty states, and clearer titles
+- **Fixed Table Name Bug**: Resolved database query errors in search
 
 ## 🛠️ Tech Stack
 
@@ -131,6 +137,14 @@ A decentralized, collaborative bookshelf platform with Bluesky (AT-Proto) authen
 3. **Click "Add to Shelf"** on any search result
 4. **Books appear immediately** in your collection
 
+### Discovering Bookshelves
+
+- **Explore Page**: Click "Explore" in the navigation to browse all public bookshelves.
+- **Search Page**: Click "Search" to find specific shelves.
+  - Use the main search bar to search by shelf name, description, or contained books.
+  - Click "Advanced Search" to filter by specific book titles, authors, or ISBNs.
+- **Network Feed**: On your dashboard, see shelves recently created or added to by people you follow on Bluesky.
+
 ### Managing Your Bookshelf
 
 1. **Click "Manage"** on any bookshelf you own or have admin access to
@@ -172,6 +186,7 @@ A decentralized, collaborative bookshelf platform with Bluesky (AT-Proto) authen
 - **Permission**: Role-based access control for bookshelves
 - **BookshelfInvite**: Invitation system for sharing
 - **Upvote**: User votes on books for curation
+- **Activity**: Tracks user actions for the social feed
 
 ### Key Components
 - **Authentication** (`auth.py`): Bluesky AT-Proto integration
@@ -255,12 +270,12 @@ SECRET_KEY=your-production-secret-key
 
 ### Planned Features
 - **Export/Import**: Backup and restore bookshelves
-- **Advanced Search**: Filter by genre, publication date, etc.
-- **Reading Lists**: Track reading progress
-- **Book Reviews**: User reviews and ratings
-- **Social Features**: Follow other users' public shelves
-- **Mobile App**: Native mobile applications
-- **API**: Public API for third-party integrations
+- **Enhanced Search**: Filter by genre, publication date, etc.
+- **Reading Lists**: Track reading progress and status (e.g., "To Read", "Reading", "Read")
+- **Book Reviews & Ratings**: Allow users to write reviews and give star ratings
+- **Notifications**: In-app notifications for invites, new books, etc.
+- **Mobile App**: Native mobile applications for iOS and Android
+- **Public API**: A public API for third-party integrations and extensions
 
 ### Technical Improvements
 - **Performance**: Database optimization and caching

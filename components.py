@@ -871,11 +871,11 @@ def CommunityReadingSection(books):
         cls="community-reading-section"
     )
 
-def SearchShelvesForm(query: str = "", privacy: str = "public", sort_by: str = "updated_at"):
-    """Form for searching bookshelves."""
+def SearchShelvesForm(query: str = "", book_title: str = "", book_author: str = "", book_isbn: str = "", privacy: str = "public", sort_by: str = "updated_at"):
+    """Form for searching bookshelves with advanced options."""
     return Form(
         Div(
-            Input(name="query", type="search", placeholder="Search by name or description...", value=query),
+            Input(name="query", type="search", placeholder="Search shelves and books...", value=query),
             Select(
                 Option("Public", value="public", selected=(privacy == "public")),
                 Option("Link Only", value="link-only", selected=(privacy == "link-only")),
@@ -891,6 +891,30 @@ def SearchShelvesForm(query: str = "", privacy: str = "public", sort_by: str = "
             Button("Search", type="submit"),
             cls="search-form-grid"
         ),
+        A("Advanced Search", href="#", onclick="toggleAdvancedSearch(event)", cls="advanced-search-toggle"),
+        Div(
+            Fieldset(
+                Label("Book Title", Input(name="book_title", type="text", placeholder="e.g., The Hobbit", value=book_title)),
+                Label("Book Author", Input(name="book_author", type="text", placeholder="e.g., J.R.R. Tolkien", value=book_author)),
+                Label("ISBN", Input(name="book_isbn", type="text", placeholder="e.g., 9780547928227", value=book_isbn)),
+            ),
+            id="advanced-search-fields",
+            style="display: none; margin-top: 1rem;"
+        ),
+        Script("""
+            function toggleAdvancedSearch(event) {
+                event.preventDefault();
+                const advancedFields = document.getElementById('advanced-search-fields');
+                const toggleLink = event.target;
+                if (advancedFields.style.display === 'none') {
+                    advancedFields.style.display = 'block';
+                    toggleLink.textContent = 'Hide Advanced Search';
+                } else {
+                    advancedFields.style.display = 'none';
+                    toggleLink.textContent = 'Advanced Search';
+                }
+            }
+        """),
         action="/search",
         method="get",
         cls="search-shelves-form"
