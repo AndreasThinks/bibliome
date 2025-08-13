@@ -606,6 +606,10 @@ def LandingPageFooter():
         Container(
             Div(
                 P("A project by ", A("AndreasThinks", href="https://andreasthinks.me/", target="_blank", rel="noopener"), ", built with ❤️ using FastHTML, AT-Proto, and some ✨vibes✨", cls="footer-text"),
+                Div(
+                    A(I(cls="fab fa-github"), href="https://github.com/AndreasThinks/bibliome", target="_blank", rel="noopener", cls="social-icon"),
+                    cls="footer-social"
+                ),
                 P("© 2024 Bibliome. Open source and decentralized.", cls="footer-copyright"),
                 cls="footer-content"
             ),
