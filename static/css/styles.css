@@ -1280,3 +1280,99 @@ section + section {
     font-size: 0.9rem;
     color: var(--brand-muted);
 }
+
+/* ===== COMMUNITY READING SECTION ===== */
+
+.community-reading-section {
+    padding: 4rem 0;
+    background: var(--brand-white);
+}
+
+.scroll-wrapper {
+    position: relative;
+}
+
+.book-scroll-container {
+    display: flex;
+    gap: 1.5rem;
+    overflow-x: auto;
+    padding: 1rem 0;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none;  /* IE and Edge */
+}
+
+.book-scroll-container::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, and Opera */
+}
+
+.scroll-wrapper::before,
+.scroll-wrapper::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50px;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.scroll-wrapper::before {
+    left: 0;
+    background: linear-gradient(to right, var(--brand-white), transparent);
+}
+
+.scroll-wrapper::after {
+    right: 0;
+    background: linear-gradient(to left, var(--brand-white), transparent);
+}
+
+.book-scroll-card {
+    flex: 0 0 220px;
+    text-decoration: none;
+    color: inherit;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+    background: var(--brand-light);
+}
+
+.book-scroll-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+.book-scroll-cover {
+    width: 100%;
+    height: 300px;
+    object-fit: cover;
+}
+
+.book-scroll-cover-placeholder {
+    width: 100%;
+    height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 4rem;
+    color: var(--brand-muted);
+    background: var(--brand-border);
+}
+
+.book-scroll-info {
+    padding: 1rem;
+}
+
+.book-scroll-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.book-scroll-shelf {
+    font-size: 0.9rem;
+    color: var(--brand-muted);
+    margin: 0;
+}

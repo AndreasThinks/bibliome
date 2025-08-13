@@ -4,7 +4,7 @@ from fasthtml.common import *
 from models import (
     setup_database, can_view_bookshelf, can_edit_bookshelf,
     get_public_shelves_with_stats, get_user_shelves, get_shelf_by_slug,
-    get_public_shelves
+    get_public_shelves, get_recent_community_books
 )
 from api_clients import BookAPIClient
 from components import *
@@ -70,6 +70,7 @@ async def index(auth):
     if not auth:
         # Show beautiful landing page for anonymous users
         public_shelves = get_public_shelves(db_tables, limit=6)
+        recent_books = get_recent_community_books(db_tables, limit=15)
         
         return (
             Title("Bibliome - Building the very best reading lists, together"),
@@ -77,6 +78,7 @@ async def index(auth):
             NavBar(auth),
             LandingPageHero(),
             FeaturesSection(),
+            CommunityReadingSection(recent_books),
             HowItWorksSection(),
             PublicShelvesPreview(public_shelves),
             LandingPageFooter()

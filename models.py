@@ -395,6 +395,32 @@ def get_public_shelves_with_stats(db_tables, limit: int = 20, offset: int = 0):
             
     return public_shelves
 
+def get_recent_community_books(db_tables, limit: int = 15):
+    """Fetch the most recently added books from public bookshelves."""
+    query = """
+        SELECT b.*, bs.name as bookshelf_name, bs.slug as bookshelf_slug
+        FROM books b
+        JOIN bookshelves bs ON b.bookshelf_id = bs.id
+        WHERE bs.privacy = 'public'
+        ORDER BY b.added_at DESC
+        LIMIT ?
+    """
+    
+    try:
+        cursor = db_tables['db'].execute(query, (limit,))
+        # Manually map results to Book objects since it's a raw query
+        books = []
+        for row in cursor.fetchall():
+            book_data = dict(zip([d[0] for d in cursor.description], row))
+            book = Book(**{k: v for k, v in book_data.items() if k in Book.__annotations__})
+            book.bookshelf_name = book_data.get('bookshelf_name')
+            book.bookshelf_slug = book_data.get('bookshelf_slug')
+            books.append(book)
+        return books
+    except Exception as e:
+        print(f"Error fetching recent community books: {e}")
+        return []
+
 # FT rendering methods for models
 @patch
 def __ft__(self: Bookshelf):

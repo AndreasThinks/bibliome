@@ -822,3 +822,51 @@ def ShelfPreviewCard(shelf):
             )
         )
     )
+
+def CommunityReadingSection(books):
+    """A section to display recently added books in a scrolling container."""
+    if not books:
+        return Section(
+            Container(
+                H2("What the Community is Reading", cls="section-title"),
+                EmptyState(
+                    "No recent activity to show",
+                    "Be the first to add a book to a public shelf and get featured here!",
+                    "Explore Public Shelves",
+                    "/explore"
+                )
+            ),
+            cls="community-reading-section"
+        )
+
+    return Section(
+        Container(
+            H2("What the Community is Reading", cls="section-title"),
+            Div(
+                Div(*[BookScrollCard(book) for book in books], cls="book-scroll-container"),
+                cls="scroll-wrapper"
+            )
+        ),
+        cls="community-reading-section"
+    )
+
+def BookScrollCard(book):
+    """A card for a book in the community reading scroll section."""
+    cover = Img(
+        src=book.cover_url,
+        alt=f"Cover of {book.title}",
+        cls="book-scroll-cover",
+        loading="lazy"
+    ) if book.cover_url else Div("📖", cls="book-scroll-cover-placeholder")
+
+    return A(
+        href=f"/shelf/{book.bookshelf_slug}",
+        cls="book-scroll-card"
+    )(
+        cover,
+        Div(
+            H4(book.title, cls="book-scroll-title"),
+            P(f"in {book.bookshelf_name}", cls="book-scroll-shelf"),
+            cls="book-scroll-info"
+        )
+    )
