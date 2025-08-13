@@ -1405,3 +1405,29 @@ section + section {
     color: var(--brand-muted);
     margin: 0;
 }
+
+/* ===== SEARCH PAGE STYLES ===== */
+
+.search-shelves-form {
+    margin-bottom: 2rem;
+    background: var(--brand-light);
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+}
+
+.search-form-grid {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 1rem;
+    align-items: center;
+}
+
+#search-results-grid {
+    margin-top: 2rem;
+}
+
+@media (max-width: 768px) {
+    .search-form-grid {
+        grid-template-columns: 1fr;
+    }
+}

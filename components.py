@@ -12,12 +12,18 @@ def NavBar(auth=None):
         user_menu = Div(
             Span(f"👋 {auth.get('display_name', auth.get('handle', 'User'))}"),
             A("My Shelves", href="/"),
+            A("Search", href="/search"),
             A("Create Shelf", href="/shelf/new"),
             A("Logout", href="/auth/logout"),
             cls="user-menu"
         )
     else:
-        user_menu = A("Login", href="/auth/login", cls="login-btn")
+        user_menu = Div(
+            A("Explore", href="/explore"),
+            A("Search", href="/search"),
+            A("Login", href="/auth/login", cls="login-btn"),
+            cls="user-menu"
+        )
     
     return Nav(
         Div(
@@ -828,6 +834,16 @@ def ShelfPreviewCard(shelf):
         )
     )
 
+def SearchPageHero():
+    """Hero section for the search page."""
+    return Section(
+        Container(
+            H1("🔍 Discover Collections", cls="explore-title"),
+            P("Find the perfect bookshelf from our community of readers.", cls="explore-subtitle"),
+        ),
+        cls="explore-hero"
+    )
+
 def CommunityReadingSection(books):
     """A section to display recently added books in a scrolling container."""
     if not books:
@@ -854,6 +870,52 @@ def CommunityReadingSection(books):
         ),
         cls="community-reading-section"
     )
+
+def SearchShelvesForm(query: str = "", privacy: str = "public", sort_by: str = "updated_at"):
+    """Form for searching bookshelves."""
+    return Form(
+        Div(
+            Input(name="query", type="search", placeholder="Search by name or description...", value=query),
+            Select(
+                Option("Public", value="public", selected=(privacy == "public")),
+                Option("Link Only", value="link-only", selected=(privacy == "link-only")),
+                Option("All", value="all", selected=(privacy == "all")),
+                name="privacy"
+            ),
+            Select(
+                Option("Most Recent", value="updated_at", selected=(sort_by == "updated_at")),
+                Option("Newest", value="created_at", selected=(sort_by == "created_at")),
+                Option("Alphabetical", value="name", selected=(sort_by == "name")),
+                name="sort_by"
+            ),
+            Button("Search", type="submit"),
+            cls="search-form-grid"
+        ),
+        action="/search",
+        method="get",
+        cls="search-shelves-form"
+    )
+
+def SearchResultsGrid(shelves, page: int = 1, query: str = "", privacy: str = "public", sort_by: str = "updated_at"):
+    """Grid of search results with simple pagination."""
+    if not shelves:
+        return EmptyState(
+            "No Shelves Found",
+            "No bookshelves matched your search criteria. Try a different search."
+        )
+    
+    grid = Div(*[ShelfPreviewCard(shelf) for shelf in shelves], cls="public-shelves-grid")
+    
+    # Simple next/prev pagination
+    pagination_links = []
+    if page > 1:
+        pagination_links.append(A("← Previous", href=f"/search?query={query}&privacy={privacy}&sort_by={sort_by}&page={page - 1}"))
+    if len(shelves) == 12: # If we got a full page, there might be a next page
+        pagination_links.append(A("Next →", href=f"/search?query={query}&privacy={privacy}&sort_by={sort_by}&page={page + 1}"))
+    
+    pagination = Nav(*pagination_links, cls="pagination") if pagination_links else None
+    
+    return Div(grid, pagination, id="search-results-grid")
 
 def BookScrollCard(book):
     """A card for a book in the community reading scroll section."""

@@ -399,6 +399,59 @@ def get_public_shelves_with_stats(db_tables, limit: int = 20, offset: int = 0):
             
     return public_shelves
 
+def search_shelves(db_tables, query: str = "", user_did: str = None, privacy: str = "public", sort_by: str = "updated_at", limit: int = 20, offset: int = 0):
+    """Search for bookshelves based on various criteria."""
+    # Base query
+    sql_query = """
+        SELECT DISTINCT bs.*, u.display_name as owner_name, u.handle as owner_handle
+        FROM bookshelf bs
+        JOIN user u ON bs.owner_did = u.did
+    """
+    
+    # Conditions and parameters
+    conditions = []
+    params = []
+    
+    # Text search
+    if query:
+        conditions.append("(bs.name LIKE ? OR bs.description LIKE ?)")
+        params.extend([f"%{query}%", f"%{query}%"])
+    
+    # Privacy filter
+    if privacy != "all":
+        conditions.append("bs.privacy = ?")
+        params.append(privacy)
+    
+    # Build WHERE clause
+    if conditions:
+        sql_query += " WHERE " + " AND ".join(conditions)
+    
+    # Sorting
+    if sort_by == "updated_at":
+        sql_query += " ORDER BY bs.updated_at DESC"
+    elif sort_by == "created_at":
+        sql_query += " ORDER BY bs.created_at DESC"
+    elif sort_by == "name":
+        sql_query += " ORDER BY bs.name ASC"
+    
+    # Pagination
+    sql_query += " LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    try:
+        cursor = db_tables['db'].execute(sql_query, params)
+        shelves = []
+        for row in cursor.fetchall():
+            shelf_data = dict(zip([d[0] for d in cursor.description], row))
+            shelf = Bookshelf(**{k: v for k, v in shelf_data.items() if k in Bookshelf.__annotations__})
+            shelf.owner_name = shelf_data.get('owner_name')
+            shelf.owner_handle = shelf_data.get('owner_handle')
+            shelves.append(shelf)
+        return shelves
+    except Exception as e:
+        print(f"Error searching shelves: {e}")
+        return []
+
 def get_recent_community_books(db_tables, limit: int = 15):
     """Fetch the most recently added books from public bookshelves."""
     query = """

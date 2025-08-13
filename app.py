@@ -242,6 +242,29 @@ def create_shelf(name: str, description: str, privacy: str, auth, sess):
         sess['error'] = f"Error creating bookshelf: {str(e)}"
         return RedirectResponse('/shelf/new', status_code=303)
 
+@rt("/search")
+def search_page(auth, query: str = "", privacy: str = "public", sort_by: str = "updated_at", page: int = 1):
+    """Display search page for bookshelves."""
+    from models import search_shelves
+    
+    limit = 12
+    offset = (page - 1) * limit
+    
+    shelves = search_shelves(db_tables, query=query, privacy=privacy, sort_by=sort_by, limit=limit, offset=offset)
+    
+    # For now, we don't have a total count for pagination, so we'll just show next/prev
+    
+    return (
+        Title("Search Shelves - Bibliome"),
+        Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+        NavBar(auth),
+        Container(
+            SearchPageHero(),
+            SearchShelvesForm(query=query, privacy=privacy, sort_by=sort_by),
+            SearchResultsGrid(shelves, page=page, query=query, privacy=privacy, sort_by=sort_by)
+        )
+    )
+
 @rt("/explore")
 def explore_page(auth, page: int = 1):
     """Public page to explore all public bookshelves."""
