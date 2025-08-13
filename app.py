@@ -918,6 +918,233 @@ def share_shelf(slug: str, auth):
             )
         )
 
+# API routes for sharing and management
+@rt("/api/shelf/{slug}/invite", methods=["POST"])
+def generate_invite(slug: str, role: str, expires_days: str, max_uses: str, auth):
+    """HTMX endpoint to generate a new invite link."""
+    if not auth: return Div("Authentication required.", cls="error")
+    
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0]
+        user_did = get_current_user_did(auth)
+        
+        from models import can_generate_invites, get_user_role, can_invite_role, generate_invite_code, BookshelfInvite
+        
+        # Check permission to generate invites
+        if not can_generate_invites(shelf, user_did, db_tables):
+            return Div("Permission denied.", cls="error")
+        
+        # Check if inviter has permission to grant the selected role
+        inviter_role = get_user_role(shelf, user_did, db_tables)
+        if not can_invite_role(inviter_role, role):
+            return Div(f"You do not have permission to create '{role}' invites.", cls="error")
+        
+        # Create expiration date if specified
+        expires_at = None
+        if expires_days and expires_days.isdigit():
+            from datetime import timedelta
+            expires_at = datetime.now() + timedelta(days=int(expires_days))
+        
+        # Create max uses if specified
+        max_uses_val = int(max_uses) if max_uses and max_uses.isdigit() else None
+        
+        # Create invite
+        invite = BookshelfInvite(
+            bookshelf_id=shelf.id,
+            invite_code=generate_invite_code(),
+            role=role,
+            created_by_did=user_did,
+            created_at=datetime.now(),
+            expires_at=expires_at,
+            max_uses=max_uses_val
+        )
+        
+        created_invite = db_tables['bookshelf_invites'].insert(invite)
+        
+        # Return the new invite card
+        return InviteCard(created_invite, shelf.slug)
+        
+    except Exception as e:
+        logger.error(f"Error generating invite for shelf {slug}: {e}", exc_info=True)
+        return Div(f"Error: {str(e)}", cls="error")
+
+@rt("/api/shelf/{slug}/invite/{invite_id}", methods=["DELETE"])
+def revoke_invite(slug: str, invite_id: int, auth):
+    """HTMX endpoint to revoke an invite link."""
+    if not auth: return ""
+    
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0]
+        user_did = get_current_user_did(auth)
+        
+        from models import can_generate_invites
+        if not can_generate_invites(shelf, user_did, db_tables):
+            return "" # Fail silently
+        
+        # Deactivate the invite
+        db_tables['bookshelf_invites'].update({'is_active': False}, invite_id)
+        
+        return "" # Return empty to remove from UI
+        
+    except Exception as e:
+        logger.error(f"Error revoking invite {invite_id} for shelf {slug}: {e}", exc_info=True)
+        return ""
+
+@rt("/shelf/join/{invite_code}")
+def join_shelf(invite_code: str, auth, sess):
+    """Page for users to accept an invitation to a bookshelf."""
+    if not auth:
+        sess['next_url'] = f"/shelf/join/{invite_code}"
+        return RedirectResponse('/auth/login', status_code=303)
+    
+    from models import validate_invite, Permission
+    
+    invite = validate_invite(invite_code, db_tables)
+    if not invite:
+        return NavBar(auth), Container(
+            H1("Invalid Invitation"),
+            P("This invite link is either invalid or has expired."),
+            A("← Back to Home", href="/")
+        )
+    
+    shelf = db_tables['bookshelves'][invite.bookshelf_id]
+    user_did = get_current_user_did(auth)
+    
+    # Check if user is already a member
+    existing_permission = db_tables['permissions']("bookshelf_id=? AND user_did=?", (shelf.id, user_did))
+    if existing_permission:
+        sess['info'] = f"You are already a member of '{shelf.name}'."
+        return RedirectResponse(f'/shelf/{shelf.slug}', status_code=303)
+    
+    # Add user to the bookshelf
+    permission = Permission(
+        bookshelf_id=shelf.id,
+        user_did=user_did,
+        role=invite.role,
+        status='active',
+        granted_by_did=invite.created_by_did,
+        granted_at=datetime.now(),
+        joined_at=datetime.now()
+    )
+    db_tables['permissions'].insert(permission)
+    
+    # Increment uses count
+    db_tables['bookshelf_invites'].update({'uses_count': invite.uses_count + 1}, invite.id)
+    
+    # Deactivate if max uses reached
+    if invite.max_uses and (invite.uses_count + 1) >= invite.max_uses:
+        db_tables['bookshelf_invites'].update({'is_active': False}, invite.id)
+    
+    sess['success'] = f"You have successfully joined '{shelf.name}' as a {invite.role}!"
+    return RedirectResponse(f'/shelf/{shelf.slug}', status_code=303)
+
+@rt("/api/shelf/{slug}/privacy", methods=["POST"])
+def update_privacy(slug: str, privacy: str, auth):
+    """HTMX endpoint to update bookshelf privacy."""
+    if not auth: return Div("Authentication required.", cls="error")
+    
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0]
+        user_did = get_current_user_did(auth)
+        
+        from models import can_edit_bookshelf
+        if not can_edit_bookshelf(shelf, user_did, db_tables):
+            return Div("Permission denied.", cls="error")
+        
+        # Update privacy
+        db_tables['bookshelves'].update({'privacy': privacy}, shelf.id)
+        
+        # Return updated privacy section (or the whole share interface)
+        # For simplicity, let's just return a success message that can be shown in a toast/alert
+        return Div(f"Privacy updated to {privacy.replace('-', ' ').title()}", cls="alert alert-success")
+
+    except Exception as e:
+        logger.error(f"Error updating privacy for shelf {slug}: {e}", exc_info=True)
+        return Div(f"Error: {str(e)}", cls="error")
+
+@rt("/api/shelf/{slug}/member/{member_did}/role", methods=["POST"])
+def update_member_role(slug: str, member_did: str, role: str, auth):
+    """HTMX endpoint to update a member's role."""
+    if not auth: return Div("Authentication required.", cls="error")
+    
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0]
+        user_did = get_current_user_did(auth)
+        
+        from models import can_manage_members, get_user_role, can_invite_role
+        
+        # Check permission to manage members
+        if not can_manage_members(shelf, user_did, db_tables):
+            return Div("Permission denied.", cls="error")
+        
+        # Check if manager can assign the target role
+        manager_role = get_user_role(shelf, user_did, db_tables)
+        if not can_invite_role(manager_role, role):
+            return Div(f"You cannot assign the role '{role}'.", cls="error")
+        
+        # Update the permission
+        db_tables['permissions'].update({'role': role}, f"bookshelf_id={shelf.id} AND user_did='{member_did}'")
+        
+        # Return the updated member card
+        member_user = db_tables['users'][member_did]
+        permission = db_tables['permissions']("bookshelf_id=? AND user_did=?", (shelf.id, member_did))[0]
+        return MemberCard(member_user, permission, can_manage=True, bookshelf_slug=slug)
+        
+    except Exception as e:
+        logger.error(f"Error updating role for member {member_did} on shelf {slug}: {e}", exc_info=True)
+        return Div(f"Error: {str(e)}", cls="error")
+
+@rt("/api/shelf/{slug}/member/{member_did}", methods=["DELETE"])
+def remove_member(slug: str, member_did: str, auth):
+    """HTMX endpoint to remove a member from a bookshelf."""
+    if not auth: return ""
+    
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0]
+        user_did = get_current_user_did(auth)
+        
+        from models import can_manage_members
+        if not can_manage_members(shelf, user_did, db_tables):
+            return "" # Fail silently
+        
+        # Prevent owner from being removed
+        if shelf.owner_did == member_did:
+            return "" # Cannot remove owner
+        
+        # Delete the permission
+        db_tables['permissions'].delete_where("bookshelf_id=? AND user_did=?", (shelf.id, member_did))
+        
+        return "" # Return empty to remove from UI
+        
+    except Exception as e:
+        logger.error(f"Error removing member {member_did} from shelf {slug}: {e}", exc_info=True)
+        return ""
+
+@rt("/api/shelf/{slug}/member/{member_did}/approve", methods=["POST"])
+def approve_member(slug: str, member_did: str, auth):
+    """HTMX endpoint to approve a pending member."""
+    if not auth: return Div("Authentication required.", cls="error")
+    
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0]
+        user_did = get_current_user_did(auth)
+        
+        from models import can_manage_members
+        if not can_manage_members(shelf, user_did, db_tables):
+            return Div("Permission denied.", cls="error")
+        
+        # Update permission status to active
+        db_tables['permissions'].update({'status': 'active'}, f"bookshelf_id={shelf.id} AND user_did='{member_did}'")
+        
+        # Return the updated member card
+        member_user = db_tables['users'][member_did]
+        permission = db_tables['permissions']("bookshelf_id=? AND user_did=?", (shelf.id, member_did))[0]
+        return MemberCard(member_user, permission, can_manage=True, bookshelf_slug=slug)
+        
+    except Exception as e:
+        logger.error(f"Error approving member {member_did} on shelf {slug}: {e}", exc_info=True)
+        return Div(f"Error: {str(e)}", cls="error")
+
 @rt("/shelf/{slug}/update", methods=["POST"])
 def update_shelf(slug: str, name: str, description: str, privacy: str, auth, sess):
     """Handle bookshelf update."""

@@ -407,8 +407,11 @@ def ShareInterface(bookshelf, members, pending_members, invites, can_manage=Fals
             ),
             Div(
                 H4("Active Invite Links"),
-                Div(*[InviteCard(invite, bookshelf.slug) for invite in active_invites], 
-                    id="active-invites") if active_invites else P("No active invites.", dcls="empty-message"),
+                Div(
+                    *[InviteCard(invite, bookshelf.slug) for invite in active_invites] if active_invites 
+                    else [P("No active invites.", cls="empty-message")],
+                    id="active-invites"
+                ),
                 cls="invites-list"
             ),
             cls="invite-section"
