@@ -1098,6 +1098,30 @@ def join_shelf(invite_code: str, auth, sess):
         sess['info'] = f"You are already a member of '{shelf.name}'."
         return RedirectResponse(f'/shelf/{shelf.slug}', status_code=303)
     
+    # Ensure user exists in the database before creating permission
+    try:
+        user = db_tables['users'][user_did]
+        # User exists, maybe update their info if needed (optional)
+        update_data = {
+            'handle': auth.get('handle'),
+            'display_name': auth.get('display_name'),
+            'avatar_url': auth.get('avatar_url'),
+            'last_login': datetime.now()
+        }
+        db_tables['users'].update(update_data, user_did)
+    except IndexError:
+        # User does not exist, create them
+        new_user_data = {
+            'did': user_did,
+            'handle': auth.get('handle'),
+            'display_name': auth.get('display_name'),
+            'avatar_url': auth.get('avatar_url'),
+            'created_at': datetime.now(),
+            'last_login': datetime.now()
+        }
+        db_tables['users'].insert(**new_user_data)
+        logger.info(f"New user created via invite: {auth.get('handle')}")
+    
     # Add user to the bookshelf
     permission = Permission(
         bookshelf_id=shelf.id,
