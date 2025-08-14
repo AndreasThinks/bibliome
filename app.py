@@ -577,6 +577,130 @@ def add_book_api(bookshelf_id: int, title: str, author: str, isbn: str, descript
     except Exception as e:
         return Div(f"Error adding book: {str(e)}", cls="error")
 
+@rt("/api/add-book-and-close", methods=["POST"])
+def add_book_and_close_api(bookshelf_id: int, title: str, author: str, isbn: str, description: str, 
+                          cover_url: str, publisher: str, published_date: str, page_count: int, auth):
+    """HTMX endpoint to add a book to a bookshelf and close the add books interface."""
+    if not auth:
+        return Div("Authentication required.", cls="error")
+    
+    try:
+        from models import Book, Upvote, add_book_record, can_add_books
+        from components import AddBooksToggle
+        
+        # Check permissions
+        shelf = db_tables['bookshelves'][bookshelf_id]
+        user_did = get_current_user_did(auth)
+
+        if not can_add_books(shelf, user_did, db_tables):
+            return Div("Permission denied.", cls="error")
+        
+        user_did = auth['did']
+        
+        # Check if book already exists on this shelf (by ISBN first, then by title+author)
+        existing_book = None
+        if isbn and isbn.strip():
+            # Try to find by ISBN first
+            existing_books = list(db_tables['books']("bookshelf_id=? AND isbn=?", (bookshelf_id, isbn.strip())))
+            if existing_books:
+                existing_book = existing_books[0]
+        
+        if not existing_book:
+            # Try to find by title and author combination
+            existing_books = list(db_tables['books']("bookshelf_id=? AND title=? AND author=?", 
+                                                   (bookshelf_id, title.strip(), author.strip())))
+            if existing_books:
+                existing_book = existing_books[0]
+        
+        # Create the close interface component (out-of-band swap)
+        close_interface = Div(
+            Button(
+                "📚 Add Books", 
+                hx_get=f"/api/shelf/{bookshelf_id}/add-books-form",
+                hx_target="#add-books-container",
+                hx_swap="outerHTML",
+                cls="add-books-toggle primary"
+            ),
+            id="add-books-container",
+            hx_swap_oob="true"
+        )
+        
+        if existing_book:
+            # Book already exists - check if user has already voted
+            existing_upvote = None
+            try:
+                existing_upvote = db_tables['upvotes']("book_id=? AND user_did=?", 
+                                                     (existing_book.id, user_did))[0]
+            except:
+                pass
+            
+            if existing_upvote:
+                # User has already voted for this book
+                return Div("You've already added this book to the shelf!", cls="alert alert-info"), close_interface
+            else:
+                # Add user's vote to existing book
+                upvote = Upvote(
+                    book_id=existing_book.id,
+                    user_did=user_did,
+                    created_at=datetime.now()
+                )
+                db_tables['upvotes'].insert(upvote)
+                
+                # Get updated book with vote count and return it
+                existing_book.upvote_count = len(db_tables['upvotes']("book_id=?", (existing_book.id,)))
+                existing_book.user_has_upvoted = True
+                return existing_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=existing_book.upvote_count), close_interface
+        else:
+            atproto_uri = None
+            try:
+                client = bluesky_auth.get_client_from_session(auth)
+                # 1. Write to AT Protocol
+                atproto_uri = add_book_record(client, shelf.atproto_uri, title, author, isbn)
+            except Exception as e:
+                logger.error(f"Failed to write book to AT Protocol: {e}", exc_info=True)
+                # Don't fail the whole request, just log the error and continue
+
+            # 2. Write to local DB
+            book = Book(
+                bookshelf_id=bookshelf_id,
+                isbn=isbn,
+                title=title,
+                author=author,
+                cover_url=cover_url,
+                description=description,
+                publisher=publisher,
+                published_date=published_date,
+                page_count=page_count,
+                atproto_uri=atproto_uri,
+                added_by_did=user_did,
+                added_at=datetime.now()
+            )
+            
+            created_book = db_tables['books'].insert(book)
+            
+            # Create the initial upvote record from the person who added the book
+            upvote = Upvote(
+                book_id=created_book.id,
+                user_did=user_did,
+                created_at=datetime.now()
+            )
+            db_tables['upvotes'].insert(upvote)
+            
+            # Log activity for social feed
+            try:
+                from models import log_activity
+                log_activity(user_did, 'book_added', db_tables, bookshelf_id=bookshelf_id, book_id=created_book.id)
+            except Exception as e:
+                logger.warning(f"Could not log book addition activity: {e}")
+            
+            # Set the computed attributes and return the book card with close interface
+            created_book.upvote_count = 1
+            created_book.user_has_upvoted = True
+            return created_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=1), close_interface
+        
+    except Exception as e:
+        return Div(f"Error adding book: {str(e)}", cls="error")
+
 @rt("/book/{book_id}/upvote", methods=["POST"])
 def upvote_book(book_id: int, auth):
     """HTMX endpoint to upvote/downvote a book. Hides book from view if votes reach 0."""

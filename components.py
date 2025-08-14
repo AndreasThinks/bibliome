@@ -104,11 +104,7 @@ def BookSearchForm(bookshelf_id: int):
                 Input(
                     name="query",
                     placeholder="Search for books...",
-                    hx_post="/api/search-books",
-                    hx_trigger="keyup changed delay:300ms",
-                    hx_target="#search-results",
-                    hx_vals=f'{{"bookshelf_id": {bookshelf_id}}}',
-                    hx_indicator="#search-indicator",
+                    required=True,
                     autofocus=True
                 ),
                 Button("🔍 Search", type="submit", cls="search-btn primary"),
@@ -116,7 +112,12 @@ def BookSearchForm(bookshelf_id: int):
                        hx_get=f"/api/shelf/{bookshelf_id}/add-books-toggle",
                        hx_target="#add-books-container",
                        hx_swap="outerHTML",
-                       cls="cancel-btn secondary"),
+                       cls="cancel-btn secondary",
+                       type="button"),
+                hx_post="/api/search-books",
+                hx_target="#search-results",
+                hx_vals=f'{{"bookshelf_id": {bookshelf_id}}}',
+                hx_indicator="#search-indicator",
                 cls="search-form-row"
             ),
             Div(
@@ -159,10 +160,9 @@ def SearchResultCard(book_data: Dict[str, Any], bookshelf_id: int):
                 Hidden(name="published_date", value=book_data.get('published_date', '')),
                 Hidden(name="page_count", value=book_data.get('page_count', 0)),
                 Button("Add to Shelf", type="submit", cls="add-book-btn"),
-                hx_post="/api/add-book",
+                hx_post="/api/add-book-and-close",
                 hx_target="#book-grid",
-                hx_swap="afterbegin",
-                hx_on_after_request="const emptyState = document.getElementById('empty-state-container'); if (emptyState) { emptyState.remove(); }"
+                hx_swap="afterbegin"
             ),
             cls="search-result-info"
         )

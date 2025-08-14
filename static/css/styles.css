@@ -269,10 +269,23 @@ h1, h2, h3, h4, h5, h6 {
     display: flex;
     gap: 1rem;
     align-items: center;
+    flex-wrap: wrap;
 }
 
 .search-form-row input {
     flex: 1;
+    min-width: 200px;
+    padding: 0.75rem;
+    font-size: 1rem;
+    border: 2px solid var(--brand-border);
+    border-radius: 0.5rem;
+}
+
+.search-form-row button {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    border-radius: 0.5rem;
+    white-space: nowrap;
 }
 
 .book-cover-container {
