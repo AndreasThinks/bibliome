@@ -683,7 +683,7 @@ def get_add_books_form(bookshelf_id: int, auth):
 
 # Management routes
 @rt("/shelf/{slug}/manage")
-def manage_shelf(slug: str, auth):
+def manage_shelf(slug: str, auth, req):
     """Display unified management interface for a bookshelf."""
     if not auth:
         return RedirectResponse('/auth/login', status_code=303)
@@ -792,7 +792,7 @@ def manage_shelf(slug: str, auth):
                         invites=invites,
                         can_manage=can_manage,
                         can_generate_invites=can_generate,
-                        req=auth  # Pass the request object
+                        req=req  # Pass the request object
                     ),
                     cls="management-section"
                 )
