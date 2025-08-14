@@ -12,7 +12,8 @@ from components import (
     HowItWorksSection, PublicShelvesPreview, LandingPageFooter, NetworkActivityFeed,
     BookshelfCard, EmptyState, CreateBookshelfForm, SearchPageHero,
     SearchShelvesForm, SearchResultsGrid, ExplorePageHero, PublicShelvesGrid,
-    BookSearchForm, SearchResultCard, ShareInterface, InviteCard, MemberCard, AddBooksToggle
+    BookSearchForm, SearchResultCard, ShareInterface, InviteCard, MemberCard, AddBooksToggle,
+    EnhancedEmptyState, ShelfHeader
 )
 import os
 import logging
@@ -354,24 +355,11 @@ def view_shelf(slug: str, auth):
         if can_edit or can_share:
             action_buttons.append(A("Manage", href=f"/shelf/{shelf.slug}/manage", cls="secondary"))
         
-        content = [
-            Div(
-                Div(
-                    H1(shelf.name),
-                    P(shelf.description) if shelf.description else None,
-                    P(f"Privacy: {shelf.privacy.replace('-', ' ').title()}", cls="muted")
-                ),
-                Div(
-                    *action_buttons,
-                    style="display: flex; gap: 0.5rem; text-align: right;"
-                ) if action_buttons else None,
-                style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem;"
-            )
-        ]
+        # New Shelf Header
+        shelf_header = ShelfHeader(shelf, action_buttons)
         
         # Show book search form if user can add books
-        if can_add:
-            content.append(AddBooksToggle(shelf.id))
+        add_books_section = Section(AddBooksToggle(shelf.id), cls="add-books-section") if can_add else None
         
         # Always include the book-grid div, even when empty
         if shelf_books:
@@ -381,26 +369,15 @@ def view_shelf(slug: str, auth):
                 upvote_count=book.upvote_count,
                 can_remove=can_remove
             ) for book in shelf_books]
+            books_section = Section(Div(*book_grid_content, cls="book-grid", id="book-grid"), cls="books-section")
         else:
-            book_grid_content = [
-                Div(
-                    EmptyState(
-                        "No books yet",
-                        "This bookshelf is waiting for its first book!" if can_add else "This bookshelf doesn't have any books yet.",
-                        "Add a Book" if can_add else None,
-                        "#" if can_add else None
-                    ),
-                    id="empty-state-container"
-                )
-            ]
+            books_section = Section(EnhancedEmptyState(can_add=can_add, shelf_id=shelf.id), cls="books-section")
         
-        content.append(
-            Div(
-                *book_grid_content,
-                cls="book-grid",
-                id="book-grid"
-            )
-        )
+        content = [
+            shelf_header,
+            add_books_section,
+            books_section
+        ]
         
         # Add JavaScript for book removal confirmation if user can remove books
         if can_remove:

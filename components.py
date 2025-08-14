@@ -233,6 +233,32 @@ def EmptyState(title: str, description: str, action_text: str = None, action_hre
         cls="empty-state"
     )
 
+def EnhancedEmptyState(can_add=False, shelf_id=None):
+    """A more visually appealing empty state for shelves with no books."""
+    return Card(
+        Div(
+            Div("📚", cls="empty-icon"),
+            H3("Your shelf awaits its first book", cls="empty-title"),
+            P("Start building your collection by adding books that matter to you.", cls="empty-description"),
+            AddBooksToggle(shelf_id) if can_add else None,
+            cls="empty-content"
+        ),
+        cls="empty-state-card"
+    )
+
+def ShelfHeader(shelf, action_buttons):
+    """A visually appealing header for the shelf page."""
+    return Card(
+        H1(shelf.name, cls="shelf-title"),
+        P(shelf.description, cls="shelf-description") if shelf.description else None,
+        Div(
+            Span(f"🌍 {shelf.privacy.replace('-', ' ').title()}", cls="privacy-badge"),
+            Div(*action_buttons, cls="shelf-actions") if action_buttons else None,
+            cls="shelf-meta"
+        ),
+        cls="shelf-header-card"
+    )
+
 def LoadingSpinner():
     """Loading spinner component."""
     return Div(

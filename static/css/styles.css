@@ -192,6 +192,63 @@ h1, h2, h3, h4, h5, h6 {
     transform: translateY(-2px);
 }
 
+/* Shelf Header */
+.shelf-header-card {
+    background: var(--brand-light);
+    border: 1px solid var(--brand-border);
+    margin-bottom: 2rem;
+    padding: 2rem;
+    border-radius: 0.5rem;
+}
+
+.shelf-title {
+    color: var(--brand-navy);
+    margin-bottom: 0.5rem;
+}
+
+.shelf-description {
+    color: var(--brand-muted);
+    margin-bottom: 1rem;
+}
+
+.shelf-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9rem;
+    color: var(--brand-muted);
+}
+
+.shelf-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+/* Enhanced Empty State */
+.empty-state-card {
+    text-align: center;
+    padding: 4rem 2rem;
+    background: var(--brand-light);
+    border: 2px dashed var(--brand-border);
+    border-radius: 0.5rem;
+}
+
+.empty-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+
+.empty-title {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    color: var(--brand-navy);
+}
+
+.empty-description {
+    color: var(--brand-muted);
+    margin-bottom: 2rem;
+}
+
 /* Add Books Interface */
 #add-books-container {
     margin-bottom: 2rem;
