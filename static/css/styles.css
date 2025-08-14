@@ -95,6 +95,45 @@ h1, h2, h3, h4, h5, h6 {
     background-color: var(--brand-light);
 }
 
+.user-greeting {
+    margin-right: 1rem;
+    font-weight: 500;
+}
+
+/* Mobile Menu */
+.mobile-menu-toggle {
+    display: none;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--brand-navy);
+}
+
+.mobile-menu {
+    display: none;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: var(--brand-white);
+    padding: 1rem;
+    border-top: 1px solid var(--brand-border);
+}
+
+.mobile-menu.active {
+    display: flex;
+}
+
+.mobile-menu a {
+    color: var(--brand-navy);
+    text-decoration: none;
+    padding: 0.75rem 1rem;
+    border-radius: 0.25rem;
+}
+
+.mobile-menu a:hover {
+    background-color: var(--brand-light);
+}
+
 .login-btn {
     background: var(--brand-amber);
     color: var(--brand-navy);
@@ -816,12 +855,17 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (max-width: 768px) {
     /* Navigation */
+    .desktop-menu {
+        display: none;
+    }
+
+    .mobile-menu-toggle {
+        display: block;
+    }
+
     .nav-container {
-        flex-wrap: wrap; /* Allow wrapping for long content */
-        justify-content: space-between;
-        align-items: center;
-        padding: 0 1rem;
-        min-height: 70px;
+        flex-wrap: nowrap;
+        min-height: 60px;
     }
     
     .logo {

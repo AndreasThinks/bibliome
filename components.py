@@ -7,24 +7,24 @@ from typing import Optional, List, Dict, Any
 import os
 
 def NavBar(auth=None):
-    """Main navigation bar."""
+    """Main navigation bar with mobile hamburger menu."""
+    # Define menu links based on auth status
     if auth:
-        user_menu = Div(
-            Span(f"👋 {auth.get('display_name', auth.get('handle', 'User'))}"),
+        links = [
             A("My Shelves", href="/"),
             A("Search", href="/search"),
             A("Create Shelf", href="/shelf/new"),
             A("Logout", href="/auth/logout"),
-            cls="user-menu"
-        )
+        ]
+        user_greeting = Span(f"👋 {auth.get('display_name', auth.get('handle', 'User'))}", cls="user-greeting")
     else:
-        user_menu = Div(
+        links = [
             A("Explore", href="/explore"),
             A("Search", href="/search"),
             A("Login", href="/auth/login", cls="login-btn"),
-            cls="user-menu"
-        )
-    
+        ]
+        user_greeting = None
+
     return Nav(
         Div(
             A(
@@ -33,9 +33,32 @@ def NavBar(auth=None):
                 href="/", 
                 cls="logo"
             ),
-            user_menu,
+            # Desktop menu
+            Div(
+                user_greeting,
+                *links,
+                cls="user-menu desktop-menu"
+            ),
+            # Mobile menu button
+            Button(
+                "☰",
+                cls="mobile-menu-toggle",
+                onclick="toggleMobileMenu()"
+            ),
             cls="nav-container"
         ),
+        # Mobile menu (hidden by default)
+        Div(
+            *links,
+            cls="mobile-menu",
+            id="mobile-menu"
+        ),
+        Script("""
+            function toggleMobileMenu() {
+                const menu = document.getElementById('mobile-menu');
+                menu.classList.toggle('active');
+            }
+        """),
         cls="main-nav"
     )
 
@@ -745,7 +768,6 @@ def EmptyNetworkState():
             P("We don't see any recent activity from people you follow on Bluesky.", cls="empty-network-description"),
             P("Invite your friends to join Bibliome and start sharing book recommendations!", cls="empty-network-suggestion"),
             Div(
-                A("Invite Friends", href="/invite", cls="primary"),
                 A("Explore Public Shelves", href="/explore", cls="secondary"),
                 cls="empty-network-actions"
             ),
