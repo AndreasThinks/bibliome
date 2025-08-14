@@ -349,11 +349,11 @@ def log_activity(user_did: str, activity_type: str, db_tables, bookshelf_id: int
     except Exception as e:
         print(f"Error logging activity: {e}")
 
-async def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 20):
+def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 20):
     """Get recent activity from users in the current user's network."""
     try:
         # Get list of users the current user follows
-        following_dids = await bluesky_auth.get_following_list(auth_data, limit=100)
+        following_dids = bluesky_auth.get_following_list(auth_data, limit=100)
         
         if not following_dids:
             return []
@@ -381,8 +381,8 @@ async def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: 
         raw_activities = cursor.fetchall()
         
         # Get profiles for the users who created these activities
-        activity_user_dids = list(set([row[1] for row in raw_activities]))  # user_did is column 1
-        profiles = await bluesky_auth.get_profiles_batch(activity_user_dids)
+        activity_user_dids = list(set([row[1] for row in raw_activities]))
+        profiles = bluesky_auth.get_profiles_batch(activity_user_dids, auth_data)
         
         # Format activities with user profiles
         for row in raw_activities:

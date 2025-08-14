@@ -80,7 +80,7 @@ def static_files(fname: str, ext: str):
 
 # Home page
 @rt("/")
-async def index(auth):
+def index(auth):
     """Homepage - beautiful landing page for visitors, dashboard for logged-in users."""
     if not auth:
         # Show beautiful landing page for anonymous users
@@ -114,7 +114,7 @@ async def index(auth):
         try:
             from models import get_network_activity
             logger.info(f"Attempting to load network activity for user: {auth.get('handle')}")
-            network_activities = await get_network_activity(auth, db_tables, bluesky_auth, limit=10)
+            network_activities = get_network_activity(auth, db_tables, bluesky_auth, limit=10)
             logger.info(f"Network activities loaded: {len(network_activities)} activities found")
             
             # Always show the network activity section (with empty state if no activities)

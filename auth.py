@@ -105,58 +105,54 @@ class BlueskyAuth:
         client.login(session_string=session_data['session_string'])
         return client
     
-    async def get_following_list(self, auth_data: Dict[str, Any], limit: int = 100) -> list[str]:
+    def get_following_list(self, auth_data: Dict[str, Any], limit: int = 100) -> list[str]:
         """Get list of DIDs that a user follows."""
         try:
-            # Create a new client instance for this request
-            client = AtprotoClient()
-            
-            # Restore session using stored tokens
-            if auth_data.get('access_jwt') and auth_data.get('refresh_jwt'):
-                client.me = models.ComAtprotoServerDescribeServer.Response(
-                    access_jwt=auth_data['access_jwt'],
-                    did=auth_data['did'],
-                    handle=auth_data['handle'],
-                    refresh_jwt=auth_data['refresh_jwt']
-                )
-            else:
-                logger.warning("Could not restore AT Proto session for following list: missing JWT tokens")
+            client = self.get_client_from_session(auth_data)
+            if not client:
+                logger.warning("Could not get authenticated client for following list.")
                 return []
+
+            response = client.app.bsky.graph.get_follows({
+                'actor': auth_data['did'],
+                'limit': limit
+            })
             
-            # Get following list
-            response = await client.get_follows(auth_data['did'], limit=limit)
-            following_dids = [follow.did for follow in response.follows]
-            
-            logger.info(f"Retrieved {len(following_dids)} following DIDs for {auth_data['handle']}")
-            return following_dids
+            if response and response.follows:
+                following_dids = [follow.did for follow in response.follows]
+                logger.info(f"Retrieved {len(following_dids)} following DIDs for {auth_data['handle']}")
+                return following_dids
+            return []
             
         except Exception as e:
-            logger.error(f"Error getting following list for {auth_data.get('handle', 'unknown')}: {e}")
+            logger.error(f"Error getting following list for {auth_data.get('handle', 'unknown')}: {e}", exc_info=True)
             return []
-    
-    async def get_profiles_batch(self, dids: list[str]) -> dict[str, dict]:
+
+    def get_profiles_batch(self, dids: list[str], auth_data: dict) -> dict[str, dict]:
         """Get profile info for multiple DIDs."""
         try:
             if not dids:
                 return {}
-            
-            # Create a new client for this request
-            client = AtprotoClient()
-            
+
+            client = self.get_client_from_session(auth_data)
+            if not client:
+                logger.warning("Could not get authenticated client for profiles batch.")
+                return {}
+
             profiles = {}
-            # Process in batches to avoid API limits
             batch_size = 25
             for i in range(0, len(dids), batch_size):
                 batch_dids = dids[i:i + batch_size]
                 try:
-                    response = client.get_profiles(batch_dids)
-                    for profile in response.profiles:
-                        profiles[profile.did] = {
-                            'did': profile.did,
-                            'handle': profile.handle,
-                            'display_name': profile.display_name or profile.handle,
-                            'avatar_url': profile.avatar or ''
-                        }
+                    response = client.app.bsky.actor.get_profiles({'actors': batch_dids})
+                    if response and response.profiles:
+                        for profile in response.profiles:
+                            profiles[profile.did] = {
+                                'did': profile.did,
+                                'handle': profile.handle,
+                                'display_name': profile.display_name or profile.handle,
+                                'avatar_url': profile.avatar or ''
+                            }
                 except Exception as e:
                     logger.warning(f"Error fetching profile batch: {e}")
                     continue
@@ -165,9 +161,9 @@ class BlueskyAuth:
             return profiles
             
         except Exception as e:
-            logger.error(f"Error getting profiles batch: {e}")
+            logger.error(f"Error getting profiles batch: {e}", exc_info=True)
             return {}
-    
+
     def restore_session(self, auth_data: Dict[str, Any]) -> bool:
         """Restore a session from stored auth data."""
         try:
