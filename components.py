@@ -7,7 +7,7 @@ from typing import Optional, List, Dict, Any
 import os
 
 def NavBar(auth=None):
-    """Main navigation bar with mobile hamburger menu."""
+    """Main navigation bar with HTMX-powered mobile hamburger menu."""
     # Define menu links based on auth status
     if auth:
         links = [
@@ -39,11 +39,11 @@ def NavBar(auth=None):
                 *links,
                 cls="user-menu desktop-menu"
             ),
-            # Mobile menu button
+            # Mobile menu button with HTMX
             Button(
                 "☰",
                 cls="mobile-menu-toggle",
-                onclick="toggleMobileMenu()"
+                **{"hx-on:click": "document.getElementById('mobile-menu').classList.toggle('active')"}
             ),
             cls="nav-container"
         ),
@@ -53,12 +53,6 @@ def NavBar(auth=None):
             cls="mobile-menu",
             id="mobile-menu"
         ),
-        Script("""
-            function toggleMobileMenu() {
-                const menu = document.getElementById('mobile-menu');
-                menu.classList.toggle('active');
-            }
-        """),
         cls="main-nav"
     )
 
