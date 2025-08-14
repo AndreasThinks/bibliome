@@ -1,0 +1,21 @@
+{
+  "lexicon": 1,
+  "id": "com.bibliome.book",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["title", "bookshelfRef", "addedAt"],
+        "properties": {
+          "title": {"type": "string", "maxLength": 200},
+          "author": {"type": "string", "maxLength": 200},
+          "isbn": {"type": "string", "maxLength": 20},
+          "bookshelfRef": {"type": "string", "format": "at-uri"},
+          "addedAt": {"type": "string", "format": "datetime"}
+        }
+      }
+    }
+  }
+}

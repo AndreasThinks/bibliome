@@ -214,16 +214,27 @@ def create_shelf(name: str, description: str, privacy: str, auth, sess):
     if not auth:
         return RedirectResponse('/auth/login', status_code=303)
     
+    atproto_uri = None
     try:
-        from models import Bookshelf, generate_slug
+        from models import Bookshelf, generate_slug, create_bookshelf_record
         from datetime import datetime
         
+        try:
+            client = bluesky_auth.get_client_from_session(auth)
+            # 1. Write to AT Protocol
+            atproto_uri = create_bookshelf_record(client, name, description, privacy)
+        except Exception as e:
+            logger.error(f"Failed to write bookshelf to AT Protocol: {e}", exc_info=True)
+            # Don't fail the whole request, just log the error and continue
+        
+        # 2. Write to local DB
         shelf = Bookshelf(
             name=name.strip(),
             slug=generate_slug(),
             description=description.strip(),
             owner_did=auth['did'],
             privacy=privacy,
+            atproto_uri=atproto_uri, # Store the canonical URI
             created_at=datetime.now(),
             updated_at=datetime.now()
         )
@@ -478,10 +489,11 @@ def add_book_api(bookshelf_id: int, title: str, author: str, isbn: str, descript
         return Div("Authentication required.", cls="error")
     
     try:
+        from models import Book, Upvote, add_book_record, can_add_books
         # Check permissions - use can_add_books instead of can_edit_bookshelf
         shelf = db_tables['bookshelves'][bookshelf_id]
         user_did = get_current_user_did(auth)
-        from models import can_add_books
+
         if not can_add_books(shelf, user_did, db_tables):
             return Div("Permission denied.", cls="error")
         
@@ -516,7 +528,6 @@ def add_book_api(bookshelf_id: int, title: str, author: str, isbn: str, descript
                 return Div("You've already added this book to the shelf!", cls="alert alert-info")
             else:
                 # Add user's vote to existing book
-                from models import Upvote
                 upvote = Upvote(
                     book_id=existing_book.id,
                     user_did=user_did,
@@ -529,8 +540,16 @@ def add_book_api(bookshelf_id: int, title: str, author: str, isbn: str, descript
                 existing_book.user_has_upvoted = True
                 return existing_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=existing_book.upvote_count)
         else:
-            # Create new book (no upvotes field needed)
-            from models import Book, Upvote
+            atproto_uri = None
+            try:
+                client = bluesky_auth.get_client_from_session(auth)
+                # 1. Write to AT Protocol
+                atproto_uri = add_book_record(client, shelf.atproto_uri, title, author, isbn)
+            except Exception as e:
+                logger.error(f"Failed to write book to AT Protocol: {e}", exc_info=True)
+                # Don't fail the whole request, just log the error and continue
+
+            # 2. Write to local DB
             book = Book(
                 bookshelf_id=bookshelf_id,
                 isbn=isbn,
@@ -541,6 +560,7 @@ def add_book_api(bookshelf_id: int, title: str, author: str, isbn: str, descript
                 publisher=publisher,
                 published_date=published_date,
                 page_count=page_count,
+                atproto_uri=atproto_uri,
                 added_by_did=user_did,
                 added_at=datetime.now()
             )
