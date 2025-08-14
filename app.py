@@ -802,7 +802,8 @@ def manage_shelf(slug: str, auth):
                         pending_members=pending_members,
                         invites=invites,
                         can_manage=can_manage,
-                        can_generate_invites=can_generate
+                        can_generate_invites=can_generate,
+                        req=auth  # Pass the request object
                     ),
                     cls="management-section"
                 )
@@ -916,7 +917,7 @@ def manage_shelf(slug: str, auth):
         )
 
 @rt("/shelf/{slug}/share")
-def share_shelf(slug: str, auth):
+def share_shelf(slug: str, auth, req):
     """Display share interface for a bookshelf."""
     if not auth:
         return RedirectResponse('/auth/login', status_code=303)
@@ -986,7 +987,8 @@ def share_shelf(slug: str, auth):
                 pending_members=pending_members,
                 invites=invites,
                 can_manage=can_manage,
-                can_generate_invites=can_generate
+                can_generate_invites=can_generate,
+                req=req
             )
         ]
         
@@ -1011,7 +1013,7 @@ def share_shelf(slug: str, auth):
 
 # API routes for sharing and management
 @rt("/api/shelf/{slug}/invite", methods=["POST"])
-def generate_invite(slug: str, role: str, expires_days: str, max_uses: str, auth):
+def generate_invite(slug: str, role: str, expires_days: str, max_uses: str, auth, req):
     """HTMX endpoint to generate a new invite link."""
     if not auth: return Div("Authentication required.", cls="error")
     
@@ -1053,7 +1055,7 @@ def generate_invite(slug: str, role: str, expires_days: str, max_uses: str, auth
         created_invite = db_tables['bookshelf_invites'].insert(invite)
         
         # Return the new invite card
-        return InviteCard(created_invite, shelf.slug)
+        return InviteCard(created_invite, shelf.slug, req)
         
     except Exception as e:
         logger.error(f"Error generating invite for shelf {slug}: {e}", exc_info=True)

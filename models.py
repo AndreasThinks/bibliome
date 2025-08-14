@@ -274,15 +274,8 @@ def can_invite_role(inviter_role: str, target_role: str) -> bool:
     inviter_level = role_hierarchy.index(inviter_role)
     target_level = role_hierarchy.index(target_role)
     
-    # Moderators can invite up to moderator level
-    if inviter_role == 'moderator':
-        return target_level <= 2  # viewer, contributor, moderator
-    
-    # Owners can invite anyone
-    if inviter_role == 'owner':
-        return True
-    
-    return False
+    # Users can only invite others with a role level lower than their own
+    return inviter_level > target_level
 
 def validate_invite(invite_code: str, db_tables) -> Optional[object]:
     """Validate an invite code and return the invite if valid."""

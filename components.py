@@ -327,7 +327,7 @@ def MemberCard(user, permission, is_owner=False, can_manage=False, bookshelf_slu
         id=f"member-{user.did}"
     )
 
-def ShareInterface(bookshelf, members, pending_members, invites, can_manage=False, can_generate_invites=False):
+def ShareInterface(bookshelf, members, pending_members, invites, can_manage=False, can_generate_invites=False, req=None):
     """Complete share interface for a bookshelf."""
     privacy_icon = {
         'public': '🌍',
@@ -402,9 +402,9 @@ def ShareInterface(bookshelf, members, pending_members, invites, can_manage=Fals
             Form(
                 Div(
                     Label("Role for new members:", Select(
-                        Option("Viewer", value="viewer", selected=True),
-                        Option("Editor", value="editor"),
-                        Option("Admin", value="admin") if can_manage else None,
+                        Option("Viewer - Can view the bookshelf", value="viewer", selected=True),
+                        Option("Contributor - Can add and vote on books", value="contributor"),
+                        Option("Moderator - Can manage books and members", value="moderator") if can_manage else None,
                         name="role"
                     )),
                     Label("Expires in:", Select(
@@ -431,7 +431,7 @@ def ShareInterface(bookshelf, members, pending_members, invites, can_manage=Fals
             Div(
                 H4("Active Invite Links"),
                 Div(
-                    *[InviteCard(invite, bookshelf.slug) for invite in active_invites] if active_invites 
+                    *[InviteCard(invite, bookshelf.slug, req) for invite in active_invites] if active_invites 
                     else [P("No active invites.", cls="empty-message")],
                     id="active-invites"
                 ),
@@ -448,15 +448,28 @@ def ShareInterface(bookshelf, members, pending_members, invites, can_manage=Fals
         cls="share-interface"
     )
 
-def InviteCard(invite, bookshelf_slug):
+def get_base_url(req):
+    """Get the base URL from the request."""
+    if not req:
+        return os.getenv('BASE_URL', 'http://localhost:5001').rstrip('/')
+    scheme = 'https' if req.url.is_secure else 'http'
+    return f"{scheme}://{req.url.netloc}"
+
+def InviteCard(invite, bookshelf_slug, req=None):
     """Render an invite link card."""
-    # Use BASE_URL from environment variable
-    base_url = os.getenv('BASE_URL', 'http://0.0.0.0:5001/').rstrip('/')
+    base_url = get_base_url(req)
     invite_url = f"{base_url}/shelf/join/{invite.invite_code}"
     
     expires_text = ""
     if invite.expires_at:
-        expires_text = f"Expires: {invite.expires_at.strftime('%Y-%m-%d %H:%M')}"
+        if isinstance(invite.expires_at, str):
+            try:
+                expires_dt = datetime.fromisoformat(invite.expires_at.replace('Z', '+00:00'))
+            except:
+                expires_dt = datetime.now()
+        else:
+            expires_dt = invite.expires_at
+        expires_text = f"Expires: {expires_dt.strftime('%Y-%m-%d %H:%M')}"
     
     uses_text = ""
     if invite.max_uses:
