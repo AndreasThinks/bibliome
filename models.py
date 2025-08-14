@@ -313,9 +313,9 @@ async def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: 
         query = f"""
             SELECT a.*, b.name as bookshelf_name, b.slug as bookshelf_slug, b.privacy,
                    bk.title as book_title, bk.author as book_author, bk.cover_url as book_cover_url
-            FROM activities a
-            LEFT JOIN bookshelves b ON a.bookshelf_id = b.id
-            LEFT JOIN books bk ON a.book_id = bk.id
+            FROM activity a
+            LEFT JOIN bookshelf b ON a.bookshelf_id = b.id
+            LEFT JOIN book bk ON a.book_id = bk.id
             WHERE a.user_did IN ({placeholders})
             AND (b.privacy = 'public' OR b.privacy = 'link-only')
             ORDER BY a.created_at DESC
@@ -468,8 +468,8 @@ def get_recent_community_books(db_tables, limit: int = 15):
     """Fetch the most recently added books from public bookshelves."""
     query = """
         SELECT b.*, bs.name as bookshelf_name, bs.slug as bookshelf_slug
-        FROM books b
-        JOIN bookshelves bs ON b.bookshelf_id = bs.id
+        FROM book b
+        JOIN bookshelf bs ON b.bookshelf_id = bs.id
         WHERE bs.privacy = 'public'
         ORDER BY b.added_at DESC
         LIMIT ?
