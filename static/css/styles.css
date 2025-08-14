@@ -192,6 +192,32 @@ h1, h2, h3, h4, h5, h6 {
     transform: translateY(-2px);
 }
 
+/* Add Books Interface */
+#add-books-container {
+    margin-bottom: 2rem;
+}
+
+.add-books-toggle {
+    width: 100%;
+    padding: 1rem;
+    font-size: 1.1rem;
+}
+
+.book-search-expanded .card {
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+}
+
+.search-form-row {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.search-form-row input {
+    flex: 1;
+}
+
 .book-cover-container {
     height: 250px;
     overflow: hidden;

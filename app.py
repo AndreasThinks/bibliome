@@ -12,7 +12,7 @@ from components import (
     HowItWorksSection, PublicShelvesPreview, LandingPageFooter, NetworkActivityFeed,
     BookshelfCard, EmptyState, CreateBookshelfForm, SearchPageHero,
     SearchShelvesForm, SearchResultsGrid, ExplorePageHero, PublicShelvesGrid,
-    BookSearchForm, SearchResultCard, ShareInterface, InviteCard, MemberCard
+    BookSearchForm, SearchResultCard, ShareInterface, InviteCard, MemberCard, AddBooksToggle
 )
 import os
 import logging
@@ -371,7 +371,7 @@ def view_shelf(slug: str, auth):
         
         # Show book search form if user can add books
         if can_add:
-            content.append(BookSearchForm(shelf.id))
+            content.append(AddBooksToggle(shelf.id))
         
         # Always include the book-grid div, even when empty
         if shelf_books:
@@ -691,6 +691,18 @@ def remove_book(book_id: int, auth):
     except Exception as e:
         logger.error(f"Error removing book {book_id}: {e}", exc_info=True)
         return Div(f"Error removing book: {str(e)}", cls="error")
+
+@rt("/api/shelf/{bookshelf_id}/add-books-toggle")
+def get_add_books_toggle(bookshelf_id: int, auth):
+    """HTMX endpoint to get the add books toggle button."""
+    if not auth: return ""
+    return AddBooksToggle(bookshelf_id)
+
+@rt("/api/shelf/{bookshelf_id}/add-books-form")
+def get_add_books_form(bookshelf_id: int, auth):
+    """HTMX endpoint to get the add books form."""
+    if not auth: return ""
+    return BookSearchForm(bookshelf_id)
 
 # Management routes
 @rt("/shelf/{slug}/manage")

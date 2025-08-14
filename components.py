@@ -82,35 +82,51 @@ def BookCard(book, can_upvote=True, user_has_upvoted=False):
         # Use the model's built-in __ft__ method (which will use getattr for upvote_count)
         return book
 
-def BookSearchForm(bookshelf_id: int):
-    """Book search component with HTMX."""
+def AddBooksToggle(bookshelf_id: int):
+    """A discrete button to show the book search form."""
     return Div(
-        H3("Add Books"),
-        Form(
-            Div(
+        Button(
+            "📚 Add Books", 
+            hx_get=f"/api/shelf/{bookshelf_id}/add-books-form",
+            hx_target="#add-books-container",
+            hx_swap="outerHTML",
+            cls="add-books-toggle primary"
+        ),
+        id="add-books-container"
+    )
+
+def BookSearchForm(bookshelf_id: int):
+    """The collapsible book search form."""
+    return Div(
+        Card(
+            H3("Add Books to Shelf"),
+            Form(
                 Input(
                     name="query",
-                    placeholder="Search for books to add...",
+                    placeholder="Search for books...",
                     hx_post="/api/search-books",
-                    hx_trigger="keyup changed delay:500ms",
+                    hx_trigger="keyup changed delay:300ms",
                     hx_target="#search-results",
                     hx_vals=f'{{"bookshelf_id": {bookshelf_id}}}',
-                    hx_indicator="#search-loading",
-                    autocomplete="off"
+                    hx_indicator="#search-indicator",
+                    autofocus=True
                 ),
-                Div(
-                    Div(cls="spinner"),
-                    "Searching...",
-                    id="search-loading",
-                    cls="htmx-indicator loading-container",
-                    style="display: none;"
-                ),
-                style="position: relative;"
+                Button("🔍 Search", type="submit", cls="search-btn primary"),
+                Button("✕ Cancel", 
+                       hx_get=f"/api/shelf/{bookshelf_id}/add-books-toggle",
+                       hx_target="#add-books-container",
+                       hx_swap="outerHTML",
+                       cls="cancel-btn secondary"),
+                cls="search-form-row"
             ),
-            cls="search-form"
+            Div(
+                Div("🔍 Searching...", cls="htmx-indicator", id="search-indicator"),
+                id="search-results"
+            ),
+            cls="add-books-card"
         ),
-        Div(id="search-results", cls="search-results"),
-        cls="book-search"
+        id="add-books-container",
+        cls="book-search-expanded"
     )
 
 def SearchResultCard(book_data: Dict[str, Any], bookshelf_id: int):
