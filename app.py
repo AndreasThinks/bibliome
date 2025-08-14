@@ -371,7 +371,11 @@ def view_shelf(slug: str, auth):
             ) for book in shelf_books]
             books_section = Section(Div(*book_grid_content, cls="book-grid", id="book-grid"), cls="books-section")
         else:
-            books_section = Section(EnhancedEmptyState(can_add=can_add, shelf_id=shelf.id), cls="books-section")
+            books_section = Section(
+                EnhancedEmptyState(can_add=can_add, shelf_id=shelf.id),
+                Div(cls="book-grid", id="book-grid"),  # Always include the target div
+                cls="books-section"
+            )
         
         content = [
             shelf_header,
