@@ -820,18 +820,18 @@ def PublicShelvesGrid(shelves, page=1, total_pages=1):
 def ShelfPreviewCard(shelf):
     """A card for a public bookshelf with book previews."""
     # Mini book cover previews
-    cover_previews = Div(cls="shelf-preview-covers")
     if hasattr(shelf, 'recent_covers') and shelf.recent_covers:
-        for cover_url in shelf.recent_covers:
-            cover_previews.append(Img(src=cover_url, alt="Book cover", loading="lazy"))
+        covers = [Img(src=cover_url, alt="Book cover", loading="lazy") for cover_url in shelf.recent_covers]
     else:
-        cover_previews.append(Div("📚", cls="shelf-preview-placeholder"))
+        covers = [Div("📚", cls="shelf-preview-placeholder")]
+    cover_previews = Div(*covers, cls="shelf-preview-covers")
 
     # Owner info
-    owner_info = Div(cls="shelf-owner-info")
+    owner_details = []
     if hasattr(shelf, 'owner') and shelf.owner:
-        owner_info.append(Img(src=shelf.owner.avatar_url, alt=shelf.owner.display_name, cls="owner-avatar") if shelf.owner.avatar_url else Div("👤", cls="owner-avatar-placeholder"))
-        owner_info.append(Span(shelf.owner.display_name or shelf.owner.handle))
+        owner_avatar = Img(src=shelf.owner.avatar_url, alt=shelf.owner.display_name, cls="owner-avatar") if shelf.owner.avatar_url else Div("👤", cls="owner-avatar-placeholder")
+        owner_details.extend([owner_avatar, Span(shelf.owner.display_name or shelf.owner.handle)])
+    owner_info = Div(*owner_details, cls="shelf-owner-info")
 
     return A(
         href=f"/shelf/{shelf.slug}",

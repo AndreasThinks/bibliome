@@ -452,9 +452,11 @@ def search_shelves(db_tables, query: str = "", book_title: str = "", book_author
     
     try:
         cursor = db_tables['db'].execute(sql_query, params)
+        columns = [d[0] for d in cursor.description]
+        rows = cursor.fetchall()
         shelves = []
-        for row in cursor.fetchall():
-            shelf_data = dict(zip([d[0] for d in cursor.description], row))
+        for row in rows:
+            shelf_data = dict(zip(columns, row))
             shelf = Bookshelf(**{k: v for k, v in shelf_data.items() if k in Bookshelf.__annotations__})
             shelf.owner_name = shelf_data.get('owner_name')
             shelf.owner_handle = shelf_data.get('owner_handle')
