@@ -1,7 +1,6 @@
 """Reusable UI components for BookdIt."""
 
 from fasthtml.common import *
-from fasthtml.components import Img
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import os
