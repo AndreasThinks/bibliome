@@ -4,6 +4,7 @@ from atproto import models
 from atproto import Client as AtprotoClient
 from fasthtml.common import *
 from typing import Optional, Dict, Any
+from components import Alert
 import os
 import logging
 from dotenv import load_dotenv
@@ -88,6 +89,7 @@ class BlueskyAuth:
                 'handle': self.client.me.handle,
                 'display_name': profile.display_name or self.client.me.handle,
                 'avatar_url': profile.avatar or '',
+                'session_string': self.client.export_session_string(),
                 'access_jwt': getattr(self.client.me, 'access_jwt', ''),
                 'refresh_jwt': getattr(self.client.me, 'refresh_jwt', '')
             }
@@ -96,6 +98,12 @@ class BlueskyAuth:
         except Exception as e:
             logger.error(f"Authentication error for handle {handle}: {e}", exc_info=True)
             return None
+
+    def get_client_from_session(self, session_data: dict) -> AtprotoClient:
+        """Restore a client instance from a session string."""
+        client = AtprotoClient()
+        client.login(session_string=session_data['session_string'])
+        return client
     
     async def get_following_list(self, auth_data: Dict[str, Any], limit: int = 100) -> list[str]:
         """Get list of DIDs that a user follows."""

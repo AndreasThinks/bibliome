@@ -7,6 +7,65 @@ import secrets
 import string
 from fasthtml.common import *
 from fastcore.all import patch
+from atproto import Client, models as at_models
+
+def create_bookshelf_record(client: Client, name: str, description: str, privacy: str) -> str:
+    """Creates a bookshelf record on the user's repo and returns its AT-URI."""
+    record = {
+        '$type': 'com.bibliome.bookshelf',
+        'name': name,
+        'description': description,
+        'privacy': privacy,
+        'createdAt': client.get_current_time_iso()
+    }
+    response = client.com.atproto.repo.put_record(
+        at_models.ComAtprotoRepoPutRecord.Data(
+            repo=client.me.did,
+            collection='com.bibliome.bookshelf',
+            rkey=generate_tid(),
+            record=record
+        )
+    )
+    return response.uri
+
+def add_book_record(client: Client, bookshelf_uri: str, title: str, author: str, isbn: str) -> str:
+    """Creates a book record on the user's repo and returns its AT-URI."""
+    record = {
+        '$type': 'com.bibliome.book',
+        'title': title,
+        'author': author,
+        'isbn': isbn,
+        'bookshelfRef': bookshelf_uri,
+        'addedAt': client.get_current_time_iso()
+    }
+    response = client.com.atproto.repo.put_record(
+        at_models.ComAtprotoRepoPutRecord.Data(
+            repo=client.me.did,
+            collection='com.bibliome.book',
+            rkey=generate_tid(),
+            record=record
+        )
+    )
+    return response.uri
+
+def generate_tid():
+    """Generate a TID (Timestamp Identifier)."""
+    import time
+    import random
+
+    chars = '234567abcdefghijklmnopqrstuvwxyz'
+    
+    timestamp = int(time.time() * 1_000_000)
+    clock_id = random.randint(0, 1023)
+    
+    tid_int = (timestamp << 10) | clock_id
+    
+    tid_str = ''
+    for _ in range(13):
+        tid_str = chars[tid_int % 32] + tid_str
+        tid_int //= 32
+        
+    return tid_str
 
 def generate_slug():
     """Generate a random URL-safe slug."""
@@ -30,6 +89,7 @@ class Bookshelf:
     slug: str = ""  # URL-friendly identifier
     description: str = ""
     privacy: str = "public"  # 'public', 'link-only', 'private'
+    atproto_uri: str = "" # AT-Proto URI of the record
     created_at: datetime = None
     updated_at: datetime = None
 
@@ -46,6 +106,7 @@ class Book:
     publisher: str = ""
     published_date: str = ""
     page_count: int = 0
+    atproto_uri: str = "" # AT-Proto URI of the record
     added_at: datetime = None
 
 class Permission:

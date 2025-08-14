@@ -1,0 +1,20 @@
+{
+  "lexicon": 1,
+  "id": "com.bibliome.bookshelf",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["name", "createdAt"],
+        "properties": {
+          "name": {"type": "string", "maxLength": 100},
+          "description": {"type": "string", "maxLength": 500},
+          "privacy": {"type": "string", "knownValues": ["public", "link-only", "private"]},
+          "createdAt": {"type": "string", "format": "datetime"}
+        }
+      }
+    }
+  }
+}
