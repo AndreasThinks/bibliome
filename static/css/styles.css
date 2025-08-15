@@ -250,7 +250,36 @@ h1, h2, h3, h4, h5, h6 {
 
 .shelf-actions {
     display: flex;
-    gap: 1rem;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+/* Action Button Styles */
+.action-btn {
+    background: var(--brand-light);
+    border: 1px solid var(--brand-border);
+    color: var(--brand-text);
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+    min-width: 40px;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+
+.action-btn:hover {
+    background: var(--brand-amber);
+    color: var(--brand-navy);
+    border-color: var(--brand-amber);
+}
+
+.manage-btn {
+    font-size: 1.1rem;
 }
 
 /* Enhanced Empty State */
@@ -1842,36 +1871,8 @@ section + section {
 
 /* ===== VIEW TOGGLE STYLES ===== */
 
-.view-toggle {
-    display: flex;
-    align-items: center;
-}
-
 .view-toggle-btn {
-    background: var(--brand-light);
-    border: 1px solid var(--brand-border);
-    color: var(--brand-text);
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.25rem;
-    cursor: pointer;
-    font-size: 1rem;
-    transition: all 0.2s ease;
-    min-width: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.view-toggle-btn:hover {
-    background: var(--brand-amber);
-    color: var(--brand-navy);
-    border-color: var(--brand-amber);
-}
-
-.view-toggle-btn.active {
-    background: var(--brand-amber);
-    color: var(--brand-navy);
-    border-color: var(--brand-amber);
+    font-size: 1.1rem;
 }
 
 /* ===== LIST VIEW TABLE STYLES ===== */

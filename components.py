@@ -248,23 +248,33 @@ def EnhancedEmptyState(can_add=False, shelf_id=None):
 
 def ShelfHeader(shelf, action_buttons, current_view="grid"):
     """A visually appealing header for the shelf page."""
-    # Create view toggle buttons
-    view_toggle = Div(
-        Button(
-            "⊞" if current_view == "list" else "☰",
-            hx_get=f"/api/shelf/{shelf.slug}/toggle-view?view={'grid' if current_view == 'list' else 'list'}",
-            hx_target="#books-container",
-            hx_swap="outerHTML",
-            cls="view-toggle-btn" + (" active" if current_view == "list" else ""),
-            title=f"Switch to {'Grid' if current_view == 'list' else 'List'} View"
-        ),
-        cls="view-toggle"
+    # Create view toggle button
+    view_toggle = Button(
+        "⊞" if current_view == "grid" else "☰",
+        hx_get=f"/api/shelf/{shelf.slug}/toggle-view?view={'list' if current_view == 'grid' else 'grid'}",
+        hx_target="#books-container",
+        hx_swap="outerHTML",
+        cls="action-btn view-toggle-btn",
+        title=f"Switch to {'List' if current_view == 'grid' else 'Grid'} View",
+        id="view-toggle-btn"
     )
     
-    # Combine view toggle with action buttons
-    all_actions = [view_toggle]
-    if action_buttons:
-        all_actions.extend(action_buttons)
+    # Convert action buttons to icon buttons
+    icon_action_buttons = []
+    for button in action_buttons or []:
+        if hasattr(button, 'children') and button.children and "Manage" in str(button.children[0]):
+            # Convert manage button to icon
+            icon_action_buttons.append(A(
+                "⚙️",
+                href=button.attrs.get('href', '#'),
+                cls="action-btn manage-btn",
+                title="Manage Shelf"
+            ))
+        else:
+            icon_action_buttons.append(button)
+    
+    # Create action button group
+    all_actions = [view_toggle] + icon_action_buttons
     
     return Card(
         H1(shelf.name, cls="shelf-title"),
