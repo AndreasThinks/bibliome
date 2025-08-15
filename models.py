@@ -115,10 +115,12 @@ class Permission:
     bookshelf_id: int
     user_did: str
     role: str  # 'viewer', 'contributor', 'moderator', 'owner'
-    status: str = "active"  # 'active', 'pending'
+    # UNUSED: status and invited_at fields preserved for future approval workflows
+    # Currently all invites create active permissions immediately via invite links
+    status: str = "active"  # 'active', 'pending' - pending status not currently used
     granted_by_did: str
     granted_at: datetime = None
-    invited_at: datetime = None
+    invited_at: datetime = None  # UNUSED: preserved for future direct invitation features
     joined_at: datetime = None
 
 class BookshelfInvite:

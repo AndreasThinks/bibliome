@@ -185,7 +185,14 @@ async def login_handler(handle: str, password: str, sess):
         
         # Store full auth data (including JWTs) in session
         sess['auth'] = user_data
-        return RedirectResponse('/', status_code=303)
+        
+        # Check for pending redirect (like invite links)
+        next_url = sess.pop('next_url', None)
+        if next_url:
+            logger.info(f"Redirecting user {user_data['handle']} to pending URL: {next_url}")
+            return RedirectResponse(next_url, status_code=303)
+        else:
+            return RedirectResponse('/', status_code=303)
     else:
         logger.warning(f"Authentication failed for handle: {handle}")
         sess['error'] = "Invalid credentials. Please check your handle and app password."
@@ -1071,9 +1078,10 @@ def manage_shelf(slug: str, auth, req):
             )
         
         # Get all members (active permissions + owner)
+        # PRESERVED: pending_members logic kept for future approval workflows, but not used in UI
         permissions = list(db_tables['permissions']("bookshelf_id=?", (shelf.id,)))
         members = []
-        pending_members = []
+        pending_members = []  # Currently always empty since all invites create active permissions
         
         # Add owner to members list
         try:
@@ -1085,12 +1093,13 @@ def manage_shelf(slug: str, auth, req):
         except:
             pass
         
-        # Add other members
+        # Add other members (preserving pending logic for future use)
         for perm in permissions:
             try:
                 user = db_tables['users'][perm.user_did]
                 member_data = {'user': user, 'permission': perm}
                 
+                # PRESERVED: pending status filtering (currently never matches)
                 if perm.status == 'pending':
                     pending_members.append(member_data)
                 else:
@@ -1146,7 +1155,6 @@ def manage_shelf(slug: str, auth, req):
                     ShareInterface(
                         bookshelf=shelf,
                         members=members,
-                        pending_members=pending_members,
                         invites=invites,
                         can_manage=can_manage,
                         can_generate_invites=can_generate,
@@ -1234,9 +1242,10 @@ def share_shelf(slug: str, auth, req):
             )
         
         # Get all members (active permissions + owner)
+        # PRESERVED: pending_members logic kept for future approval workflows, but not used in UI
         permissions = list(db_tables['permissions']("bookshelf_id=?", (shelf.id,)))
         members = []
-        pending_members = []
+        pending_members = []  # Currently always empty since all invites create active permissions
         
         # Add owner to members list
         try:
@@ -1248,12 +1257,13 @@ def share_shelf(slug: str, auth, req):
         except:
             pass
         
-        # Add other members
+        # Add other members (preserving pending logic for future use)
         for perm in permissions:
             try:
                 user = db_tables['users'][perm.user_did]
                 member_data = {'user': user, 'permission': perm}
                 
+                # PRESERVED: pending status filtering (currently never matches)
                 if perm.status == 'pending':
                     pending_members.append(member_data)
                 else:
@@ -1273,7 +1283,6 @@ def share_shelf(slug: str, auth, req):
             ShareInterface(
                 bookshelf=shelf,
                 members=members,
-                pending_members=pending_members,
                 invites=invites,
                 can_manage=can_manage,
                 can_generate_invites=can_generate,
@@ -1526,9 +1535,11 @@ def remove_member(slug: str, member_did: str, auth):
         logger.error(f"Error removing member {member_did} from shelf {slug}: {e}", exc_info=True)
         return ""
 
+# UNUSED: Pending member approval system preserved for future approval workflows
+# Currently all invites create active permissions immediately, so this endpoint is never called
 @rt("/api/shelf/{slug}/member/{member_did}/approve", methods=["POST"])
 def approve_member(slug: str, member_did: str, auth):
-    """HTMX endpoint to approve a pending member."""
+    """UNUSED: HTMX endpoint to approve a pending member. Preserved for future approval workflows."""
     if not auth: return Div("Authentication required.", cls="error")
     
     try:

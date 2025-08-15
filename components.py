@@ -447,7 +447,7 @@ def MemberCard(user, permission, is_owner=False, can_manage=False, bookshelf_slu
         id=f"member-{user.did}"
     )
 
-def ShareInterface(bookshelf, members, pending_members, invites, can_manage=False, can_generate_invites=False, req=None):
+def ShareInterface(bookshelf, members, invites, can_manage=False, can_generate_invites=False, req=None):
     """Complete share interface for a bookshelf."""
     privacy_icon = {
         'public': '🌍',
