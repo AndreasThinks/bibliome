@@ -3,6 +3,7 @@
 from atproto import models
 from atproto import Client as AtprotoClient
 from fasthtml.common import *
+from fastcore.xtras import flexicache, time_policy
 from typing import Optional, Dict, Any
 from components import Alert, NavBar
 import os
@@ -145,24 +146,75 @@ class BlueskyAuth:
         client.login(session_string=session_data['session_string'])
         return client
     
-    def get_following_list(self, auth_data: Dict[str, Any], limit: int = 100) -> list[str]:
-        """Get list of DIDs that a user follows."""
+    @flexicache(time_policy(3600))  # Cache for 1 hour
+    def _get_all_following_paginated(self, user_did: str, session_string: str) -> list[str]:
+        """Get all DIDs that a user follows with pagination and caching."""
         try:
-            client = self.get_client_from_session(auth_data)
-            if not client:
-                logger.warning("Could not get authenticated client for following list.")
+            # Create a fresh client for this operation
+            client = AtprotoClient()
+            client.login(session_string=session_string)
+            
+            if not client.me:
+                logger.warning("Could not authenticate client for following list.")
                 return []
 
-            response = client.app.bsky.graph.get_follows({
-                'actor': auth_data['did'],
-                'limit': limit
-            })
+            all_following = []
+            cursor = None
+            max_pages = 50  # Safety limit: 50 * 100 = 5000 max followers
+            page_count = 0
             
-            if response and response.follows:
-                following_dids = [follow.did for follow in response.follows]
-                logger.info(f"Retrieved {len(following_dids)} following DIDs for {auth_data['handle']}")
-                return following_dids
+            logger.info(f"Starting paginated fetch of followers for user {user_did}")
+            
+            while page_count < max_pages:
+                params = {
+                    'actor': user_did,
+                    'limit': 100
+                }
+                if cursor:
+                    params['cursor'] = cursor
+                
+                try:
+                    response = client.app.bsky.graph.get_follows(params)
+                    
+                    if response and response.follows:
+                        page_followers = [follow.did for follow in response.follows]
+                        all_following.extend(page_followers)
+                        page_count += 1
+                        
+                        logger.debug(f"Page {page_count}: Retrieved {len(page_followers)} followers (total: {len(all_following)})")
+                        
+                        # Check if there are more pages
+                        cursor = getattr(response, 'cursor', None)
+                        if not cursor:
+                            logger.info(f"Reached end of followers list at page {page_count}")
+                            break
+                    else:
+                        logger.info(f"No more followers found at page {page_count}")
+                        break
+                        
+                except Exception as e:
+                    logger.warning(f"Error fetching page {page_count + 1}: {e}")
+                    break
+            
+            logger.info(f"Retrieved {len(all_following)} total following DIDs across {page_count} pages")
+            return all_following
+            
+        except Exception as e:
+            logger.error(f"Error getting paginated following list for {user_did}: {e}", exc_info=True)
             return []
+
+    def get_following_list(self, auth_data: Dict[str, Any], limit: int = None) -> list[str]:
+        """Get list of DIDs that a user follows (with caching and pagination)."""
+        try:
+            user_did = auth_data['did']
+            session_string = auth_data['session_string']
+            handle = auth_data.get('handle', 'unknown')
+            
+            # Use the cached paginated method
+            following_dids = self._get_all_following_paginated(user_did, session_string)
+            
+            logger.info(f"Retrieved {len(following_dids)} following DIDs for {handle}")
+            return following_dids
             
         except Exception as e:
             logger.error(f"Error getting following list for {auth_data.get('handle', 'unknown')}: {e}", exc_info=True)
