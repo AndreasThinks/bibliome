@@ -256,7 +256,6 @@ def EnhancedEmptyState(can_add=False, shelf_id=None):
             Div("📚", cls="empty-icon"),
             H3("Your shelf awaits its first book", cls="empty-title"),
             P("Start building your collection by adding books that matter to you.", cls="empty-description"),
-            AddBooksToggle(shelf_id) if can_add else None,
             cls="empty-content"
         ),
         cls="empty-state-card"
