@@ -124,15 +124,21 @@ def index(auth):
             # Show empty state even if there's an error
             content.append(NetworkActivityFeed([], auth))
         
-        # Add user's shelves
-        content.append(
-            Div(*[BookshelfCard(shelf, is_owner=True, can_edit=True) for shelf in user_shelves], cls="bookshelf-grid") if user_shelves else EmptyState(
+        # Add user's shelves with proper permission checking
+        if user_shelves:
+            shelf_cards = []
+            for shelf in user_shelves:
+                is_owner = getattr(shelf, 'user_relationship', 'owner') == 'owner'
+                can_edit = can_edit_bookshelf(shelf, current_auth_did, db_tables)
+                shelf_cards.append(BookshelfCard(shelf, is_owner=is_owner, can_edit=can_edit))
+            content.append(Div(*shelf_cards, cls="bookshelf-grid"))
+        else:
+            content.append(EmptyState(
                 "You haven't created any bookshelves yet",
                 "Start building your first collection of books!",
                 "Create Your First Shelf",
                 "/shelf/new"
-            )
-        )
+            ))
         
         return (
             Title("Dashboard - Bibliome"),

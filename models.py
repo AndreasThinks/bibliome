@@ -487,8 +487,43 @@ def get_public_shelves(db_tables, limit: int = 20, offset: int = 0):
     return db_tables['bookshelves'](where="privacy='public'", limit=limit, offset=offset, order_by='created_at DESC')
 
 def get_user_shelves(user_did: str, db_tables, limit: int = 20, offset: int = 0):
-    """Fetch a paginated list of a user's bookshelves."""
-    return db_tables['bookshelves']("owner_did=?", (user_did,), limit=limit, offset=offset, order_by='updated_at DESC')
+    """Fetch a paginated list of a user's bookshelves (owned + member shelves)."""
+    try:
+        # Use raw SQL to combine owned shelves and shelves with active permissions
+        query = """
+            SELECT DISTINCT b.*, 'owner' as user_relationship 
+            FROM bookshelf b 
+            WHERE b.owner_did = ?
+            UNION
+            SELECT DISTINCT b.*, p.role as user_relationship
+            FROM bookshelf b 
+            JOIN permission p ON b.id = p.bookshelf_id 
+            WHERE p.user_did = ? AND p.status = 'active'
+            ORDER BY updated_at DESC
+            LIMIT ? OFFSET ?
+        """
+        
+        cursor = db_tables['db'].execute(query, (user_did, user_did, limit, offset))
+        columns = [d[0] for d in cursor.description]
+        rows = cursor.fetchall()
+        
+        # Convert raw results back to Bookshelf objects
+        shelves = []
+        for row in rows:
+            shelf_data = dict(zip(columns, row))
+            # Extract the user_relationship before creating Bookshelf object
+            user_relationship = shelf_data.pop('user_relationship', 'owner')
+            shelf = Bookshelf(**{k: v for k, v in shelf_data.items() if k in Bookshelf.__annotations__})
+            # Add the relationship info as an attribute
+            shelf.user_relationship = user_relationship
+            shelves.append(shelf)
+        
+        return shelves
+        
+    except Exception as e:
+        print(f"Error getting user shelves for {user_did}: {e}")
+        # Fallback to just owned shelves if there's an error
+        return db_tables['bookshelves']("owner_did=?", (user_did,), limit=limit, offset=offset, order_by='updated_at DESC')
 
 def get_public_shelves_with_stats(db_tables, limit: int = 20, offset: int = 0):
     """Get public shelves with book counts and recent book covers for display."""
