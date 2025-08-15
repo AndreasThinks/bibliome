@@ -246,14 +246,32 @@ def EnhancedEmptyState(can_add=False, shelf_id=None):
         cls="empty-state-card"
     )
 
-def ShelfHeader(shelf, action_buttons):
+def ShelfHeader(shelf, action_buttons, current_view="grid"):
     """A visually appealing header for the shelf page."""
+    # Create view toggle buttons
+    view_toggle = Div(
+        Button(
+            "⊞" if current_view == "list" else "☰",
+            hx_get=f"/api/shelf/{shelf.slug}/toggle-view?view={'grid' if current_view == 'list' else 'list'}",
+            hx_target="#books-container",
+            hx_swap="outerHTML",
+            cls="view-toggle-btn" + (" active" if current_view == "list" else ""),
+            title=f"Switch to {'Grid' if current_view == 'list' else 'List'} View"
+        ),
+        cls="view-toggle"
+    )
+    
+    # Combine view toggle with action buttons
+    all_actions = [view_toggle]
+    if action_buttons:
+        all_actions.extend(action_buttons)
+    
     return Card(
         H1(shelf.name, cls="shelf-title"),
         P(shelf.description, cls="shelf-description") if shelf.description else None,
         Div(
             Span(f"🌍 {shelf.privacy.replace('-', ' ').title()}", cls="privacy-badge"),
-            Div(*action_buttons, cls="shelf-actions") if action_buttons else None,
+            Div(*all_actions, cls="shelf-actions"),
             cls="shelf-meta"
         ),
         cls="shelf-header-card"
@@ -1010,6 +1028,35 @@ def SearchResultsGrid(shelves, page: int = 1, query: str = "", privacy: str = "p
     pagination = Nav(*pagination_links, cls="pagination") if pagination_links else None
     
     return Div(grid, pagination, id="search-results-grid")
+
+def BookListView(books, can_upvote=True, can_remove=False):
+    """Render books in a table/list view format."""
+    if not books:
+        return Div("No books to display", cls="empty-list-message")
+    
+    # Create table rows
+    book_rows = [book.as_table_row(
+        can_upvote=can_upvote,
+        user_has_upvoted=book.user_has_upvoted,
+        upvote_count=book.upvote_count,
+        can_remove=can_remove
+    ) for book in books]
+    
+    return Table(
+        Thead(
+            Tr(
+                Th("Cover", cls="cover-header"),
+                Th("Title", cls="title-header"),
+                Th("Author", cls="author-header"),
+                Th("Description", cls="description-header"),
+                Th("Votes", cls="votes-header"),
+                Th("Actions", cls="actions-header"),
+                cls="book-table-header"
+            )
+        ),
+        Tbody(*book_rows, cls="book-table-body"),
+        cls="book-table"
+    )
 
 def BookScrollCard(book):
     """A card for a book in the community reading scroll section."""

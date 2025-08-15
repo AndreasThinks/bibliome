@@ -726,6 +726,118 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
     )
 
 @patch
+def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False):
+    """Render Book as a table row for list view."""
+    # Generate Google Books URL
+    if self.isbn:
+        google_books_url = f"https://books.google.com/books?isbn={self.isbn}"
+    else:
+        # Fallback to search query if no ISBN
+        search_query = f"{self.title} {self.author}".replace(" ", "+")
+        google_books_url = f"https://books.google.com/books?q={search_query}"
+    
+    # Small cover thumbnail
+    cover_cell = Td(
+        Img(
+            src=self.cover_url,
+            alt=f"Cover of {self.title}",
+            cls="book-table-cover",
+            loading="lazy"
+        ) if self.cover_url else Div("📖", cls="book-table-cover-placeholder"),
+        cls="cover-cell"
+    )
+    
+    # Title cell
+    title_cell = Td(
+        Strong(self.title, cls="book-table-title"),
+        cls="title-cell"
+    )
+    
+    # Author cell
+    author_cell = Td(
+        self.author if self.author else "Unknown Author",
+        cls="author-cell"
+    )
+    
+    # Description cell (truncated)
+    description_text = self.description[:60] + "..." if len(self.description) > 60 else self.description
+    description_cell = Td(
+        description_text if self.description else "—",
+        cls="description-cell"
+    )
+    
+    # Voting cell
+    voting_buttons = []
+    if can_upvote:
+        upvote_cls = "vote-btn-small upvote-btn" + (" voted" if user_has_upvoted else "")
+        voting_buttons.append(Button(
+            "👍",
+            hx_post=f"/book/{self.id}/upvote",
+            hx_target=f"#book-row-{self.id}",
+            hx_swap="outerHTML",
+            cls=upvote_cls,
+            disabled=user_has_upvoted,
+            title=f"Upvote ({upvote_count})" if not user_has_upvoted else f"Remove upvote ({upvote_count})"
+        ))
+        
+        downvote_cls = "vote-btn-small downvote-btn" + (" disabled" if not user_has_upvoted else "")
+        downvote_attrs = {
+            "cls": downvote_cls,
+            "disabled": not user_has_upvoted,
+            "title": "Remove vote" if user_has_upvoted else "You haven't upvoted this book"
+        }
+        if user_has_upvoted:
+            downvote_attrs.update({
+                "hx_post": f"/book/{self.id}/upvote",
+                "hx_target": f"#book-row-{self.id}",
+                "hx_swap": "outerHTML"
+            })
+        voting_buttons.append(Button("👎", **downvote_attrs))
+    else:
+        voting_buttons.append(Button("👍", cls="vote-btn-small upvote-btn disabled", disabled=True, title="Login to vote"))
+        voting_buttons.append(Button("👎", cls="vote-btn-small downvote-btn disabled", disabled=True, title="Login to vote"))
+    
+    votes_cell = Td(
+        Div(
+            Div(*voting_buttons, cls="table-voting-buttons"),
+            Span(f"{upvote_count}", cls="table-vote-count"),
+            cls="table-voting"
+        ),
+        cls="votes-cell"
+    )
+    
+    # Actions cell
+    actions = [
+        A("More Info", href=google_books_url, target="_blank", rel="noopener noreferrer", 
+          cls="table-more-info-link", title="View on Google Books")
+    ]
+    
+    if can_remove:
+        escaped_title = self.title.replace("'", "\\'").replace('"', '\\"')
+        actions.append(Button(
+            "×",
+            onclick=f"confirmRemoveBook({self.id}, '{escaped_title}', {upvote_count})",
+            cls="table-remove-btn",
+            title="Remove book from shelf"
+        ))
+    
+    actions_cell = Td(
+        Div(*actions, cls="table-actions"),
+        cls="actions-cell"
+    )
+    
+    return Tr(
+        cover_cell,
+        title_cell,
+        author_cell,
+        description_cell,
+        votes_cell,
+        actions_cell,
+        cls="book-table-row",
+        id=f"book-row-{self.id}"
+    )
+
+@patch
 def __ft__(self: User):
     """Render a User as a simple profile component."""
     avatar = Img(

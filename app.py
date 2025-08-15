@@ -315,7 +315,7 @@ def explore_page(auth, page: int = 1):
     )
 
 @rt("/shelf/{slug}")
-def view_shelf(slug: str, auth):
+def view_shelf(slug: str, auth, view: str = "grid"):
     """Display a bookshelf."""
     try:
         shelf = get_shelf_by_slug(slug, db_tables)
@@ -355,25 +355,33 @@ def view_shelf(slug: str, auth):
         if can_edit or can_share:
             action_buttons.append(A("Manage", href=f"/shelf/{shelf.slug}/manage", cls="secondary"))
         
-        # New Shelf Header
-        shelf_header = ShelfHeader(shelf, action_buttons)
+        # New Shelf Header with view toggle
+        shelf_header = ShelfHeader(shelf, action_buttons, current_view=view)
         
         # Show book search form if user can add books
         add_books_section = Section(AddBooksToggle(shelf.id), cls="add-books-section") if can_add else None
         
-        # Always include the book-grid div, even when empty
+        # Render books based on view type
         if shelf_books:
-            book_grid_content = [book.as_interactive_card(
-                can_upvote=can_vote, 
-                user_has_upvoted=book.user_has_upvoted,
-                upvote_count=book.upvote_count,
-                can_remove=can_remove
-            ) for book in shelf_books]
-            books_section = Section(Div(*book_grid_content, cls="book-grid", id="book-grid"), cls="books-section")
+            if view == "list":
+                from components import BookListView
+                books_content = BookListView(shelf_books, can_upvote=can_vote, can_remove=can_remove)
+            else:  # grid view (default)
+                books_content = Div(*[book.as_interactive_card(
+                    can_upvote=can_vote, 
+                    user_has_upvoted=book.user_has_upvoted,
+                    upvote_count=book.upvote_count,
+                    can_remove=can_remove
+                ) for book in shelf_books], cls="book-grid")
+            
+            books_section = Section(
+                Div(books_content, id="books-container"),
+                cls="books-section"
+            )
         else:
             books_section = Section(
                 EnhancedEmptyState(can_add=can_add, shelf_id=shelf.id),
-                Div(cls="book-grid", id="book-grid"),  # Always include the target div
+                Div(id="books-container"),  # Always include the target div
                 cls="books-section"
             )
         
@@ -808,6 +816,50 @@ def get_add_books_form(bookshelf_id: int, auth):
     """HTMX endpoint to get the add books form."""
     if not auth: return ""
     return BookSearchForm(bookshelf_id)
+
+@rt("/api/shelf/{slug}/toggle-view")
+def toggle_view(slug: str, view: str, auth):
+    """HTMX endpoint to toggle between grid and list view."""
+    if not auth: return ""
+    
+    try:
+        shelf = get_shelf_by_slug(slug, db_tables)
+        if not shelf:
+            return Div("Shelf not found", cls="error")
+        
+        # Check permissions
+        user_did = get_current_user_did(auth)
+        if not can_view_bookshelf(shelf, user_did, db_tables):
+            return Div("Access denied", cls="error")
+        
+        # Import permission functions
+        from models import (can_add_books, can_vote_books, can_remove_books, get_books_with_upvotes)
+        
+        can_vote = can_vote_books(shelf, user_did, db_tables)
+        can_remove = can_remove_books(shelf, user_did, db_tables)
+        
+        # Get books with upvote counts
+        shelf_books = get_books_with_upvotes(shelf.id, user_did, db_tables)
+        
+        if shelf_books:
+            if view == "list":
+                from components import BookListView
+                books_content = BookListView(shelf_books, can_upvote=can_vote, can_remove=can_remove)
+            else:  # grid view
+                books_content = Div(*[book.as_interactive_card(
+                    can_upvote=can_vote, 
+                    user_has_upvoted=book.user_has_upvoted,
+                    upvote_count=book.upvote_count,
+                    can_remove=can_remove
+                ) for book in shelf_books], cls="book-grid")
+        else:
+            books_content = Div("No books to display", cls="empty-message")
+        
+        return Div(books_content, id="books-container")
+        
+    except Exception as e:
+        logger.error(f"Error toggling view for shelf {slug}: {e}", exc_info=True)
+        return Div(f"Error: {str(e)}", cls="error")
 
 # Management routes
 @rt("/shelf/{slug}/manage")
