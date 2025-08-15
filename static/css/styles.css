@@ -2822,6 +2822,79 @@ section + section {
     color: var(--brand-amber);
 }
 
+/* ===== USER ATTRIBUTION STYLES ===== */
+
+/* Book Card User Attribution - Enhanced visibility */
+.book-added-by {
+    font-size: 0.7rem;
+    color: var(--brand-muted);
+    margin-top: 0.5rem;
+    text-align: center;
+}
+
+.book-added-by-link {
+    color: #4a90a4; /* Subtle blue-tinted color to suggest linkability */
+    text-decoration: none;
+    transition: all 0.2s ease;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.book-added-by-link:hover {
+    color: var(--brand-amber);
+    text-decoration: underline;
+    transform: scale(1.02);
+}
+
+/* Table view user attribution */
+.book-added-by-table {
+    font-size: 0.75rem;
+    color: var(--brand-muted);
+    margin-top: 0.5rem;
+    font-style: italic;
+}
+
+/* Member Card User Links - Enhanced visibility while maintaining design */
+.member-name-link {
+    color: #4a90a4; /* Subtle blue-tinted color to suggest linkability */
+    text-decoration: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.member-name-link:hover {
+    color: var(--brand-amber);
+    text-decoration: underline;
+    transform: scale(1.02);
+}
+
+.member-handle-link {
+    color: #5a9bb0; /* Slightly lighter blue for handles */
+    text-decoration: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.member-handle-link:hover {
+    color: var(--brand-amber);
+    text-decoration: underline;
+    transform: scale(1.02);
+}
+
+/* Activity Feed User Links - Enhanced visibility */
+.activity-user-link {
+    color: #4a90a4; /* Consistent blue-tinted color */
+    text-decoration: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.activity-user-link:hover {
+    color: var(--brand-amber);
+    text-decoration: underline;
+    transform: scale(1.02);
+}
+
 /* Mobile responsive for user profile */
 @media (max-width: 768px) {
     .profile-header-content {

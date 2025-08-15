@@ -437,8 +437,8 @@ def MemberCard(user, permission, is_owner=False, can_manage=False, bookshelf_slu
     return Div(
         avatar,
         Div(
-            H4(user.display_name or user.handle, cls="member-name"),
-            P(f"@{user.handle}", cls="member-handle"),
+            H4(A(user.display_name or user.handle, href=f"/user/{user.handle}", cls="member-name-link", title="View profile"), cls="member-name"),
+            P(A(f"@{user.handle}", href=f"/user/{user.handle}", cls="member-handle-link", title="View profile"), cls="member-handle"),
             Span(display_role.title() + status_text, cls=f"role-badge {role_badge_colors.get(display_role, 'badge-viewer')}"),
             cls="member-info"
         ),
