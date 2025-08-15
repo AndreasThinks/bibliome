@@ -499,18 +499,8 @@ def ShareInterface(bookshelf, members, invites, can_manage=False, can_generate_i
         cls="members-section"
     )
     
-    # Pending members section (for private shelves)
-    pending_section = None
-    if bookshelf.privacy == 'private' and (pending_members or can_manage):
-        pending_cards = [MemberCard(member['user'], member['permission'], 
-                                   can_manage=can_manage, bookshelf_slug=bookshelf.slug) 
-                        for member in pending_members]
-        
-        pending_section = Div(
-            H3(f"Pending Invitations ({len(pending_members)})"),
-            Div(*pending_cards, cls="members-grid", id="pending-list") if pending_cards else P("No pending invitations.", cls="empty-message"),
-            cls="pending-section"
-        )
+    # REMOVED: Pending members section - all invites now create active permissions immediately
+    # This functionality is preserved in the backend for future approval workflows
     
     # Invite generation section
     invite_section = None
@@ -563,7 +553,6 @@ def ShareInterface(bookshelf, members, invites, can_manage=False, can_generate_i
     return Div(
         privacy_section,
         members_section,
-        pending_section,
         invite_section,
         cls="share-interface"
     )
