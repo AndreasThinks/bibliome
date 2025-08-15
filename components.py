@@ -13,16 +13,30 @@ def NavBar(auth=None):
             A("My Shelves", href="/"),
             A("Search", href="/search"),
             A("Create Shelf", href="/shelf/new"),
-            A("Logout", href="/auth/logout"),
         ]
-        user_greeting = Span(f"👋 {auth.get('display_name', auth.get('handle', 'User'))}", cls="user-greeting")
+        
+        # Create user profile card
+        user_avatar = Img(
+            src=auth.get('avatar_url', ''),
+            alt=auth.get('display_name', auth.get('handle', 'User')),
+            cls="nav-user-avatar"
+        ) if auth.get('avatar_url') else Div("👤", cls="nav-user-avatar-placeholder")
+        
+        user_profile_card = Div(
+            user_avatar,
+            Span(auth.get('display_name', auth.get('handle', 'User')), cls="nav-user-name"),
+            A("×", href="/auth/logout", cls="nav-logout-icon", title="Logout"),
+            cls="nav-user-profile-card",
+            title="Go to Dashboard",
+            onclick="window.location.href='/'"
+        )
     else:
         links = [
             A("Explore", href="/explore"),
             A("Search", href="/search"),
             A("Login", href="/auth/login", cls="login-btn"),
         ]
-        user_greeting = None
+        user_profile_card = None
 
     return Nav(
         Div(
@@ -34,8 +48,8 @@ def NavBar(auth=None):
             ),
             # Desktop menu
             Div(
-                user_greeting,
                 *links,
+                user_profile_card,
                 cls="user-menu desktop-menu"
             ),
             # Mobile menu button with HTMX
@@ -49,6 +63,7 @@ def NavBar(auth=None):
         # Mobile menu (hidden by default)
         Div(
             *links,
+            A("Logout", href="/auth/logout") if auth else None,
             cls="mobile-menu",
             id="mobile-menu"
         ),
@@ -774,7 +789,7 @@ def ActivityCard(activity: Dict):
     user_info = Div(
         avatar,
         Div(
-            Strong(user_profile['display_name']),
+            A(Strong(user_profile['display_name']), href=f"/user/{user_profile['handle']}", cls="activity-user-link"),
             P(f"@{user_profile['handle']}", cls="activity-handle"),
             cls="activity-user-info"
         ),
@@ -979,11 +994,32 @@ def CommunityReadingSection(books):
         cls="community-reading-section"
     )
 
-def SearchShelvesForm(query: str = "", book_title: str = "", book_author: str = "", book_isbn: str = "", privacy: str = "public", sort_by: str = "updated_at"):
-    """Form for searching bookshelves with advanced options."""
+def SearchForm(query: str = "", search_type: str = "all", book_title: str = "", book_author: str = "", book_isbn: str = "", privacy: str = "public", sort_by: str = "updated_at"):
+    """Enhanced search form for shelves, books, and users."""
     return Form(
+        # Search type tabs
         Div(
-            Input(name="query", type="search", placeholder="Search shelves and books...", value=query),
+            Label(
+                Input(type="radio", name="search_type", value="all", checked=(search_type == "all")),
+                "All",
+                cls="search-type-tab"
+            ),
+            Label(
+                Input(type="radio", name="search_type", value="shelves", checked=(search_type == "shelves")),
+                "Shelves",
+                cls="search-type-tab"
+            ),
+            Label(
+                Input(type="radio", name="search_type", value="users", checked=(search_type == "users")),
+                "Users",
+                cls="search-type-tab"
+            ),
+            cls="search-type-tabs"
+        ),
+        
+        # Main search row
+        Div(
+            Input(name="query", type="search", placeholder="Search shelves, books, or users...", value=query),
             Select(
                 Option("Public", value="public", selected=(privacy == "public")),
                 Option("Link Only", value="link-only", selected=(privacy == "link-only")),
@@ -999,6 +1035,7 @@ def SearchShelvesForm(query: str = "", book_title: str = "", book_author: str = 
             Button("Search", type="submit"),
             cls="search-form-grid"
         ),
+        
         A("Advanced Search", href="#", onclick="toggleAdvancedSearch(event)", cls="advanced-search-toggle"),
         Div(
             Fieldset(
@@ -1025,29 +1062,108 @@ def SearchShelvesForm(query: str = "", book_title: str = "", book_author: str = 
         """),
         action="/search",
         method="get",
-        cls="search-shelves-form"
+        cls="search-form"
     )
 
-def SearchResultsGrid(shelves, page: int = 1, query: str = "", privacy: str = "public", sort_by: str = "updated_at"):
-    """Grid of search results with simple pagination."""
-    if not shelves:
+def UserSearchResultCard(user):
+    """Render a user search result card."""
+    avatar = Img(
+        src=user.avatar_url,
+        alt=user.display_name or user.handle,
+        cls="user-search-avatar"
+    ) if user.avatar_url else Div("👤", cls="user-search-avatar-placeholder")
+    
+    # Format join date
+    join_date = "Unknown"
+    if user.created_at:
+        try:
+            if isinstance(user.created_at, str):
+                join_date_obj = datetime.fromisoformat(user.created_at.replace('Z', '+00:00'))
+            else:
+                join_date_obj = user.created_at
+            join_date = join_date_obj.strftime("%B %Y")
+        except:
+            join_date = "Unknown"
+    
+    return A(
+        href=f"/user/{user.handle}",
+        cls="user-search-card"
+    )(
+        Card(
+            Div(
+                avatar,
+                Div(
+                    H4(user.display_name or user.handle, cls="user-search-name"),
+                    P(f"@{user.handle}", cls="user-search-handle"),
+                    Div(
+                        Span(f"📚 {getattr(user, 'public_shelves_count', 0)} public shelves", cls="user-search-stat"),
+                        Span(f"📅 Joined {join_date}", cls="user-search-stat"),
+                        cls="user-search-stats"
+                    ),
+                    cls="user-search-info"
+                ),
+                cls="user-search-content"
+            ),
+            footer=Div(
+                P(f"Recent shelf: {getattr(user, 'recent_shelf_name', 'None')}" if getattr(user, 'recent_shelf_name', None) else "No recent activity", cls="user-search-recent"),
+                A("View Profile", href=f"/user/{user.handle}", cls="user-search-link"),
+                cls="user-search-footer"
+            )
+        )
+    )
+
+def SearchResultsGrid(shelves, users=None, search_type="all", page: int = 1, query: str = "", privacy: str = "public", sort_by: str = "updated_at"):
+    """Grid of search results with tabs for different content types."""
+    shelf_count = len(shelves) if shelves else 0
+    user_count = len(users) if users else 0
+    
+    # Create result sections
+    sections = []
+    
+    if search_type == "all" or search_type == "shelves":
+        if shelves:
+            sections.append(Div(
+                H3(f"Bookshelves ({shelf_count})", cls="search-section-title"),
+                Div(*[ShelfPreviewCard(shelf) for shelf in shelves], cls="search-shelves-grid"),
+                cls="search-section"
+            ))
+        elif search_type == "shelves":
+            sections.append(Div(
+                H3("Bookshelves (0)", cls="search-section-title"),
+                EmptyState("No Shelves Found", "No bookshelves matched your search criteria."),
+                cls="search-section"
+            ))
+    
+    if search_type == "all" or search_type == "users":
+        if users:
+            sections.append(Div(
+                H3(f"Users ({user_count})", cls="search-section-title"),
+                Div(*[UserSearchResultCard(user) for user in users], cls="search-users-grid"),
+                cls="search-section"
+            ))
+        elif search_type == "users":
+            sections.append(Div(
+                H3("Users (0)", cls="search-section-title"),
+                EmptyState("No Users Found", "No users matched your search criteria."),
+                cls="search-section"
+            ))
+    
+    if not sections:
         return EmptyState(
-            "No Shelves Found",
-            "No bookshelves matched your search criteria. Try a different search."
+            "No Results Found",
+            "No shelves or users matched your search criteria. Try a different search."
         )
     
-    grid = Div(*[ShelfPreviewCard(shelf) for shelf in shelves], cls="public-shelves-grid")
-    
-    # Simple next/prev pagination
+    # Simple pagination (for now, just for shelves)
     pagination_links = []
     if page > 1:
-        pagination_links.append(A("← Previous", href=f"/search?query={query}&privacy={privacy}&sort_by={sort_by}&page={page - 1}"))
-    if len(shelves) == 12: # If we got a full page, there might be a next page
-        pagination_links.append(A("Next →", href=f"/search?query={query}&privacy={privacy}&sort_by={sort_by}&page={page + 1}"))
+        pagination_links.append(A("← Previous", href=f"/search?query={query}&search_type={search_type}&privacy={privacy}&sort_by={sort_by}&page={page - 1}"))
+    if shelf_count == 12: # If we got a full page, there might be a next page
+        pagination_links.append(A("Next →", href=f"/search?query={query}&search_type={search_type}&privacy={privacy}&sort_by={sort_by}&page={page + 1}"))
     
     pagination = Nav(*pagination_links, cls="pagination") if pagination_links else None
     
-    return Div(grid, pagination, id="search-results-grid")
+    return Div(*sections, pagination, id="search-results-grid")
 
 def BookListView(books, can_upvote=True, can_remove=False):
     """Render books in a table/list view format."""
@@ -1076,6 +1192,160 @@ def BookListView(books, can_upvote=True, can_remove=False):
         ),
         Tbody(*book_rows, cls="book-table-body"),
         cls="book-table"
+    )
+
+def UserProfileHeader(user, is_own_profile=False, public_shelves_count=0):
+    """Header section for user profile pages."""
+    avatar = Img(
+        src=user.avatar_url,
+        alt=user.display_name or user.handle,
+        cls="profile-avatar"
+    ) if user.avatar_url else Div("👤", cls="profile-avatar-placeholder")
+    
+    # Format join date
+    join_date = "Unknown"
+    if user.created_at:
+        try:
+            if isinstance(user.created_at, str):
+                from datetime import datetime
+                join_date_obj = datetime.fromisoformat(user.created_at.replace('Z', '+00:00'))
+            else:
+                join_date_obj = user.created_at
+            join_date = join_date_obj.strftime("%B %Y")
+        except:
+            join_date = "Unknown"
+    
+    return Card(
+        Div(
+            avatar,
+            Div(
+                H1(user.display_name or user.handle, cls="profile-name"),
+                P(f"@{user.handle}", cls="profile-handle"),
+                Div(
+                    Span(f"📚 {public_shelves_count} public shelves", cls="profile-stat"),
+                    Span(f"📅 Joined {join_date}", cls="profile-stat"),
+                    cls="profile-stats"
+                ),
+                cls="profile-info"
+            ),
+            cls="profile-header-content"
+        ),
+        cls="profile-header-card"
+    )
+
+def UserPublicShelves(shelves, user_handle):
+    """Display a user's public bookshelves."""
+    if not shelves:
+        return Div(
+            H3("Public Bookshelves"),
+            P(f"@{user_handle} hasn't created any public bookshelves yet.", cls="empty-message"),
+            cls="user-shelves-section"
+        )
+    
+    return Div(
+        H3(f"Public Bookshelves ({len(shelves)})"),
+        Div(*[ShelfPreviewCard(shelf) for shelf in shelves], cls="user-shelves-grid"),
+        cls="user-shelves-section"
+    )
+
+def UserActivityFeed(activities, user_handle, viewer_is_logged_in=False):
+    """Display a user's activity feed."""
+    if not activities:
+        activity_type = "activity" if viewer_is_logged_in else "public activity"
+        return Div(
+            H3("Recent Activity"),
+            P(f"@{user_handle} doesn't have any recent {activity_type} to show.", cls="empty-message"),
+            cls="user-activity-section"
+        )
+    
+    activity_cards = []
+    for activity in activities:
+        # Don't show user info since this is their profile page
+        activity_cards.append(UserActivityCard(activity))
+    
+    return Div(
+        H3(f"Recent Activity ({len(activities)})"),
+        Div(*activity_cards, cls="user-activity-feed"),
+        cls="user-activity-section"
+    )
+
+def UserActivityCard(activity):
+    """Render a single activity card for user profile (without user info)."""
+    activity_type = activity['activity_type']
+    created_at = activity['created_at']
+    
+    # Format timestamp
+    if isinstance(created_at, str):
+        from datetime import datetime
+        try:
+            created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+        except:
+            created_at = datetime.now()
+    
+    time_ago = format_time_ago(created_at)
+    
+    # Activity content based on type (without user info)
+    if activity_type == 'bookshelf_created':
+        content = UserActivityBookshelfCreated(activity)
+    elif activity_type == 'book_added':
+        content = UserActivityBookAdded(activity)
+    else:
+        content = P(f"Unknown activity: {activity_type}")
+    
+    return Div(
+        content,
+        P(time_ago, cls="user-activity-timestamp"),
+        cls="user-activity-card"
+    )
+
+def UserActivityBookshelfCreated(activity):
+    """Render bookshelf creation activity for user profile."""
+    bookshelf_name = activity['bookshelf_name']
+    bookshelf_slug = activity['bookshelf_slug']
+    privacy_icon = {
+        'public': '🌍',
+        'link-only': '🔗',
+        'private': '🔒'
+    }.get(activity['bookshelf_privacy'], '🌍')
+    
+    return Div(
+        P("created a new bookshelf", cls="user-activity-action"),
+        Div(
+            H4(bookshelf_name, cls="activity-bookshelf-name"),
+            P(f"{privacy_icon} {activity['bookshelf_privacy'].replace('-', ' ').title()}", cls="activity-privacy"),
+            A("View Shelf", href=f"/shelf/{bookshelf_slug}", cls="activity-link"),
+            cls="activity-bookshelf-card"
+        ),
+        cls="user-activity-content"
+    )
+
+def UserActivityBookAdded(activity):
+    """Render book addition activity for user profile."""
+    book_title = activity['book_title']
+    book_author = activity['book_author']
+    book_cover_url = activity['book_cover_url']
+    bookshelf_name = activity['bookshelf_name']
+    bookshelf_slug = activity['bookshelf_slug']
+    
+    cover = Img(
+        src=book_cover_url,
+        alt=f"Cover of {book_title}",
+        cls="activity-book-cover"
+    ) if book_cover_url else Div("📖", cls="activity-book-cover-placeholder")
+    
+    return Div(
+        P(f"added a book to ", Span(bookshelf_name, cls="activity-bookshelf-ref"), cls="user-activity-action"),
+        Div(
+            cover,
+            Div(
+                H4(book_title, cls="activity-book-title"),
+                P(f"by {book_author}", cls="activity-book-author") if book_author else None,
+                A("View Shelf", href=f"/shelf/{bookshelf_slug}", cls="activity-link"),
+                cls="activity-book-info"
+            ),
+            cls="activity-book-card"
+        ),
+        cls="user-activity-content"
     )
 
 def BookScrollCard(book):

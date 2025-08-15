@@ -546,6 +546,160 @@ def get_recent_community_books(db_tables, limit: int = 15):
         print(f"Error fetching recent community books: {e}")
         return []
 
+def get_user_by_handle(handle: str, db_tables):
+    """Get a user by their handle, returning None if not found."""
+    try:
+        users = db_tables['users']("handle=?", (handle,))
+        return users[0] if users else None
+    except Exception as e:
+        print(f"Error getting user by handle {handle}: {e}")
+        return None
+
+def get_user_by_did(did: str, db_tables):
+    """Get a user by their DID, returning None if not found."""
+    try:
+        return db_tables['users'][did]
+    except Exception as e:
+        print(f"Error getting user by DID {did}: {e}")
+        return None
+
+def get_user_public_shelves(user_did: str, db_tables, viewer_did: str = None, limit: int = 20):
+    """Get a user's public bookshelves, and link-only shelves if viewer has access."""
+    try:
+        # Always include public shelves
+        privacy_conditions = ["privacy='public'"]
+        
+        # If viewer is logged in, also include link-only shelves
+        if viewer_did:
+            privacy_conditions.append("privacy='link-only'")
+        
+        privacy_clause = " OR ".join(privacy_conditions)
+        shelves = db_tables['bookshelves'](
+            f"owner_did=? AND ({privacy_clause})", 
+            (user_did,), 
+            limit=limit, 
+            order_by='updated_at DESC'
+        )
+        
+        # Add book counts and recent covers
+        for shelf in shelves:
+            shelf.book_count = len(db_tables['books']("bookshelf_id=?", (shelf.id,)))
+            recent_books = db_tables['books'](
+                "bookshelf_id=?", (shelf.id,), 
+                limit=4, 
+                order_by='added_at DESC'
+            )
+            shelf.recent_covers = [book.cover_url for book in recent_books if book.cover_url]
+        
+        return shelves
+    except Exception as e:
+        print(f"Error getting user public shelves for {user_did}: {e}")
+        return []
+
+def get_user_activity(user_did: str, db_tables, viewer_did: str = None, limit: int = 20):
+    """Get a user's activity, filtered based on viewer permissions."""
+    try:
+        # Build privacy filter based on viewer
+        if viewer_did:
+            # Logged in users can see public and link-only activity
+            privacy_filter = "(b.privacy = 'public' OR b.privacy = 'link-only')"
+        else:
+            # Anonymous users only see public activity
+            privacy_filter = "b.privacy = 'public'"
+        
+        query = f"""
+            SELECT a.*, b.name as bookshelf_name, b.slug as bookshelf_slug, b.privacy,
+                   bk.title as book_title, bk.author as book_author, bk.cover_url as book_cover_url
+            FROM activity a
+            LEFT JOIN bookshelf b ON a.bookshelf_id = b.id
+            LEFT JOIN book bk ON a.book_id = bk.id
+            WHERE a.user_did = ? AND {privacy_filter}
+            ORDER BY a.created_at DESC
+            LIMIT ?
+        """
+        
+        cursor = db_tables['db'].execute(query, (user_did, limit))
+        raw_activities = cursor.fetchall()
+        
+        # Format activities
+        activities = []
+        for row in raw_activities:
+            activity_data = {
+                'id': row[0],
+                'user_did': row[1],
+                'activity_type': row[2],
+                'bookshelf_id': row[3],
+                'book_id': row[4],
+                'created_at': row[5],
+                'metadata': row[6],
+                'bookshelf_name': row[7],
+                'bookshelf_slug': row[8],
+                'bookshelf_privacy': row[9],
+                'book_title': row[10],
+                'book_author': row[11],
+                'book_cover_url': row[12]
+            }
+            activities.append(activity_data)
+        
+        return activities
+        
+    except Exception as e:
+        print(f"Error getting user activity for {user_did}: {e}")
+        return []
+
+def search_users(db_tables, query: str = "", viewer_did: str = None, limit: int = 20):
+    """Search for users by handle or display name, only showing users with public content."""
+    if not query.strip():
+        return []
+    
+    try:
+        # Clean the query
+        search_term = query.strip()
+        
+        # Build the search query - only include users who have public content
+        sql_query = """
+            SELECT DISTINCT u.*, 
+                   COUNT(DISTINCT bs.id) as public_shelves_count,
+                   COUNT(DISTINCT a.id) as activity_count,
+                   bs_recent.name as recent_shelf_name,
+                   bs_recent.slug as recent_shelf_slug
+            FROM user u
+            LEFT JOIN bookshelf bs ON u.did = bs.owner_did AND bs.privacy = 'public'
+            LEFT JOIN activity a ON u.did = a.user_did
+            LEFT JOIN bookshelf bs_activity ON a.bookshelf_id = bs_activity.id AND bs_activity.privacy = 'public'
+            LEFT JOIN bookshelf bs_recent ON u.did = bs_recent.owner_did AND bs_recent.privacy = 'public'
+            WHERE (u.handle LIKE ? OR u.display_name LIKE ?)
+            AND (bs.id IS NOT NULL OR bs_activity.id IS NOT NULL)
+            GROUP BY u.did
+            HAVING public_shelves_count > 0 OR activity_count > 0
+            ORDER BY public_shelves_count DESC, u.created_at DESC
+            LIMIT ?
+        """
+        
+        # Use wildcards for partial matching
+        search_pattern = f"%{search_term}%"
+        params = [search_pattern, search_pattern, limit]
+        
+        cursor = db_tables['db'].execute(sql_query, params)
+        columns = [d[0] for d in cursor.description]
+        rows = cursor.fetchall()
+        
+        users = []
+        for row in rows:
+            user_data = dict(zip(columns, row))
+            user = User(**{k: v for k, v in user_data.items() if k in User.__annotations__})
+            user.public_shelves_count = user_data.get('public_shelves_count', 0)
+            user.activity_count = user_data.get('activity_count', 0)
+            user.recent_shelf_name = user_data.get('recent_shelf_name')
+            user.recent_shelf_slug = user_data.get('recent_shelf_slug')
+            users.append(user)
+        
+        return users
+        
+    except Exception as e:
+        print(f"Error searching users: {e}")
+        return []
+
 # FT rendering methods for models
 @patch
 def __ft__(self: Bookshelf):

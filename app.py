@@ -11,7 +11,7 @@ from components import (
     NavBar, LandingPageHero, FeaturesSection, CommunityReadingSection,
     HowItWorksSection, PublicShelvesPreview, LandingPageFooter, NetworkActivityFeed,
     BookshelfCard, EmptyState, CreateBookshelfForm, SearchPageHero,
-    SearchShelvesForm, SearchResultsGrid, ExplorePageHero, PublicShelvesGrid,
+    SearchForm, SearchResultsGrid, ExplorePageHero, PublicShelvesGrid,
     BookSearchForm, SearchResultCard, ShareInterface, InviteCard, MemberCard, AddBooksToggle,
     EnhancedEmptyState, ShelfHeader
 )
@@ -257,35 +257,64 @@ def create_shelf(name: str, description: str, privacy: str, auth, sess):
         return RedirectResponse('/shelf/new', status_code=303)
 
 @rt("/search")
-def search_page(auth, query: str = "", book_title: str = "", book_author: str = "", book_isbn: str = "", privacy: str = "public", sort_by: str = "updated_at", page: int = 1):
-    """Display search page for bookshelves."""
-    from models import search_shelves
+def search_page(auth, query: str = "", search_type: str = "all", book_title: str = "", book_author: str = "", book_isbn: str = "", privacy: str = "public", sort_by: str = "updated_at", page: int = 1):
+    """Display search page for bookshelves and users."""
+    from models import search_shelves, search_users
+    from components import SearchForm, SearchResultsGrid
     
     limit = 12
     offset = (page - 1) * limit
+    viewer_did = get_current_user_did(auth)
     
-    shelves = search_shelves(
-        db_tables, 
-        query=query, 
-        book_title=book_title,
-        book_author=book_author,
-        book_isbn=book_isbn,
-        privacy=privacy, 
-        sort_by=sort_by, 
-        limit=limit, 
-        offset=offset
-    )
+    # Search based on type
+    shelves = []
+    users = []
     
-    # For now, we don't have a total count for pagination, so we'll just show next/prev
+    if search_type == "all" or search_type == "shelves":
+        shelves = search_shelves(
+            db_tables, 
+            query=query, 
+            book_title=book_title,
+            book_author=book_author,
+            book_isbn=book_isbn,
+            privacy=privacy, 
+            sort_by=sort_by, 
+            limit=limit, 
+            offset=offset
+        )
+    
+    if search_type == "all" or search_type == "users":
+        users = search_users(
+            db_tables,
+            query=query,
+            viewer_did=viewer_did,
+            limit=10  # Limit users to 10 for now
+        )
     
     return (
-        Title("Search Shelves - Bibliome"),
+        Title("Search - Bibliome"),
         Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
         NavBar(auth),
         Container(
             SearchPageHero(),
-            SearchShelvesForm(query=query, book_title=book_title, book_author=book_author, book_isbn=book_isbn, privacy=privacy, sort_by=sort_by),
-            SearchResultsGrid(shelves, page=page, query=query, privacy=privacy, sort_by=sort_by)
+            SearchForm(
+                query=query, 
+                search_type=search_type,
+                book_title=book_title, 
+                book_author=book_author, 
+                book_isbn=book_isbn, 
+                privacy=privacy, 
+                sort_by=sort_by
+            ),
+            SearchResultsGrid(
+                shelves, 
+                users=users,
+                search_type=search_type,
+                page=page, 
+                query=query, 
+                privacy=privacy, 
+                sort_by=sort_by
+            )
         )
     )
 
@@ -309,6 +338,61 @@ def explore_page(auth, page: int = 1):
             PublicShelvesGrid(shelves, page=page, total_pages=total_pages)
         )
     )
+
+@rt("/user/{handle}")
+def user_profile(handle: str, auth):
+    """Display a user's profile page."""
+    try:
+        from models import get_user_by_handle, get_user_public_shelves, get_user_activity
+        from components import UserProfileHeader, UserPublicShelves, UserActivityFeed
+        
+        # Get user by handle
+        user = get_user_by_handle(handle, db_tables)
+        if not user:
+            return NavBar(auth), Container(
+                H1("User Not Found"),
+                P(f"The user @{handle} doesn't exist or hasn't joined Bibliome yet."),
+                A("← Back to Home", href="/")
+            )
+        
+        # Check if this is the user's own profile
+        viewer_did = get_current_user_did(auth)
+        is_own_profile = viewer_did == user.did
+        
+        # If it's their own profile, redirect to dashboard
+        if is_own_profile:
+            return RedirectResponse('/', status_code=303)
+        
+        # Get user's public content (filtered based on viewer permissions)
+        public_shelves = get_user_public_shelves(user.did, db_tables, viewer_did=viewer_did, limit=12)
+        user_activities = get_user_activity(user.did, db_tables, viewer_did=viewer_did, limit=15)
+        
+        # Build page content
+        content = [
+            UserProfileHeader(user, is_own_profile=is_own_profile, public_shelves_count=len(public_shelves)),
+            UserPublicShelves(public_shelves, user.handle),
+            UserActivityFeed(user_activities, user.handle, viewer_is_logged_in=bool(viewer_did))
+        ]
+        
+        return (
+            Title(f"@{user.handle} - Bibliome"),
+            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            NavBar(auth),
+            Container(*content)
+        )
+        
+    except Exception as e:
+        logger.error(f"Error loading user profile for {handle}: {e}", exc_info=True)
+        return (
+            Title("Error - Bibliome"),
+            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            NavBar(auth),
+            Container(
+                H1("Error"),
+                P(f"An error occurred: {str(e)}"),
+                A("← Back to Home", href="/")
+            )
+        )
 
 @rt("/shelf/{slug}")
 def view_shelf(slug: str, auth, view: str = "grid"):

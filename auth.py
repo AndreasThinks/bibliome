@@ -4,7 +4,7 @@ from atproto import models
 from atproto import Client as AtprotoClient
 from fasthtml.common import *
 from typing import Optional, Dict, Any
-from components import Alert
+from components import Alert, NavBar
 import os
 import logging
 from dotenv import load_dotenv
