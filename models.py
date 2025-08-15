@@ -319,8 +319,11 @@ def get_books_with_upvotes(bookshelf_id: int, user_did: str = None, db_tables=No
             # Check if current user has upvoted this book
             user_has_upvoted = False
             if user_did:
-                user_upvote = db_tables['upvotes']("book_id=? AND user_did=?", (book.id, user_did))[0]
-                user_has_upvoted = user_upvote is not None
+                try:
+                    user_upvote = db_tables['upvotes']("book_id=? AND user_did=?", (book.id, user_did))[0]
+                    user_has_upvoted = user_upvote is not None
+                except IndexError:
+                    user_has_upvoted = False
             
             # Add computed attributes to the book object
             book.upvote_count = upvote_count

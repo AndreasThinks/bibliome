@@ -168,12 +168,10 @@ async def login_handler(handle: str, password: str, sess):
             'last_login': datetime.now()
         }
         
-        # Store user in database
+        # Store user in database - check if user exists first to avoid constraint errors
         try:
-            db_tables['users'].insert(**db_user_data)
-            logger.info(f"New user created in database: {user_data['handle']}")
-        except Exception as e:
-            # User already exists, update their info and last login
+            existing_user = db_tables['users'][user_data['did']]
+            # User exists, update their info and last login
             update_data = {
                 'handle': user_data['handle'],
                 'display_name': user_data['display_name'],
@@ -182,6 +180,10 @@ async def login_handler(handle: str, password: str, sess):
             }
             db_tables['users'].update(update_data, user_data['did'])
             logger.debug(f"Existing user updated in database: {user_data['handle']}")
+        except IndexError:
+            # User doesn't exist, create them
+            db_tables['users'].insert(**db_user_data)
+            logger.info(f"New user created in database: {user_data['handle']}")
         
         # Store full auth data (including JWTs) in session
         sess['auth'] = user_data
