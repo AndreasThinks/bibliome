@@ -1343,12 +1343,26 @@ def UserProfileHeader(user, is_own_profile=False, public_shelves_count=0):
         except:
             join_date = "Unknown"
     
+    # Bluesky profile link
+    bluesky_link = A(
+        I(cls="fab fa-bluesky"),
+        href=f"https://bsky.app/profile/{user.handle}",
+        target="_blank",
+        rel="noopener noreferrer",
+        cls="profile-bluesky-link",
+        title=f"View @{user.handle} on Bluesky"
+    )
+    
     return Card(
         Div(
             avatar,
             Div(
                 H1(user.display_name or user.handle, cls="profile-name"),
-                P(f"@{user.handle}", cls="profile-handle"),
+                Div(
+                    P(f"@{user.handle}", cls="profile-handle"),
+                    bluesky_link,
+                    cls="profile-handle-container"
+                ),
                 Div(
                     Span(f"📚 {public_shelves_count} public shelves", cls="profile-stat"),
                     Span(f"📅 Joined {join_date}", cls="profile-stat"),
