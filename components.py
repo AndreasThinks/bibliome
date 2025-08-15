@@ -11,6 +11,7 @@ def NavBar(auth=None):
     if auth:
         links = [
             A("My Shelves", href="/"),
+            A("Your Network", href="/network"),
             A("Search", href="/search"),
             A("Create Shelf", href="/shelf/new"),
         ]
@@ -1367,4 +1368,92 @@ def BookScrollCard(book):
             P(f"in {book.bookshelf_name}", cls="book-scroll-shelf"),
             cls="book-scroll-info"
         )
+    )
+
+def NetworkPageHero():
+    """Hero section for the network activity page."""
+    return Section(
+        Container(
+            H1("📚 Your Network Activity", cls="explore-title"),
+            P("Stay up to date with what your network is reading and sharing.", cls="explore-subtitle"),
+        ),
+        cls="explore-hero"
+    )
+
+def NetworkActivityFilters(activity_type="all", date_filter="all"):
+    """Filter controls for network activity."""
+    return Div(
+        Form(
+            Div(
+                Label("Activity Type:", Select(
+                    Option("All Activity", value="all", selected=(activity_type == "all")),
+                    Option("New Bookshelves", value="bookshelf_created", selected=(activity_type == "bookshelf_created")),
+                    Option("Books Added", value="book_added", selected=(activity_type == "book_added")),
+                    name="activity_type",
+                    hx_get="/network",
+                    hx_target="#network-content",
+                    hx_include="[name='date_filter']",
+                    hx_trigger="change"
+                )),
+                Label("Time Period:", Select(
+                    Option("All Time", value="all", selected=(date_filter == "all")),
+                    Option("Last 24 Hours", value="1d", selected=(date_filter == "1d")),
+                    Option("Last Week", value="7d", selected=(date_filter == "7d")),
+                    Option("Last Month", value="30d", selected=(date_filter == "30d")),
+                    name="date_filter",
+                    hx_get="/network",
+                    hx_target="#network-content",
+                    hx_include="[name='activity_type']",
+                    hx_trigger="change"
+                )),
+                cls="network-filters-row"
+            ),
+            cls="network-filters-form"
+        ),
+        cls="network-filters-section"
+    )
+
+def FullNetworkActivityFeed(activities: List[Dict], page: int = 1, total_pages: int = 1, activity_type: str = "all", date_filter: str = "all"):
+    """Full-page network activity feed with pagination."""
+    if not activities:
+        return Div(
+            EmptyNetworkState(),
+            id="network-content"
+        )
+    
+    activity_cards = []
+    for activity in activities:
+        activity_cards.append(ActivityCard(activity))
+    
+    # Pagination
+    pagination = None
+    if total_pages > 1:
+        pagination = Pagination(
+            current_page=page, 
+            total_pages=total_pages, 
+            base_url=f"/network?activity_type={activity_type}&date_filter={date_filter}"
+        )
+    
+    return Div(
+        Div(*activity_cards, cls="network-activity-feed"),
+        pagination,
+        id="network-content"
+    )
+
+def EmptyNetworkStateFullPage():
+    """Empty state for the full network page when no activity is available."""
+    return Div(
+        Div(
+            H3("🌐 Your network is quiet right now", cls="empty-network-title"),
+            P("We don't see any recent activity from people you follow on Bluesky.", cls="empty-network-description"),
+            P("Here are some things you can do:", cls="empty-network-suggestion"),
+            Div(
+                A("Explore Public Shelves", href="/explore", cls="primary"),
+                A("Create Your First Shelf", href="/shelf/new", cls="secondary"),
+                cls="empty-network-actions"
+            ),
+            cls="empty-network-content"
+        ),
+        cls="empty-network-state",
+        id="network-content"
     )

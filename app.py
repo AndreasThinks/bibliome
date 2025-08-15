@@ -339,6 +339,73 @@ def explore_page(auth, page: int = 1):
         )
     )
 
+@rt("/network")
+def network_page(auth, activity_type: str = "all", date_filter: str = "all", page: int = 1):
+    """Display the full network activity page with filtering and pagination."""
+    if not auth:
+        return RedirectResponse('/auth/login', status_code=303)
+    
+    try:
+        from models import get_network_activity, get_network_activity_count
+        from components import NetworkPageHero, NetworkActivityFilters, FullNetworkActivityFeed, EmptyNetworkStateFullPage
+        
+        # Pagination settings
+        limit = 20
+        offset = (page - 1) * limit
+        
+        # Get network activities with filtering
+        logger.info(f"Loading network activity for user: {auth.get('handle')} with filters: type={activity_type}, date={date_filter}, page={page}")
+        network_activities = get_network_activity(
+            auth, db_tables, bluesky_auth, 
+            limit=limit, offset=offset, 
+            activity_type=activity_type, date_filter=date_filter
+        )
+        
+        # Get total count for pagination
+        total_count = get_network_activity_count(
+            auth, db_tables, bluesky_auth,
+            activity_type=activity_type, date_filter=date_filter
+        )
+        total_pages = (total_count + limit - 1) // limit if total_count > 0 else 1
+        
+        logger.info(f"Network activities loaded: {len(network_activities)} activities found, {total_count} total")
+        
+        # Build page content
+        content = [
+            NetworkPageHero(),
+            NetworkActivityFilters(activity_type=activity_type, date_filter=date_filter),
+            FullNetworkActivityFeed(
+                network_activities, 
+                page=page, 
+                total_pages=total_pages,
+                activity_type=activity_type,
+                date_filter=date_filter
+            ) if network_activities else EmptyNetworkStateFullPage()
+        ]
+        
+        return (
+            Title("Your Network - Bibliome"),
+            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            NavBar(auth),
+            Container(*content)
+        )
+        
+    except Exception as e:
+        logger.error(f"Error loading network page: {e}", exc_info=True)
+        # Show empty state even if there's an error
+        content = [
+            NetworkPageHero(),
+            NetworkActivityFilters(activity_type=activity_type, date_filter=date_filter),
+            EmptyNetworkStateFullPage()
+        ]
+        
+        return (
+            Title("Your Network - Bibliome"),
+            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            NavBar(auth),
+            Container(*content)
+        )
+
 @rt("/user/{handle}")
 def user_profile(handle: str, auth):
     """Display a user's profile page."""

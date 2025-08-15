@@ -349,18 +349,14 @@ def log_activity(user_did: str, activity_type: str, db_tables, bookshelf_id: int
     except Exception as e:
         print(f"Error logging activity: {e}")
 
-def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 20):
-    """Get recent activity from users in the current user's network."""
+def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 20, offset: int = 0, activity_type: str = "all", date_filter: str = "all"):
+    """Get recent activity from users in the current user's network with filtering and pagination."""
     try:
         # Get list of users the current user follows
         following_dids = bluesky_auth.get_following_list(auth_data, limit=100)
         
         if not following_dids:
             return []
-        
-        # Get recent activities from followed users
-        # Only show activities for public/link-only shelves
-        activities = []
         
         # Build query to get activities from followed users
         placeholders = ','.join(['?' for _ in following_dids])
@@ -372,12 +368,29 @@ def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 
             LEFT JOIN book bk ON a.book_id = bk.id
             WHERE a.user_did IN ({placeholders})
             AND (b.privacy = 'public' OR b.privacy = 'link-only')
-            ORDER BY a.created_at DESC
-            LIMIT ?
         """
         
+        params = following_dids.copy()
+        
+        # Add activity type filter
+        if activity_type != "all":
+            query += " AND a.activity_type = ?"
+            params.append(activity_type)
+        
+        # Add date filter
+        if date_filter != "all":
+            if date_filter == "1d":
+                query += " AND a.created_at >= datetime('now', '-1 day')"
+            elif date_filter == "7d":
+                query += " AND a.created_at >= datetime('now', '-7 days')"
+            elif date_filter == "30d":
+                query += " AND a.created_at >= datetime('now', '-30 days')"
+        
+        query += " ORDER BY a.created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        
         # Execute raw SQL query
-        cursor = db_tables['db'].execute(query, following_dids + [limit])
+        cursor = db_tables['db'].execute(query, params)
         raw_activities = cursor.fetchall()
         
         # Get profiles for the users who created these activities
@@ -385,6 +398,7 @@ def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 
         profiles = bluesky_auth.get_profiles_batch(activity_user_dids, auth_data)
         
         # Format activities with user profiles
+        activities = []
         for row in raw_activities:
             activity_data = {
                 'id': row[0],
@@ -413,6 +427,48 @@ def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 
     except Exception as e:
         print(f"Error getting network activity: {e}")
         return []
+
+def get_network_activity_count(auth_data: dict, db_tables, bluesky_auth, activity_type: str = "all", date_filter: str = "all"):
+    """Get total count of network activities for pagination."""
+    try:
+        # Get list of users the current user follows
+        following_dids = bluesky_auth.get_following_list(auth_data, limit=100)
+        
+        if not following_dids:
+            return 0
+        
+        # Build count query
+        placeholders = ','.join(['?' for _ in following_dids])
+        query = f"""
+            SELECT COUNT(*)
+            FROM activity a
+            LEFT JOIN bookshelf b ON a.bookshelf_id = b.id
+            WHERE a.user_did IN ({placeholders})
+            AND (b.privacy = 'public' OR b.privacy = 'link-only')
+        """
+        
+        params = following_dids.copy()
+        
+        # Add activity type filter
+        if activity_type != "all":
+            query += " AND a.activity_type = ?"
+            params.append(activity_type)
+        
+        # Add date filter
+        if date_filter != "all":
+            if date_filter == "1d":
+                query += " AND a.created_at >= datetime('now', '-1 day')"
+            elif date_filter == "7d":
+                query += " AND a.created_at >= datetime('now', '-7 days')"
+            elif date_filter == "30d":
+                query += " AND a.created_at >= datetime('now', '-30 days')"
+        
+        cursor = db_tables['db'].execute(query, params)
+        return cursor.fetchone()[0]
+        
+    except Exception as e:
+        print(f"Error getting network activity count: {e}")
+        return 0
 
 def get_shelf_by_slug(slug: str, db_tables):
     """Get a single bookshelf by its slug, returning None if not found."""
