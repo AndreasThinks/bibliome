@@ -153,15 +153,33 @@ class Activity:
     # JSON field for additional metadata
     metadata: str = ""  # JSON string for flexible data
 
-def setup_database(db_path: str = 'data/bookdit.db'):
-    """Initialize the database with all tables."""
-    # Ensure the data directory exists
+def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migrations'):
+    """Initialize the database with fastmigrate and all tables."""
     import os
+    from fastmigrate.core import create_db, run_migrations, get_db_version
+    
+    # Ensure the data directory exists
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     
+    # Initialize fastmigrate managed database
+    # If no db exists, it's created and set to version 0
+    # If a db exists, nothing happens
+    create_db(db_path)
+    
+    # Apply any pending migrations from migrations_dir
+    success = run_migrations(db_path, migrations_dir)
+    if not success:
+        raise RuntimeError("Database migration failed! Application cannot continue.")
+    
+    # Get current database version for logging
+    version = get_db_version(db_path)
+    print(f"Database initialized at version {version}")
+    
+    # Create FastLite database connection
     db = database(db_path)
     
-    # Create tables with appropriate primary keys
+    # Create table objects for FastLite operations
+    # These will connect to existing tables created by migrations
     users = db.create(User, pk='did', transform=True)
     bookshelves = db.create(Bookshelf, transform=True)
     books = db.create(Book, transform=True)

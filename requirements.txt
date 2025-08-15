@@ -3,3 +3,4 @@ httpx>=0.25.0
 atproto>=0.0.30
 python-dotenv>=1.0.0
 fastlite>=0.0.9
+fastmigrate>=0.3.0

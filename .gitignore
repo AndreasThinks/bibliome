@@ -181,7 +181,8 @@ cython_debug/
 *.db-shm
 
 # Database backups
-*.sql
+*.sql.backup
+*.sql.backup.*
 *.dump
 backup/
 backups/

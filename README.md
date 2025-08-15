@@ -48,10 +48,210 @@ A decentralized, collaborative bookshelf platform with Bluesky (AT-Proto) authen
 
 - **Backend & Frontend**: FastHTML
 - **Authentication**: AT-Proto (Bluesky)
-- **Database**: SQLite with FastLite
+- **Database**: SQLite with FastLite + FastMigrate
 - **APIs**: Google Books API
 - **Styling**: PicoCSS + Custom CSS
 - **JavaScript**: HTMX for dynamic interactions
+
+## 🗄️ Database Migrations
+
+Bibliome uses **fastmigrate** for database schema management, providing version control for your database structure and safe schema evolution.
+
+### How It Works
+
+FastMigrate follows the standard database migration pattern:
+- **Migration scripts** define database versions (e.g., `0001-initialize.sql`, `0002-add-feature.sql`)
+- **Automatic application** of pending migrations on startup
+- **Version tracking** ensures each migration runs exactly once
+- **Safe evolution** from any previous version to the latest
+
+### Migration Files
+
+Migration scripts are stored in the `migrations/` directory:
+
+```
+migrations/
+└── 0001-initialize.sql    # Initial database schema
+```
+
+Each migration file:
+- **Must be numbered sequentially** (0001, 0002, 0003, etc.)
+- **Should have a descriptive name** after the number
+- **Contains SQL statements** to modify the database
+- **Runs exactly once** when the application starts
+
+### Current Schema (Version 1)
+
+The initial migration (`0001-initialize.sql`) creates all necessary tables:
+- `user` - Bluesky user profiles and authentication data
+- `bookshelf` - Book collections with privacy and metadata  
+- `book` - Individual books with metadata from Google Books API
+- `permission` - Role-based access control for bookshelves
+- `bookshelf_invite` - Invitation system for sharing
+- `upvote` - User votes on books for curation
+- `activity` - Tracks user actions for the social feed
+
+### Adding New Migrations
+
+When you need to modify the database schema:
+
+1. **Create a new migration file** in the `migrations/` directory:
+   ```bash
+   # Example: Adding a new column to the book table
+   touch migrations/0002-add-book-rating.sql
+   ```
+
+2. **Write the SQL changes**:
+   ```sql
+   -- migrations/0002-add-book-rating.sql
+   -- Add rating column to books table
+   
+   ALTER TABLE book ADD COLUMN rating INTEGER DEFAULT 0;
+   CREATE INDEX idx_book_rating ON book(rating);
+   ```
+
+3. **Test the migration**:
+   ```bash
+   # The migration will run automatically when you start the app
+   python app.py
+   ```
+
+4. **Verify the changes**:
+   ```bash
+   # Check current database version
+   python -c "from fastmigrate.core import get_db_version; print(f'Database version: {get_db_version(\"data/bookdit.db\")}')"
+   ```
+
+### Migration Best Practices
+
+#### ✅ Do's
+- **Always backup** your database before running migrations in production
+- **Test migrations** on a copy of production data first
+- **Use descriptive names** for migration files
+- **Keep migrations small** and focused on one change
+- **Add indexes** for new columns that will be queried
+- **Use transactions** for complex multi-step migrations
+
+#### ❌ Don'ts
+- **Never modify existing migration files** once they've been applied
+- **Don't skip version numbers** (use sequential numbering)
+- **Avoid destructive operations** without careful consideration
+- **Don't mix schema and data changes** in the same migration
+
+### CLI Commands
+
+FastMigrate provides command-line tools for database management:
+
+```bash
+# Check current database version
+fastmigrate_check_version --db data/bookdit.db
+
+# Create a new managed database (if needed)
+fastmigrate_create_db --db data/bookdit.db
+
+# Run pending migrations manually
+fastmigrate_run_migrations --db data/bookdit.db --migrations migrations/
+
+# Check what migrations would run
+ls migrations/ | sort
+```
+
+### Example Migration Scenarios
+
+#### Adding a New Feature
+```sql
+-- migrations/0002-add-book-reviews.sql
+-- Add book reviews functionality
+
+CREATE TABLE book_review (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_id INTEGER NOT NULL,
+    user_did TEXT NOT NULL,
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    review_text TEXT DEFAULT '',
+    created_at DATETIME,
+    updated_at DATETIME,
+    FOREIGN KEY (book_id) REFERENCES book(id),
+    FOREIGN KEY (user_did) REFERENCES user(did)
+);
+
+CREATE INDEX idx_book_review_book ON book_review(book_id);
+CREATE INDEX idx_book_review_user ON book_review(user_did);
+CREATE INDEX idx_book_review_rating ON book_review(rating);
+```
+
+#### Modifying Existing Data
+```sql
+-- migrations/0003-normalize-book-authors.sql
+-- Split author field into separate authors table
+
+CREATE TABLE book_author (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_id INTEGER NOT NULL,
+    author_name TEXT NOT NULL,
+    author_order INTEGER DEFAULT 1,
+    FOREIGN KEY (book_id) REFERENCES book(id)
+);
+
+-- Migrate existing author data
+INSERT INTO book_author (book_id, author_name, author_order)
+SELECT id, author, 1 
+FROM book 
+WHERE author IS NOT NULL AND author != '';
+
+CREATE INDEX idx_book_author_book ON book_author(book_id);
+CREATE INDEX idx_book_author_name ON book_author(author_name);
+```
+
+### Troubleshooting Migrations
+
+#### Migration Failed
+If a migration fails:
+1. **Check the error message** in the application logs
+2. **Fix the SQL syntax** in the migration file
+3. **Restore from backup** if the database is corrupted
+4. **Test the fixed migration** on a copy first
+
+#### Database Version Mismatch
+If you see version-related errors:
+```bash
+# Check current version
+fastmigrate_check_version --db data/bookdit.db
+
+# List available migrations
+ls -la migrations/
+
+# Manually run migrations if needed
+fastmigrate_run_migrations --db data/bookdit.db --migrations migrations/
+```
+
+#### Rolling Back Changes
+FastMigrate doesn't support automatic rollbacks, but you can:
+1. **Create a new migration** that reverses the changes
+2. **Restore from a backup** taken before the migration
+3. **Manually fix** the database if the change was small
+
+### Production Deployment
+
+For production deployments:
+
+1. **Backup the database** before deploying:
+   ```bash
+   cp data/bookdit.db data/bookdit.db.backup.$(date +%Y%m%d_%H%M%S)
+   ```
+
+2. **Test migrations** on a copy of production data first
+
+3. **Deploy with automatic migrations**:
+   - Migrations run automatically when the application starts
+   - Monitor logs for migration success/failure
+   - Have a rollback plan ready
+
+4. **Verify the deployment**:
+   ```bash
+   # Check database version after deployment
+   fastmigrate_check_version --db data/bookdit.db
+   ```
 
 ## 📋 Setup Instructions
 

@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 # Silence the noisy watchfiles logger
 logging.getLogger('watchfiles.main').setLevel(logging.WARNING)
 
-# Initialize database
+# Initialize database with fastmigrate
 db_tables = setup_database()
 
 # Initialize external services
