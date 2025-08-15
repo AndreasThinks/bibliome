@@ -67,7 +67,7 @@ app, rt = fast_app(
         Link(rel="preconnect", href="https://fonts.googleapis.com"),
         Link(rel="preconnect", href="https://fonts.gstatic.com", crossorigin=""),
         Link(rel="stylesheet", href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap"),
-        Link(rel="stylesheet", href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"),
+        Link(rel="stylesheet", href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"),
         Link(rel="stylesheet", href="/static/css/styles.css"),
         Script(src="https://unpkg.com/htmx.org@1.9.10")
     )
