@@ -508,7 +508,7 @@ def view_shelf(slug: str, auth, view: str = "grid"):
         # Show book search form if user can add books
         add_books_section = Section(AddBooksToggle(shelf.id), cls="add-books-section") if can_add else None
         
-        # Render books based on view type
+        # Always create a books-container div with book-grid inside for consistent HTMX targeting
         if shelf_books:
             if view == "list":
                 from components import BookListView
@@ -519,7 +519,7 @@ def view_shelf(slug: str, auth, view: str = "grid"):
                     user_has_upvoted=book.user_has_upvoted,
                     upvote_count=book.upvote_count,
                     can_remove=can_remove
-                ) for book in shelf_books], cls="book-grid")
+                ) for book in shelf_books], cls="book-grid", id="book-grid")
             
             books_section = Section(
                 Div(books_content, id="books-container"),
@@ -528,8 +528,12 @@ def view_shelf(slug: str, auth, view: str = "grid"):
             )
         else:
             books_section = Section(
-                EnhancedEmptyState(can_add=can_add, shelf_id=shelf.id),
-                Div(id="books-container"),  # Always include the target div
+                Div(
+                    EnhancedEmptyState(can_add=can_add, shelf_id=shelf.id),
+                    # Always include an empty book-grid div for HTMX targeting
+                    Div(id="book-grid", cls="book-grid"),
+                    id="books-container"
+                ),
                 cls=f"books-section {view}-view",
                 id="books-section"
             )
@@ -803,10 +807,11 @@ def add_book_and_close_api(bookshelf_id: int, title: str, author: str, isbn: str
                 )
                 db_tables['upvotes'].insert(upvote)
                 
-                # Get updated book with vote count and return it
+                # Get updated book with vote count and return it in a book-grid
                 existing_book.upvote_count = len(db_tables['upvotes']("book_id=?", (existing_book.id,)))
                 existing_book.user_has_upvoted = True
-                return existing_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=existing_book.upvote_count), close_interface
+                book_grid = Div(existing_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=existing_book.upvote_count), cls="book-grid", id="book-grid")
+                return book_grid, close_interface
         else:
             atproto_uri = None
             try:
@@ -850,10 +855,11 @@ def add_book_and_close_api(bookshelf_id: int, title: str, author: str, isbn: str
             except Exception as e:
                 logger.warning(f"Could not log book addition activity: {e}")
             
-            # Set the computed attributes and return the book card with close interface
+            # Set the computed attributes and return the book card in a book-grid with close interface
             created_book.upvote_count = 1
             created_book.user_has_upvoted = True
-            return created_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=1), close_interface
+            book_grid = Div(created_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=1), cls="book-grid", id="book-grid")
+            return book_grid, close_interface
         
     except Exception as e:
         return Div(f"Error adding book: {str(e)}", cls="error")
@@ -991,7 +997,7 @@ def toggle_view(slug: str, view: str, auth):
         # Get books with upvote counts
         shelf_books = get_books_with_upvotes(shelf.id, user_did, db_tables)
         
-        # Render books based on view type
+        # Always create consistent structure with book-grid for HTMX targeting
         if shelf_books:
             if view == "list":
                 from components import BookListView
@@ -1002,14 +1008,16 @@ def toggle_view(slug: str, view: str, auth):
                     user_has_upvoted=book.user_has_upvoted,
                     upvote_count=book.upvote_count,
                     can_remove=can_remove
-                ) for book in shelf_books], cls="book-grid")
+                ) for book in shelf_books], cls="book-grid", id="book-grid")
             
             books_section_content = Div(books_content, id="books-container")
         else:
             from components import EnhancedEmptyState
             books_section_content = Div(
                 EnhancedEmptyState(can_add=can_add, shelf_id=shelf.id),
-                Div(id="books-container"),
+                # Always include an empty book-grid div for HTMX targeting
+                Div(id="book-grid", cls="book-grid"),
+                id="books-container"
             )
         
         # Return the entire books section with the correct view class

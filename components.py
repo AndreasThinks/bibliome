@@ -177,8 +177,8 @@ def SearchResultCard(book_data: Dict[str, Any], bookshelf_id: int):
                 Hidden(name="page_count", value=book_data.get('page_count', 0)),
                 Button("Add to Shelf", type="submit", cls="add-book-btn"),
                 hx_post="/api/add-book-and-close",
-                hx_target="#book-grid",
-                hx_swap="afterbegin"
+                hx_target="#books-container",
+                hx_swap="innerHTML"
             ),
             cls="search-result-info"
         )
