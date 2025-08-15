@@ -146,11 +146,7 @@ def index(auth):
 def login_page(sess):
     """Display login form."""
     error_msg = sess.pop('error', None)
-    return (
-        Title("Login - Bibliome"),
-        Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
-        bluesky_auth.create_login_form(error_msg)
-    )
+    return bluesky_auth.create_login_form(error_msg)
 
 @app.post("/auth/login")
 async def login_handler(handle: str, password: str, sess):

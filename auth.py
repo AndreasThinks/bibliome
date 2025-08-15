@@ -23,44 +23,75 @@ class BlueskyAuth:
     def create_login_form(self, error_msg: str = None):
         """Create the login form with optional error message."""
         
-        content = []
-        if error_msg:
-            content.append(Alert(error_msg, "error"))
-        
-        content.extend([
-            Form(
-                action="/auth/login",
-                method="post"
-            )(
-                Fieldset(
-                    Label("Bluesky Handle", Input(
-                        name="handle",
-                        type="text",
-                        placeholder="your-handle.bsky.social",
-                        required=True
-                    )),
-                    Label("App Password", Input(
-                        name="password",
-                        type="password",
-                        placeholder="Your Bluesky app password",
-                        required=True
-                    )),
-                    Small(
-                        "You'll need to create an app password in your Bluesky settings. ",
-                        A("Get your app password here", 
-                          href="https://bsky.app/settings/app-passwords", 
-                          target="_blank", 
-                          rel="noopener noreferrer",
-                          style="color: var(--brand-amber); text-decoration: underline;")
-                    )
+        return (
+            Title("Login - Bibliome"),
+            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            NavBar(),
+            Div(
+                Div(
+                    # Logo and branding
+                    Div(
+                        Img(src="/static/bibliome_transparent_no_text.png", alt="Bibliome", cls="login-logo"),
+                        H1("Welcome Back", cls="login-title"),
+                        P("Sign in with your Bluesky account", cls="login-subtitle"),
+                        cls="login-header"
+                    ),
+                    
+                    # Error message if present
+                    Alert(error_msg, "error") if error_msg else None,
+                    
+                    # Login form with proper autocomplete
+                    Form(
+                        Fieldset(
+                            Label("Bluesky Handle", Input(
+                                name="handle",
+                                id="username",
+                                type="text",
+                                placeholder="your-handle.bsky.social",
+                                autocomplete="username",
+                                required=True,
+                                cls="login-input"
+                            )),
+                            Label("App Password", Input(
+                                name="password",
+                                id="password",
+                                type="password",
+                                placeholder="Your Bluesky app password",
+                                autocomplete="current-password",
+                                required=True,
+                                cls="login-input"
+                            )),
+                            cls="login-fieldset"
+                        ),
+                        Button("Sign In", type="submit", cls="login-btn-primary"),
+                        action="/auth/login",
+                        method="post",
+                        autocomplete="on",
+                        cls="login-form"
+                    ),
+                    
+                    # Help text and links
+                    Div(
+                        P(
+                            "Need an app password? ",
+                            A("Create one in your Bluesky settings", 
+                              href="https://bsky.app/settings/app-passwords", 
+                              target="_blank", 
+                              rel="noopener noreferrer",
+                              cls="login-help-link")
+                        ),
+                        P(
+                            "Don't have a Bluesky account? ",
+                            A("Sign up here", href="https://bsky.app", target="_blank", rel="noopener noreferrer", cls="login-help-link")
+                        ),
+                        cls="login-help"
+                    ),
+                    
+                    cls="login-card"
                 ),
-                Button("Login", type="submit", cls="primary")
-            ),
-            P("Don't have a Bluesky account? ", 
-              A("Sign up here", href="https://bsky.app", target="_blank"))
-        ])
-        
-        return Titled("Login with Bluesky", *content)
+                cls="login-container"
+            )
+        )
     
     async def authenticate_user(self, handle: str, password: str) -> Optional[Dict[str, Any]]:
         """Authenticate user with Bluesky and return user info."""
