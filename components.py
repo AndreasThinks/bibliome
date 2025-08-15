@@ -777,6 +777,119 @@ def NetworkActivityFeed(activities: List[Dict], auth=None):
         style="margin-bottom: 3rem;"
     )
 
+def NetworkActivityPreview(activities: List[Dict], auth=None):
+    """Display a compact preview of network activity for the homepage dashboard."""
+    if not activities:
+        return Card(
+            Div(
+                H3("📚 Activity from your network", cls="preview-title"),
+                A("View All →", href="/network", cls="preview-view-all"),
+                cls="preview-header"
+            ),
+            Div(
+                P("No recent activity from your network.", cls="preview-empty-text"),
+                P("Follow people on Bluesky to see their book activity here!", cls="preview-empty-suggestion"),
+                cls="preview-empty-content"
+            ),
+            cls="network-preview-card"
+        )
+    
+    # Show only the 3 most recent activities
+    preview_activities = activities[:3]
+    activity_cards = []
+    for activity in preview_activities:
+        activity_cards.append(CompactActivityCard(activity))
+    
+    return Card(
+        Div(
+            H3("📚 Activity from your network", cls="preview-title"),
+            A("View All →", href="/network", cls="preview-view-all"),
+            cls="preview-header"
+        ),
+        Div(*activity_cards, cls="preview-activity-list"),
+        cls="network-preview-card"
+    )
+
+def CompactActivityCard(activity: Dict):
+    """Render a compact activity card for the homepage preview."""
+    user_profile = activity['user_profile']
+    activity_type = activity['activity_type']
+    created_at = activity['created_at']
+    
+    # Format timestamp
+    if isinstance(created_at, str):
+        from datetime import datetime
+        try:
+            created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+        except:
+            created_at = datetime.now()
+    
+    time_ago = format_time_ago(created_at)
+    
+    # Smaller user avatar
+    avatar = Img(
+        src=user_profile['avatar_url'],
+        alt=user_profile['display_name'],
+        cls="compact-activity-avatar"
+    ) if user_profile['avatar_url'] else Div("👤", cls="compact-activity-avatar-placeholder")
+    
+    # Activity content based on type (compact versions)
+    if activity_type == 'bookshelf_created':
+        content = CompactActivityBookshelfCreated(activity)
+    elif activity_type == 'book_added':
+        content = CompactActivityBookAdded(activity)
+    else:
+        content = Span(f"Unknown activity: {activity_type}", cls="compact-activity-unknown")
+    
+    return Div(
+        Div(
+            avatar,
+            Div(
+                Div(
+                    A(Strong(user_profile['display_name']), href=f"/user/{user_profile['handle']}", cls="compact-activity-user-link"),
+                    " ",
+                    content,
+                    cls="compact-activity-content"
+                ),
+                Span(time_ago, cls="compact-activity-time"),
+                cls="compact-activity-text"
+            ),
+            cls="compact-activity-main"
+        ),
+        cls="compact-activity-card"
+    )
+
+def CompactActivityBookshelfCreated(activity: Dict):
+    """Render compact bookshelf creation activity."""
+    bookshelf_name = activity['bookshelf_name']
+    bookshelf_slug = activity['bookshelf_slug']
+    privacy_icon = {
+        'public': '🌍',
+        'link-only': '🔗',
+        'private': '🔒'
+    }.get(activity['bookshelf_privacy'], '🌍')
+    
+    return Span(
+        "created ",
+        A(bookshelf_name, href=f"/shelf/{bookshelf_slug}", cls="compact-activity-link"),
+        f" {privacy_icon}",
+        cls="compact-activity-action"
+    )
+
+def CompactActivityBookAdded(activity: Dict):
+    """Render compact book addition activity."""
+    book_title = activity['book_title']
+    bookshelf_name = activity['bookshelf_name']
+    bookshelf_slug = activity['bookshelf_slug']
+    
+    return Span(
+        "added ",
+        Span(book_title, cls="compact-activity-book-title"),
+        " to ",
+        A(bookshelf_name, href=f"/shelf/{bookshelf_slug}", cls="compact-activity-link"),
+        cls="compact-activity-action"
+    )
+
 def ActivityCard(activity: Dict):
     """Render a single activity card."""
     user_profile = activity['user_profile']

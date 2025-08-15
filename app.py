@@ -10,7 +10,7 @@ from api_clients import BookAPIClient
 from components import (
     NavBar, LandingPageHero, FeaturesSection, CommunityReadingSection,
     HowItWorksSection, PublicShelvesPreview, LandingPageFooter, NetworkActivityFeed,
-    BookshelfCard, EmptyState, CreateBookshelfForm, SearchPageHero,
+    NetworkActivityPreview, BookshelfCard, EmptyState, CreateBookshelfForm, SearchPageHero,
     SearchForm, SearchResultsGrid, ExplorePageHero, PublicShelvesGrid,
     BookSearchForm, SearchResultCard, ShareInterface, InviteCard, MemberCard, AddBooksToggle,
     EnhancedEmptyState, ShelfHeader
@@ -110,19 +110,19 @@ def index(auth):
             )
         ]
         
-        # Add network activity feed
+        # Add network activity preview
         try:
             from models import get_network_activity
             logger.info(f"Attempting to load network activity for user: {auth.get('handle')}")
-            network_activities = get_network_activity(auth, db_tables, bluesky_auth, limit=10)
+            network_activities = get_network_activity(auth, db_tables, bluesky_auth, limit=5)
             logger.info(f"Network activities loaded: {len(network_activities)} activities found")
             
-            # Always show the network activity section (with empty state if no activities)
-            content.append(NetworkActivityFeed(network_activities, auth))
+            # Always show the network activity preview (with empty state if no activities)
+            content.append(NetworkActivityPreview(network_activities, auth))
         except Exception as e:
             logger.error(f"Could not load network activity: {e}", exc_info=True)
             # Show empty state even if there's an error
-            content.append(NetworkActivityFeed([], auth))
+            content.append(NetworkActivityPreview([], auth))
         
         # Add user's shelves with proper permission checking
         if user_shelves:
