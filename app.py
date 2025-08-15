@@ -1148,12 +1148,15 @@ def manage_shelf(slug: str, auth, req):
                     P("Once you delete a bookshelf, there is no going back. This will permanently delete the bookshelf, all its books, and all associated data."),
                     Button(
                         "Delete Bookshelf",
-                        onclick=f"showDeleteModal('{shelf.name}')",
+                        hx_get=f"/api/shelf/{shelf.slug}/delete-confirm",
+                        hx_target="#delete-section",
+                        hx_swap="outerHTML",
                         cls="danger",
                         style="background: #dc3545; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 0.25rem; cursor: pointer;"
                     ),
                     cls="management-section danger-section",
-                    style="border: 2px solid #dc3545; border-radius: 0.5rem; padding: 1.5rem; margin-top: 2rem;"
+                    style="border: 2px solid #dc3545; border-radius: 0.5rem; padding: 1.5rem; margin-top: 2rem;",
+                    id="delete-section"
                 )
             )
         
@@ -1166,67 +1169,6 @@ def manage_shelf(slug: str, auth, req):
             *sections
         ]
         
-        # Add delete confirmation modal if owner
-        if is_owner:
-            content.append(
-                Div(
-                    Div(
-                        Div(
-                            H3("Delete Bookshelf", style="color: #dc3545; margin-bottom: 1rem;"),
-                            P(f"Are you sure you want to delete '{shelf.name}'? This action cannot be undone."),
-                            P("To confirm, type the bookshelf name below:", style="font-weight: bold; margin-top: 1rem;"),
-                            Form(
-                                Input(
-                                    type="text",
-                                    id="delete-confirmation",
-                                    placeholder="Type bookshelf name here",
-                                    style="width: 100%; margin-bottom: 1rem;",
-                                    oninput="validateDeleteInput(this.value)"
-                                ),
-                                Div(
-                                    Button("Cancel", type="button", onclick="hideDeleteModal()", cls="secondary"),
-                                    Button("Delete Forever", type="submit", id="delete-confirm-btn", disabled=True, 
-                                          style="background: #dc3545; color: white; margin-left: 0.5rem;"),
-                                    style="display: flex; gap: 0.5rem; justify-content: flex-end;"
-                                ),
-                                action=f"/shelf/{shelf.slug}/delete",
-                                method="post"
-                            ),
-                            cls="modal-content",
-                            style="background: white; padding: 2rem; border-radius: 0.5rem; max-width: 500px; width: 90%;"
-                        ),
-                        cls="modal-overlay",
-                        style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 1000;",
-                        onclick="event.target === this && hideDeleteModal()"
-                    ),
-                    id="delete-modal"
-                )
-            )
-            
-            # Add JavaScript for delete modal
-            content.append(
-                Script(f"""
-                function showDeleteModal(shelfName) {{
-                    document.getElementById('delete-modal').style.display = 'flex';
-                    window.expectedShelfName = shelfName;
-                }}
-                
-                function hideDeleteModal() {{
-                    document.getElementById('delete-modal').style.display = 'none';
-                    document.getElementById('delete-confirmation').value = '';
-                    document.getElementById('delete-confirm-btn').disabled = true;
-                }}
-                
-                function validateDeleteInput(value) {{
-                    const confirmBtn = document.getElementById('delete-confirm-btn');
-                    if (value === window.expectedShelfName) {{
-                        confirmBtn.disabled = false;
-                    }} else {{
-                        confirmBtn.disabled = true;
-                    }}
-                }}
-                """)
-            )
         
         return (
             Title(f"Manage: {shelf.name} - Bibliome"),
@@ -1626,9 +1568,112 @@ def update_shelf(slug: str, name: str, description: str, privacy: str, auth, ses
         sess['error'] = f"Error updating bookshelf: {str(e)}"
         return RedirectResponse(f'/shelf/{slug}/manage', status_code=303)
 
+@rt("/api/shelf/{slug}/delete-confirm")
+def get_delete_confirmation(slug: str, auth):
+    """HTMX endpoint to show delete confirmation form."""
+    if not auth:
+        return Div("Authentication required.", cls="error")
+    
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0] if db_tables['bookshelves']("slug=?", (slug,)) else None
+        if not shelf:
+            return Div("Bookshelf not found.", cls="error")
+        
+        # Check if user is the owner
+        if shelf.owner_did != get_current_user_did(auth):
+            return Div("Only the owner can delete a bookshelf.", cls="error")
+        
+        return Card(
+            H3("Delete Bookshelf", style="color: #dc3545; margin-bottom: 1rem;"),
+            P(f"Are you sure you want to delete '{shelf.name}'? This action cannot be undone."),
+            P("All books, votes, and sharing settings will be permanently removed.", style="font-weight: bold; color: #dc3545;"),
+            P("To confirm, type the bookshelf name below:", style="font-weight: bold; margin-top: 1rem;"),
+            Form(
+                Input(
+                    type="text",
+                    name="confirmation_name",
+                    placeholder=f"Type '{shelf.name}' to confirm",
+                    required=True,
+                    hx_post=f"/api/shelf/{slug}/validate-delete",
+                    hx_target="#delete-validation",
+                    hx_trigger="keyup changed delay:300ms",
+                    hx_vals=f'{{"expected_name": "{shelf.name}"}}',
+                    style="width: 100%; margin-bottom: 1rem;"
+                ),
+                Div(id="delete-validation"),
+                Div(
+                    Button("Cancel", 
+                           hx_get=f"/api/shelf/{slug}/cancel-delete",
+                           hx_target="#delete-section",
+                           hx_swap="outerHTML",
+                           cls="secondary"),
+                    Button("Delete Forever", 
+                           type="submit",
+                           id="delete-confirm-btn",
+                           disabled=True,
+                           style="background: #dc3545; color: white; margin-left: 0.5rem;"),
+                    style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;"
+                ),
+                hx_post=f"/shelf/{slug}/delete",
+                hx_target="body",
+                hx_swap="outerHTML"
+            ),
+            cls="delete-confirmation-card",
+            style="background: #fff5f5; border: 2px solid #dc3545; border-radius: 0.5rem; padding: 1.5rem; margin-top: 1rem;"
+        )
+        
+    except Exception as e:
+        return Div(f"Error: {str(e)}", cls="error")
+
+@rt("/api/shelf/{slug}/validate-delete", methods=["POST"])
+def validate_delete_name(slug: str, confirmation_name: str, expected_name: str, auth):
+    """HTMX endpoint to validate the delete confirmation name."""
+    if not auth:
+        return ""
+    
+    if confirmation_name.strip() == expected_name:
+        return Script("""
+            document.getElementById('delete-confirm-btn').disabled = false;
+            document.getElementById('delete-confirm-btn').style.opacity = '1';
+        """), Div("✓ Name matches - you can now delete the bookshelf", 
+                 style="color: #28a745; font-weight: bold; margin-top: 0.5rem;")
+    elif confirmation_name.strip():
+        return Script("""
+            document.getElementById('delete-confirm-btn').disabled = true;
+            document.getElementById('delete-confirm-btn').style.opacity = '0.5';
+        """), Div("✗ Name doesn't match", 
+                 style="color: #dc3545; font-weight: bold; margin-top: 0.5rem;")
+    else:
+        return Script("""
+            document.getElementById('delete-confirm-btn').disabled = true;
+            document.getElementById('delete-confirm-btn').style.opacity = '0.5';
+        """), ""
+
+@rt("/api/shelf/{slug}/cancel-delete")
+def cancel_delete(slug: str, auth):
+    """HTMX endpoint to cancel delete and show the delete button again."""
+    if not auth:
+        return ""
+    
+    return Div(
+        H3("Danger Zone", style="color: #dc3545;"),
+        P("Once you delete a bookshelf, there is no going back. This will permanently delete the bookshelf, all its books, and all associated data."),
+        Button(
+            "Delete Bookshelf",
+            hx_get=f"/api/shelf/{slug}/delete-confirm",
+            hx_target="#delete-section",
+            hx_swap="outerHTML",
+            cls="danger",
+            style="background: #dc3545; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 0.25rem; cursor: pointer;"
+        ),
+        cls="management-section danger-section",
+        style="border: 2px solid #dc3545; border-radius: 0.5rem; padding: 1.5rem; margin-top: 2rem;",
+        id="delete-section"
+    )
+
 @rt("/shelf/{slug}/delete", methods=["POST"])
-def delete_shelf(slug: str, auth, sess):
-    """Handle bookshelf deletion."""
+def delete_shelf(slug: str, confirmation_name: str, auth, sess):
+    """Handle bookshelf deletion with confirmation."""
     if not auth:
         return RedirectResponse('/auth/login', status_code=303)
     
@@ -1642,6 +1687,11 @@ def delete_shelf(slug: str, auth, sess):
         if shelf.owner_did != get_current_user_did(auth):
             sess['error'] = "Only the owner can delete a bookshelf."
             return RedirectResponse(f'/shelf/{shelf.slug}', status_code=303)
+        
+        # Validate confirmation name
+        if confirmation_name.strip() != shelf.name:
+            sess['error'] = "Confirmation name doesn't match. Deletion cancelled."
+            return RedirectResponse(f'/shelf/{slug}/manage', status_code=303)
         
         # Delete all related data in correct order
         # 1. Delete upvotes for books in this shelf
