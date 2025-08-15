@@ -186,8 +186,9 @@ async def login_handler(handle: str, password: str, sess):
             }
             db_tables['users'].update(update_data, user_data['did'])
             logger.debug(f"Existing user updated in database: {user_data['handle']}")
-        except IndexError:
+        except (IndexError, Exception):
             # User doesn't exist, create them
+            # Note: FastLite can throw different exceptions when records aren't found
             db_tables['users'].insert(**db_user_data)
             logger.info(f"New user created in database: {user_data['handle']}")
         
