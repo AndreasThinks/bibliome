@@ -626,53 +626,101 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
         loading="lazy"
     ) if self.cover_url else Div("📖", cls="book-cover-placeholder")
     
+    # Shorter description for compact tiles
     description = P(
-        self.description[:100] + "..." if len(self.description) > 100 else self.description,
+        self.description[:80] + "..." if len(self.description) > 80 else self.description,
         cls="book-description"
     ) if self.description else None
     
-    # Build action buttons
-    action_buttons = []
+    # Build voting buttons (smaller and more discrete)
+    voting_buttons = []
     
     if can_upvote:
-        # Show different text based on whether user has upvoted
-        btn_text = f"👎 Remove Vote ({upvote_count})" if user_has_upvoted else f"👍 Upvote ({upvote_count})"
-        action_buttons.append(Button(
-            btn_text,
+        # Upvote button
+        upvote_cls = "vote-btn upvote-btn" + (" voted" if user_has_upvoted else "")
+        voting_buttons.append(Button(
+            "👍",
             hx_post=f"/book/{self.id}/upvote",
             hx_target=f"#book-{self.id}",
             hx_swap="outerHTML",
-            cls="upvote-btn" + (" upvoted" if user_has_upvoted else ""),
-            onclick="event.stopPropagation()"  # Prevent card click when upvoting
+            cls=upvote_cls,
+            disabled=user_has_upvoted,
+            title=f"Upvote ({upvote_count})" if not user_has_upvoted else f"Remove upvote ({upvote_count})",
+            onclick="event.stopPropagation()"
         ))
-    else:
-        action_buttons.append(Div(f"👍 {upvote_count}", cls="upvote-count"))
-    
-    if can_remove:
-        # Add remove button for moderators/owners
-        remove_btn_text = "🗑️ Remove"
-        if upvote_count > 1:
-            remove_btn_text = f"🗑️ Remove ({upvote_count} votes)"
         
-        # Escape the title for JavaScript
+        # Downvote button (remove vote if user has upvoted)
+        downvote_cls = "vote-btn downvote-btn" + (" disabled" if not user_has_upvoted else "")
+        downvote_attrs = {
+            "cls": downvote_cls,
+            "disabled": not user_has_upvoted,
+            "title": "Remove vote" if user_has_upvoted else "You haven't upvoted this book",
+            "onclick": "event.stopPropagation()"
+        }
+        if user_has_upvoted:
+            downvote_attrs.update({
+                "hx_post": f"/book/{self.id}/upvote",
+                "hx_target": f"#book-{self.id}",
+                "hx_swap": "outerHTML"
+            })
+        
+        voting_buttons.append(Button("👎", **downvote_attrs))
+    else:
+        # Show greyed out buttons for users who can't vote
+        voting_buttons.append(Button("👍", cls="vote-btn upvote-btn disabled", disabled=True, title="Login to vote"))
+        voting_buttons.append(Button("👎", cls="vote-btn downvote-btn disabled", disabled=True, title="Login to vote"))
+    
+    # Vote count display
+    vote_count_display = Span(f"{upvote_count}", cls="vote-count")
+    
+    # Build the card components
+    card_children = []
+    
+    # Remove button (red cross in top-right corner) - only if user can remove
+    if can_remove:
         escaped_title = self.title.replace("'", "\\'").replace('"', '\\"')
-        action_buttons.append(Button(
-            remove_btn_text,
+        card_children.append(Button(
+            "×",
             onclick=f"confirmRemoveBook({self.id}, '{escaped_title}', {upvote_count})",
-            cls="remove-btn danger",
-            style="background: #dc3545; color: white; margin-left: 0.5rem;"
+            cls="remove-btn-cross",
+            title="Remove book from shelf"
         ))
     
-    return Card(
-        Div(cover, cls="book-cover-container"),
-        Div(
-            H4(self.title, cls="book-title"),
-            P(self.author, cls="book-author") if self.author else None,
-            description,
-            Div(*action_buttons, cls="book-actions"),
-            cls="book-info"
-        ),
-        A("View on Google Books", href=google_books_url, target="_blank", rel="noopener noreferrer", cls="google-books-link"),
+    # Cover container
+    card_children.append(Div(cover, cls="book-cover-container"))
+    
+    # Book info section
+    book_info_children = [
+        H4(self.title, cls="book-title"),
+    ]
+    
+    if self.author:
+        book_info_children.append(P(self.author, cls="book-author"))
+    
+    if description:
+        book_info_children.append(description)
+    
+    # Voting section
+    book_info_children.append(Div(
+        Div(*voting_buttons, cls="voting-buttons"),
+        vote_count_display,
+        cls="book-voting"
+    ))
+    
+    # More info link
+    book_info_children.append(A(
+        "More Info",
+        href=google_books_url,
+        target="_blank",
+        rel="noopener noreferrer",
+        cls="more-info-link",
+        title="View on Google Books"
+    ))
+    
+    card_children.append(Div(*book_info_children, cls="book-info"))
+    
+    return Div(
+        *card_children,
         cls="book-card interactive-book",
         id=f"book-{self.id}"
     )
