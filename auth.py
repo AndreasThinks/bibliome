@@ -127,8 +127,17 @@ class BlueskyAuth:
             logger.info(f"Authentication successful for user: {user_data['handle']}")
             return user_data
         except Exception as e:
-            logger.error(f"Authentication error for handle {handle}: {e}", exc_info=True)
-            return None
+            # Import the specific exception type
+            from atproto_client.exceptions import UnauthorizedError
+            
+            if isinstance(e, UnauthorizedError):
+                # This is expected for wrong credentials - log as warning, not error
+                logger.warning(f"Authentication failed for handle {handle}: Invalid credentials")
+                return None
+            else:
+                # Unexpected error (network, service down, etc.) - log as error with traceback
+                logger.error(f"Authentication system error for handle {handle}: {e}", exc_info=True)
+                return None
 
     def get_client_from_session(self, session_data: dict) -> AtprotoClient:
         """Restore a client instance from a session string."""

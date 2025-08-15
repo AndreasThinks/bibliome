@@ -195,7 +195,7 @@ async def login_handler(handle: str, password: str, sess):
             return RedirectResponse('/', status_code=303)
     else:
         logger.warning(f"Authentication failed for handle: {handle}")
-        sess['error'] = "Invalid credentials. Please check your handle and app password."
+        sess['error'] = "Invalid handle or app password. Please check your credentials and try again."
         return RedirectResponse('/auth/login', status_code=303)
 
 @rt("/auth/logout")
