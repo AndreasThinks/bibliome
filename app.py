@@ -376,13 +376,15 @@ def view_shelf(slug: str, auth, view: str = "grid"):
             
             books_section = Section(
                 Div(books_content, id="books-container"),
-                cls="books-section"
+                cls=f"books-section {view}-view",
+                id="books-section"
             )
         else:
             books_section = Section(
                 EnhancedEmptyState(can_add=can_add, shelf_id=shelf.id),
                 Div(id="books-container"),  # Always include the target div
-                cls="books-section"
+                cls=f"books-section {view}-view",
+                id="books-section"
             )
         
         content = [
@@ -835,27 +837,40 @@ def toggle_view(slug: str, view: str, auth):
         # Import permission functions
         from models import (can_add_books, can_vote_books, can_remove_books, get_books_with_upvotes)
         
+        can_add = can_add_books(shelf, user_did, db_tables)
         can_vote = can_vote_books(shelf, user_did, db_tables)
         can_remove = can_remove_books(shelf, user_did, db_tables)
         
         # Get books with upvote counts
         shelf_books = get_books_with_upvotes(shelf.id, user_did, db_tables)
         
+        # Render books based on view type
         if shelf_books:
             if view == "list":
                 from components import BookListView
                 books_content = BookListView(shelf_books, can_upvote=can_vote, can_remove=can_remove)
-            else:  # grid view
+            else:  # grid view (default)
                 books_content = Div(*[book.as_interactive_card(
                     can_upvote=can_vote, 
                     user_has_upvoted=book.user_has_upvoted,
                     upvote_count=book.upvote_count,
                     can_remove=can_remove
                 ) for book in shelf_books], cls="book-grid")
+            
+            books_section_content = Div(books_content, id="books-container")
         else:
-            books_content = Div("No books to display", cls="empty-message")
+            from components import EnhancedEmptyState
+            books_section_content = Div(
+                EnhancedEmptyState(can_add=can_add, shelf_id=shelf.id),
+                Div(id="books-container"),
+            )
         
-        return Div(books_content, id="books-container")
+        # Return the entire books section with the correct view class
+        return Section(
+            books_section_content,
+            cls=f"books-section {view}-view",
+            id="books-section"
+        )
         
     except Exception as e:
         logger.error(f"Error toggling view for shelf {slug}: {e}", exc_info=True)

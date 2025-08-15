@@ -248,15 +248,25 @@ def EnhancedEmptyState(can_add=False, shelf_id=None):
 
 def ShelfHeader(shelf, action_buttons, current_view="grid"):
     """A visually appealing header for the shelf page."""
-    # Create view toggle button
-    view_toggle = Button(
-        "⊞" if current_view == "grid" else "☰",
-        hx_get=f"/api/shelf/{shelf.slug}/toggle-view?view={'list' if current_view == 'grid' else 'grid'}",
-        hx_target="#books-container",
+    # Create both toggle buttons - only one will be visible at a time
+    grid_toggle_btn = Button(
+        "⊞",
+        hx_get=f"/api/shelf/{shelf.slug}/toggle-view?view=grid",
+        hx_target="#books-section",
         hx_swap="outerHTML",
-        cls="action-btn view-toggle-btn",
-        title=f"Switch to {'List' if current_view == 'grid' else 'Grid'} View",
-        id="view-toggle-btn"
+        cls="action-btn grid-toggle-btn",
+        title="Switch to Grid View",
+        id="grid-toggle-btn"
+    )
+    
+    list_toggle_btn = Button(
+        "☰",
+        hx_get=f"/api/shelf/{shelf.slug}/toggle-view?view=list",
+        hx_target="#books-section",
+        hx_swap="outerHTML",
+        cls="action-btn list-toggle-btn",
+        title="Switch to List View",
+        id="list-toggle-btn"
     )
     
     # Convert action buttons to icon buttons
@@ -273,8 +283,8 @@ def ShelfHeader(shelf, action_buttons, current_view="grid"):
         else:
             icon_action_buttons.append(button)
     
-    # Create action button group
-    all_actions = [view_toggle] + icon_action_buttons
+    # Create action button group with both toggle buttons
+    all_actions = [grid_toggle_btn, list_toggle_btn] + icon_action_buttons
     
     return Card(
         H1(shelf.name, cls="shelf-title"),

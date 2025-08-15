@@ -1875,6 +1875,24 @@ section + section {
     font-size: 1.1rem;
 }
 
+/* Button visibility based on view state */
+.grid-view .grid-toggle-btn {
+    display: none;
+}
+
+.list-view .list-toggle-btn {
+    display: none;
+}
+
+/* Default state (grid view) */
+.books-section:not(.list-view) .grid-toggle-btn {
+    display: none;
+}
+
+.books-section:not(.list-view) .list-toggle-btn {
+    display: flex;
+}
+
 /* ===== LIST VIEW TABLE STYLES ===== */
 
 .book-table {
