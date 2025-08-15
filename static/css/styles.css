@@ -562,6 +562,70 @@ h1, h2, h3, h4, h5, h6 {
     opacity: 0.6;
 }
 
+/* Permission-aware voting button states */
+.vote-btn.disabled-anonymous {
+    background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+    color: var(--brand-navy);
+    border: 2px solid #2196f3;
+    cursor: pointer;
+    opacity: 0.9;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.vote-btn.disabled-anonymous:hover {
+    background: linear-gradient(135deg, #bbdefb 0%, #e1bee7 100%);
+    border-color: #1976d2;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+}
+
+.vote-btn.disabled-no-permission {
+    background: #fff3cd;
+    color: #856404;
+    border: 2px solid #ffc107;
+    cursor: not-allowed;
+    opacity: 0.8;
+    font-weight: 500;
+}
+
+.vote-btn.disabled-no-permission:hover {
+    background: #ffeaa7;
+    border-color: #e0a800;
+}
+
+/* Permission-aware voting button states */
+.vote-btn.disabled-anonymous {
+    background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+    color: var(--brand-navy);
+    border: 2px solid #2196f3;
+    cursor: pointer;
+    opacity: 0.9;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.vote-btn.disabled-anonymous:hover {
+    background: linear-gradient(135deg, #bbdefb 0%, #e1bee7 100%);
+    border-color: #1976d2;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+}
+
+.vote-btn.disabled-no-permission {
+    background: #fff3cd;
+    color: #856404;
+    border: 2px solid #ffc107;
+    cursor: not-allowed;
+    opacity: 0.8;
+    font-weight: 500;
+}
+
+.vote-btn.disabled-no-permission:hover {
+    background: #ffeaa7;
+    border-color: #e0a800;
+}
+
 .vote-count {
     font-size: 0.75rem;
     font-weight: 600;

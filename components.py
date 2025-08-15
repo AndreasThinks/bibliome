@@ -249,17 +249,42 @@ def EmptyState(title: str, description: str, action_text: str = None, action_hre
         cls="empty-state"
     )
 
-def EnhancedEmptyState(can_add=False, shelf_id=None):
+def EnhancedEmptyState(can_add=False, shelf_id=None, user_auth_status="anonymous"):
     """A more visually appealing empty state for shelves with no books."""
-    return Card(
-        Div(
-            Div("📚", cls="empty-icon"),
-            H3("Your shelf awaits its first book", cls="empty-title"),
-            P("Start building your collection by adding books that matter to you.", cls="empty-description"),
-            cls="empty-content"
-        ),
-        cls="empty-state-card"
-    )
+    if can_add:
+        # User can add books - show encouraging message with call to action
+        return Card(
+            Div(
+                Div("📚", cls="empty-icon"),
+                H3("Your shelf awaits its first book", cls="empty-title"),
+                P("Start building your collection by adding books that matter to you.", cls="empty-description"),
+                cls="empty-content"
+            ),
+            cls="empty-state-card"
+        )
+    elif user_auth_status == "anonymous":
+        # Anonymous user - encourage them to sign in
+        return Card(
+            Div(
+                Div("📚", cls="empty-icon"),
+                H3("This shelf is waiting for its first book", cls="empty-title"),
+                P("Sign in to contribute to this collection and vote on books.", cls="empty-description"),
+                A("Sign In", href="/auth/login", cls="primary empty-cta"),
+                cls="empty-content"
+            ),
+            cls="empty-state-card"
+        )
+    else:
+        # Logged in user without permission
+        return Card(
+            Div(
+                Div("📚", cls="empty-icon"),
+                H3("This shelf is waiting for its first book", cls="empty-title"),
+                P("Only contributors can add books to this shelf. Contact the owner for access.", cls="empty-description"),
+                cls="empty-content"
+            ),
+            cls="empty-state-card"
+        )
 
 def ShelfHeader(shelf, action_buttons, current_view="grid"):
     """A visually appealing header for the shelf page."""
@@ -1165,7 +1190,7 @@ def SearchResultsGrid(shelves, users=None, search_type="all", page: int = 1, que
     
     return Div(*sections, pagination, id="search-results-grid")
 
-def BookListView(books, can_upvote=True, can_remove=False):
+def BookListView(books, can_upvote=True, can_remove=False, user_auth_status="anonymous"):
     """Render books in a table/list view format."""
     if not books:
         return Div("No books to display", cls="empty-list-message")
@@ -1175,7 +1200,8 @@ def BookListView(books, can_upvote=True, can_remove=False):
         can_upvote=can_upvote,
         user_has_upvoted=book.user_has_upvoted,
         upvote_count=book.upvote_count,
-        can_remove=can_remove
+        can_remove=can_remove,
+        user_auth_status=user_auth_status
     ) for book in books]
     
     return Table(

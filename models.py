@@ -819,7 +819,7 @@ def __ft__(self: Book):
     )
 
 @patch
-def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False):
+def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False, user_auth_status="anonymous"):
     """Render Book as a card with upvote and remove functionality."""
     # Generate Google Books URL
     if self.isbn:
@@ -842,11 +842,11 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
         cls="book-description"
     ) if self.description else None
     
-    # Build voting buttons (smaller and more discrete)
+    # Build voting buttons with better permission-aware states
     voting_buttons = []
     
     if can_upvote:
-        # Upvote button
+        # User can vote - show active buttons
         upvote_cls = "vote-btn upvote-btn" + (" voted" if user_has_upvoted else "")
         voting_buttons.append(Button(
             "👍",
@@ -876,9 +876,37 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
         
         voting_buttons.append(Button("👎", **downvote_attrs))
     else:
-        # Show greyed out buttons for users who can't vote
-        voting_buttons.append(Button("👍", cls="vote-btn upvote-btn disabled", disabled=True, title="Login to vote"))
-        voting_buttons.append(Button("👎", cls="vote-btn downvote-btn disabled", disabled=True, title="Login to vote"))
+        # User cannot vote - show appropriate disabled state with clear messaging
+        if user_auth_status == "anonymous":
+            # Not logged in
+            voting_buttons.append(Button(
+                "👍", 
+                cls="vote-btn upvote-btn disabled-anonymous", 
+                disabled=True, 
+                title="Sign in to vote on books",
+                onclick="window.location.href='/auth/login'"
+            ))
+            voting_buttons.append(Button(
+                "👎", 
+                cls="vote-btn downvote-btn disabled-anonymous", 
+                disabled=True, 
+                title="Sign in to vote on books",
+                onclick="window.location.href='/auth/login'"
+            ))
+        else:
+            # Logged in but no permission
+            voting_buttons.append(Button(
+                "👍", 
+                cls="vote-btn upvote-btn disabled-no-permission", 
+                disabled=True, 
+                title="Only contributors can vote on books in this shelf"
+            ))
+            voting_buttons.append(Button(
+                "👎", 
+                cls="vote-btn downvote-btn disabled-no-permission", 
+                disabled=True, 
+                title="Only contributors can vote on books in this shelf"
+            ))
     
     # Vote count display
     vote_count_display = Span(f"{upvote_count}", cls="vote-count")
@@ -936,7 +964,7 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
     )
 
 @patch
-def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False):
+def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False, user_auth_status="anonymous"):
     """Render Book as a table row for list view."""
     # Generate Google Books URL
     if self.isbn:
@@ -976,7 +1004,7 @@ def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_co
         cls="description-cell"
     )
     
-    # Voting cell
+    # Voting cell with permission-aware states
     voting_buttons = []
     if can_upvote:
         upvote_cls = "vote-btn-small upvote-btn" + (" voted" if user_has_upvoted else "")
@@ -1004,8 +1032,35 @@ def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_co
             })
         voting_buttons.append(Button("👎", **downvote_attrs))
     else:
-        voting_buttons.append(Button("👍", cls="vote-btn-small upvote-btn disabled", disabled=True, title="Login to vote"))
-        voting_buttons.append(Button("👎", cls="vote-btn-small downvote-btn disabled", disabled=True, title="Login to vote"))
+        # Permission-aware disabled states
+        if user_auth_status == "anonymous":
+            voting_buttons.append(Button(
+                "👍", 
+                cls="vote-btn-small upvote-btn disabled-anonymous", 
+                disabled=True, 
+                title="Sign in to vote on books",
+                onclick="window.location.href='/auth/login'"
+            ))
+            voting_buttons.append(Button(
+                "👎", 
+                cls="vote-btn-small downvote-btn disabled-anonymous", 
+                disabled=True, 
+                title="Sign in to vote on books",
+                onclick="window.location.href='/auth/login'"
+            ))
+        else:
+            voting_buttons.append(Button(
+                "👍", 
+                cls="vote-btn-small upvote-btn disabled-no-permission", 
+                disabled=True, 
+                title="Only contributors can vote on books in this shelf"
+            ))
+            voting_buttons.append(Button(
+                "👎", 
+                cls="vote-btn-small downvote-btn disabled-no-permission", 
+                disabled=True, 
+                title="Only contributors can vote on books in this shelf"
+            ))
     
     votes_cell = Td(
         Div(

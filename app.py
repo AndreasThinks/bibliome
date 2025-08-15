@@ -89,7 +89,7 @@ def index(auth):
         
         return (
             Title("Bibliome - Building the very best reading lists, together"),
-            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             LandingPageHero(),
             FeaturesSection(),
@@ -136,7 +136,7 @@ def index(auth):
         
         return (
             Title("Dashboard - Bibliome"),
-            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             Container(*content)
         )
@@ -206,7 +206,7 @@ def new_shelf_page(auth):
     
     return (
         Title("Create New Bookshelf - Bibliome"),
-        Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+        Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
         NavBar(auth),
         Container(CreateBookshelfForm())
     )
@@ -293,7 +293,7 @@ def search_page(auth, query: str = "", search_type: str = "all", book_title: str
     
     return (
         Title("Search - Bibliome"),
-        Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+        Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
         NavBar(auth),
         Container(
             SearchPageHero(),
@@ -331,7 +331,7 @@ def explore_page(auth, page: int = 1):
     
     return (
         Title("Explore Public Shelves - Bibliome"),
-        Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+        Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
         NavBar(auth),
         Container(
             ExplorePageHero(),
@@ -385,7 +385,7 @@ def network_page(auth, activity_type: str = "all", date_filter: str = "all", pag
         
         return (
             Title("Your Network - Bibliome"),
-            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             Container(*content)
         )
@@ -401,7 +401,7 @@ def network_page(auth, activity_type: str = "all", date_filter: str = "all", pag
         
         return (
             Title("Your Network - Bibliome"),
-            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             Container(*content)
         )
@@ -443,7 +443,7 @@ def user_profile(handle: str, auth):
         
         return (
             Title(f"@{user.handle} - Bibliome"),
-            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             Container(*content)
         )
@@ -452,7 +452,7 @@ def user_profile(handle: str, auth):
         logger.error(f"Error loading user profile for {handle}: {e}", exc_info=True)
         return (
             Title("Error - Bibliome"),
-            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             Container(
                 H1("Error"),
@@ -497,6 +497,9 @@ def view_shelf(slug: str, auth, view: str = "grid"):
         from models import get_books_with_upvotes
         shelf_books = get_books_with_upvotes(shelf.id, user_did, db_tables)
         
+        # Determine user authentication status
+        user_auth_status = "anonymous" if not auth else "logged_in"
+        
         # Build action buttons
         action_buttons = []
         if can_edit or can_share:
@@ -512,13 +515,14 @@ def view_shelf(slug: str, auth, view: str = "grid"):
         if shelf_books:
             if view == "list":
                 from components import BookListView
-                books_content = BookListView(shelf_books, can_upvote=can_vote, can_remove=can_remove)
+                books_content = BookListView(shelf_books, can_upvote=can_vote, can_remove=can_remove, user_auth_status=user_auth_status)
             else:  # grid view (default)
                 books_content = Div(*[book.as_interactive_card(
                     can_upvote=can_vote, 
                     user_has_upvoted=book.user_has_upvoted,
                     upvote_count=book.upvote_count,
-                    can_remove=can_remove
+                    can_remove=can_remove,
+                    user_auth_status=user_auth_status
                 ) for book in shelf_books], cls="book-grid", id="book-grid")
             
             books_section = Section(
@@ -529,7 +533,7 @@ def view_shelf(slug: str, auth, view: str = "grid"):
         else:
             books_section = Section(
                 Div(
-                    EnhancedEmptyState(can_add=can_add, shelf_id=shelf.id),
+                    EnhancedEmptyState(can_add=can_add, shelf_id=shelf.id, user_auth_status=user_auth_status),
                     # Always include an empty book-grid div for HTMX targeting
                     Div(id="book-grid", cls="book-grid"),
                     id="books-container"
@@ -567,7 +571,7 @@ def view_shelf(slug: str, auth, view: str = "grid"):
         
         return (
             Title(f"{shelf.name} - Bibliome"),
-            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             Container(*content)
         )
@@ -575,7 +579,7 @@ def view_shelf(slug: str, auth, view: str = "grid"):
     except Exception as e:
         return (
             Title("Error - Bibliome"),
-            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             Container(
                 H1("Error"),
@@ -997,24 +1001,28 @@ def toggle_view(slug: str, view: str, auth):
         # Get books with upvote counts
         shelf_books = get_books_with_upvotes(shelf.id, user_did, db_tables)
         
+        # Determine user authentication status
+        user_auth_status = "anonymous" if not auth else "logged_in"
+        
         # Always create consistent structure with book-grid for HTMX targeting
         if shelf_books:
             if view == "list":
                 from components import BookListView
-                books_content = BookListView(shelf_books, can_upvote=can_vote, can_remove=can_remove)
+                books_content = BookListView(shelf_books, can_upvote=can_vote, can_remove=can_remove, user_auth_status=user_auth_status)
             else:  # grid view (default)
                 books_content = Div(*[book.as_interactive_card(
                     can_upvote=can_vote, 
                     user_has_upvoted=book.user_has_upvoted,
                     upvote_count=book.upvote_count,
-                    can_remove=can_remove
+                    can_remove=can_remove,
+                    user_auth_status=user_auth_status
                 ) for book in shelf_books], cls="book-grid", id="book-grid")
             
             books_section_content = Div(books_content, id="books-container")
         else:
             from components import EnhancedEmptyState
             books_section_content = Div(
-                EnhancedEmptyState(can_add=can_add, shelf_id=shelf.id),
+                EnhancedEmptyState(can_add=can_add, shelf_id=shelf.id, user_auth_status=user_auth_status),
                 # Always include an empty book-grid div for HTMX targeting
                 Div(id="book-grid", cls="book-grid"),
                 id="books-container"
@@ -1180,7 +1188,7 @@ def manage_shelf(slug: str, auth, req):
         
         return (
             Title(f"Manage: {shelf.name} - Bibliome"),
-            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             Container(*content)
         )
@@ -1188,7 +1196,7 @@ def manage_shelf(slug: str, auth, req):
     except Exception as e:
         return (
             Title("Error - Bibliome"),
-            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             Container(
                 H1("Error"),
@@ -1275,7 +1283,7 @@ def share_shelf(slug: str, auth, req):
         
         return (
             Title(f"Share: {shelf.name} - Bibliome"),
-            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             Container(*content)
         )
@@ -1283,7 +1291,7 @@ def share_shelf(slug: str, auth, req):
     except Exception as e:
         return (
             Title("Error - Bibliome"),
-            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             Container(
                 H1("Error"),
