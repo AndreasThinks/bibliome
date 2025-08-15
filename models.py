@@ -383,7 +383,9 @@ def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 
         if not following_dids:
             return []
         
-        # Build query to get activities from followed users
+        current_user_did = auth_data.get('did')
+        
+        # Build query to get activities from followed users with permission-aware privacy filtering
         placeholders = ','.join(['?' for _ in following_dids])
         query = f"""
             SELECT a.*, b.name as bookshelf_name, b.slug as bookshelf_slug, b.privacy,
@@ -391,11 +393,17 @@ def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 
             FROM activity a
             LEFT JOIN bookshelf b ON a.bookshelf_id = b.id
             LEFT JOIN book bk ON a.book_id = bk.id
+            LEFT JOIN permission p ON b.id = p.bookshelf_id AND p.user_did = ? AND p.status = 'active'
             WHERE a.user_did IN ({placeholders})
-            AND (b.privacy = 'public' OR b.privacy = 'link-only')
+            AND (
+                b.privacy = 'public' 
+                OR b.privacy = 'link-only'
+                OR (b.privacy = 'private' AND b.owner_did = ?)
+                OR (b.privacy = 'private' AND p.user_did IS NOT NULL)
+            )
         """
         
-        params = following_dids.copy()
+        params = [current_user_did] + following_dids + [current_user_did]
         
         # Add activity type filter
         if activity_type != "all":
@@ -462,17 +470,25 @@ def get_network_activity_count(auth_data: dict, db_tables, bluesky_auth, activit
         if not following_dids:
             return 0
         
-        # Build count query
+        current_user_did = auth_data.get('did')
+        
+        # Build count query with permission-aware privacy filtering
         placeholders = ','.join(['?' for _ in following_dids])
         query = f"""
             SELECT COUNT(*)
             FROM activity a
             LEFT JOIN bookshelf b ON a.bookshelf_id = b.id
+            LEFT JOIN permission p ON b.id = p.bookshelf_id AND p.user_did = ? AND p.status = 'active'
             WHERE a.user_did IN ({placeholders})
-            AND (b.privacy = 'public' OR b.privacy = 'link-only')
+            AND (
+                b.privacy = 'public' 
+                OR b.privacy = 'link-only'
+                OR (b.privacy = 'private' AND b.owner_did = ?)
+                OR (b.privacy = 'private' AND p.user_did IS NOT NULL)
+            )
         """
         
-        params = following_dids.copy()
+        params = [current_user_did] + following_dids + [current_user_did]
         
         # Add activity type filter
         if activity_type != "all":
