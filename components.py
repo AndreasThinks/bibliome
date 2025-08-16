@@ -364,7 +364,11 @@ def ShelfHeader(shelf, action_buttons, current_view="grid", can_share=False, use
         H1(shelf.name, cls="shelf-title"),
         P(shelf.description, cls="shelf-description") if shelf.description else None,
         Div(
-            Span(f"🌍 {shelf.privacy.replace('-', ' ').title()}", cls="privacy-badge"),
+            Div(
+                Span(f"🌍 {shelf.privacy.replace('-', ' ').title()}", cls="privacy-badge"),
+                Span("🤝 Open to contributions", cls="contribution-badge") if getattr(shelf, 'self_join', False) else None,
+                cls="shelf-badges"
+            ),
             Div(*all_actions, cls="shelf-actions"),
             cls="shelf-meta"
         ),
@@ -1177,7 +1181,7 @@ def ShelfPreviewCard(shelf):
         owner_details.extend([owner_avatar, Span(shelf.owner.display_name or shelf.owner.handle)])
     owner_info = Div(*owner_details, cls="shelf-owner-info")
 
-    # Add contribution badge if shelf is open to contributions
+    # Add contribution badge if shelf is open to contributions - positioned in footer
     contribution_badge = None
     if getattr(shelf, 'self_join', False):
         contribution_badge = Div("🤝 Open to contributions", cls="shelf-preview-contribution-badge")
@@ -1188,11 +1192,14 @@ def ShelfPreviewCard(shelf):
     )(
         Card(
             cover_previews,
-            contribution_badge,
             H3(shelf.name),
             P(shelf.description, cls="shelf-description") if shelf.description else None,
             footer=Div(
-                owner_info,
+                Div(
+                    contribution_badge,
+                    owner_info,
+                    cls="shelf-footer-left"
+                ),
                 Span(f"{getattr(shelf, 'book_count', 0)} books", cls="book-count"),
                 cls="shelf-card-footer"
             )

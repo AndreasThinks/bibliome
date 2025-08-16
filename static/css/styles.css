@@ -348,6 +348,13 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--brand-muted);
 }
 
+.shelf-badges {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
 .shelf-actions {
     display: flex;
     gap: 0.5rem;
@@ -1045,7 +1052,7 @@ h1, h2, h3, h4, h5, h6 {
     font-weight: 600;
     background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
     color: white;
-    margin-top: 0.5rem;
+    margin-bottom: 0.25rem;
     box-shadow: 0 1px 3px rgba(40, 167, 69, 0.2);
     transition: all 0.2s ease;
 }
@@ -2325,9 +2332,14 @@ section + section {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-top: 1rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--brand-border);
+}
+
+.shelf-footer-left {
+    vertical-align: middle;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-start;
 }
 
 .shelf-owner-info {
