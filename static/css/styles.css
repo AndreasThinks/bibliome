@@ -2503,9 +2503,65 @@ section + section {
 
 .search-form-grid {
     display: grid;
-    grid-template-columns: 1fr auto auto auto;
+    grid-template-columns: 2fr auto auto auto auto;
     gap: 1rem;
     align-items: center;
+}
+
+.search-form-grid input[type="search"] {
+    padding: 0.75rem 1rem;
+    border: 2px solid var(--brand-border);
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    background: var(--brand-white);
+    transition: border-color 0.2s ease;
+    min-height: 44px;
+    box-sizing: border-box;
+}
+
+.search-form-grid input[type="search"]:focus {
+    outline: none;
+    border-color: var(--brand-amber);
+    box-shadow: 0 0 0 3px rgba(212, 148, 30, 0.1);
+}
+
+.search-form-grid select {
+    padding: 0.75rem;
+    border: 2px solid var(--brand-border);
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+    background: var(--brand-white);
+    transition: border-color 0.2s ease;
+    min-height: 44px;
+    min-width: 120px;
+    box-sizing: border-box;
+}
+
+.search-form-grid select:focus {
+    outline: none;
+    border-color: var(--brand-amber);
+    box-shadow: 0 0 0 3px rgba(212, 148, 30, 0.1);
+}
+
+.search-form-grid button[type="submit"] {
+    background: var(--brand-amber);
+    color: var(--brand-navy);
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 44px;
+    white-space: nowrap;
+    box-shadow: 0 2px 4px rgba(212, 148, 30, 0.2);
+}
+
+.search-form-grid button[type="submit"]:hover {
+    background: #c08419;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(212, 148, 30, 0.3);
 }
 
 .advanced-search-toggle {
@@ -2641,11 +2697,41 @@ section + section {
 @media (max-width: 768px) {
     .search-form-grid {
         grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .search-form-grid input[type="search"] {
+        padding: 1rem;
+        font-size: 1rem;
+        min-height: 48px;
+    }
+    
+    .search-form-grid select {
+        padding: 1rem;
+        font-size: 1rem;
+        min-height: 48px;
+        min-width: 100%;
+    }
+    
+    .search-form-grid button[type="submit"] {
+        padding: 1rem 1.5rem;
+        font-size: 1rem;
+        min-height: 48px;
+        width: 100%;
     }
     
     .search-type-tabs {
-        flex-direction: column;
-        gap: 0.25rem;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+    
+    .search-type-tab {
+        flex: 1;
+        min-width: 100px;
+        justify-content: center;
+        padding: 0.75rem 1rem;
+        font-size: 0.9rem;
     }
     
     .search-shelves-grid,
