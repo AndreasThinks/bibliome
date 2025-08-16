@@ -1768,7 +1768,6 @@ def ShareModal(shelf, base_url, user_role=None, can_generate_invites=False):
     
     # Determine available share options based on user permissions
     share_options = []
-    first_option_checked = True
     
     # Option 1: Share public link (only for public/link-only shelves, available to all roles)
     if shelf.privacy in ['public', 'link-only']:
@@ -1778,21 +1777,23 @@ def ShareModal(shelf, base_url, user_role=None, can_generate_invites=False):
                     type="radio", 
                     name="share_type", 
                     value="public_link",
-                    checked=first_option_checked,
                     hx_trigger="change",
                     hx_post=f"/api/shelf/{shelf.slug}/share-preview",
                     hx_target="#share-preview",
                     hx_include="[name='share_type']:checked"
                 ),
                 Div(
-                    Strong("Share public link"),
+                    Div(
+                        Strong("Share public link"),
+                        Span("🔗", cls="share-option-icon"),
+                        cls="share-option-header"
+                    ),
                     P("Anyone can view this shelf immediately", cls="share-option-description"),
                     cls="share-option-content"
                 ),
                 cls="share-type-option"
             )
         )
-        first_option_checked = False
     
     # Option 2 & 3: Invite options (only for moderators and owners)
     if can_generate_invites:
@@ -1803,14 +1804,17 @@ def ShareModal(shelf, base_url, user_role=None, can_generate_invites=False):
                     type="radio", 
                     name="share_type", 
                     value="invite_viewer",
-                    checked=first_option_checked,
                     hx_trigger="change",
                     hx_post=f"/api/shelf/{shelf.slug}/share-preview",
                     hx_target="#share-preview",
                     hx_include="[name='share_type']:checked"
                 ),
                 Div(
-                    Strong("Invite as viewer"),
+                    Div(
+                        Strong("Invite as viewer"),
+                        Span("👁️", cls="share-option-icon"),
+                        cls="share-option-header"
+                    ),
                     P("Creates a formal member relationship" if shelf.privacy in ['public', 'link-only'] 
                       else "Give view-only access to this private shelf", cls="share-option-description"),
                     cls="share-option-content"
@@ -1818,8 +1822,6 @@ def ShareModal(shelf, base_url, user_role=None, can_generate_invites=False):
                 cls="share-type-option"
             )
         )
-        if first_option_checked:
-            first_option_checked = False
         
         # Invite as contributor
         share_options.append(
@@ -1828,14 +1830,17 @@ def ShareModal(shelf, base_url, user_role=None, can_generate_invites=False):
                     type="radio", 
                     name="share_type", 
                     value="invite_contributor",
-                    checked=first_option_checked,
                     hx_trigger="change",
                     hx_post=f"/api/shelf/{shelf.slug}/share-preview",
                     hx_target="#share-preview",
                     hx_include="[name='share_type']:checked"
                 ),
                 Div(
-                    Strong("Invite as contributor"),
+                    Div(
+                        Strong("Invite as contributor"),
+                        Span("🤝", cls="share-option-icon"),
+                        cls="share-option-header"
+                    ),
                     P("Allow adding books and voting", cls="share-option-description"),
                     cls="share-option-content"
                 ),
@@ -1854,30 +1859,55 @@ def ShareModal(shelf, base_url, user_role=None, can_generate_invites=False):
     
     return Div(
         Div(
+            # Modal header with improved spacing
             Div(
                 Button(
-                    "×",
+                    I(cls="fas fa-times"),
                     hx_get=f"/api/shelf/{shelf.slug}/close-share-modal",
                     hx_target="#share-modal-container",
                     hx_swap="innerHTML",
                     cls="share-modal-close",
                     title="Close"
                 ),
-                H3(
-                    I(cls="fas fa-share-alt", style="margin-right: 0.5rem;"),
-                    f"Share: {shelf.name}",
-                    cls="share-modal-title"
+                Div(
+                    H2(
+                        I(cls="fas fa-share-alt"),
+                        f"Share: {shelf.name}",
+                        cls="share-modal-title"
+                    ),
+                    P(f"{privacy_icon} {shelf.privacy.replace('-', ' ').title()} shelf", cls="share-modal-privacy"),
+                    cls="share-modal-title-section"
                 ),
-                P(f"{privacy_icon} {shelf.privacy.replace('-', ' ').title()} shelf", cls="share-modal-privacy"),
                 cls="share-modal-header"
             ),
+            
+            # Main content with better organization
             Div(
-                H4("How would you like to share this shelf?", cls="share-options-title"),
-                Div(*share_options, cls="share-options"),
-                Div(id="share-preview", cls="share-preview-container"),
-                cls="share-modal-content"
+                # Share options section
+                Div(
+                    H3("Choose how to share", cls="share-section-title"),
+                    P("Select an option below to generate a sharing link", cls="share-section-subtitle"),
+                    Div(*share_options, cls="share-options-grid"),
+                    cls="share-options-section"
+                ),
+                
+                # Preview section
+                Div(
+                    Div(
+                        Div(
+                            I(cls="fas fa-info-circle"),
+                            "Select a sharing option above to see a preview",
+                            cls="share-preview-placeholder"
+                        ),
+                        id="share-preview", 
+                        cls="share-preview-container"
+                    ),
+                    cls="share-preview-section"
+                ),
+                
+                cls="share-modal-body"
             ),
-            cls="share-modal-content"
+            cls="share-modal-dialog"
         ),
         cls="share-modal-overlay"
     )
@@ -1952,6 +1982,17 @@ def ShareLinkResult(link, message, share_type):
 
 def SharePreview(shelf, share_type, base_url):
     """Preview of what will be shared based on the selected share type."""
+    # Handle case when no share type is selected
+    if not share_type:
+        return Div(
+            Div(
+                I(cls="fas fa-info-circle"),
+                "Select a sharing option above to see a preview",
+                cls="share-preview-placeholder"
+            ),
+            cls="share-preview-container"
+        )
+    
     privacy_descriptions = {
         'public': 'This public shelf can be viewed by anyone',
         'link-only': 'This shelf can be viewed by anyone with the link',
