@@ -904,6 +904,26 @@ def ContactModal():
                 ContactForm(),
                 cls="contact-modal-body"
             ),
+            
+            # Modal footer with form actions (fixed at bottom)
+            Div(
+                Button(
+                    "Cancel",
+                    type="button",
+                    hx_get="/api/close-contact-modal",
+                    hx_target="#contact-modal-container",
+                    hx_swap="innerHTML",
+                    cls="contact-btn-secondary"
+                ),
+                Button(
+                    I(cls="fas fa-paper-plane"),
+                    " Send Message",
+                    type="submit",
+                    form="contact-form",
+                    cls="contact-btn-primary"
+                ),
+                cls="contact-modal-footer"
+            ),
             cls="contact-modal-dialog"
         ),
         cls="contact-modal-overlay"
@@ -911,60 +931,48 @@ def ContactModal():
 
 def ContactForm():
     """Contact form component."""
-    return Form(
-        Div(
-            Label("Your Name", Input(
-                name="name",
-                type="text",
-                placeholder="Enter your full name",
-                required=True,
-                cls="contact-input"
-            )),
-            Label("Your Email", Input(
-                name="email",
-                type="email",
-                placeholder="your.email@example.com",
-                required=True,
-                cls="contact-input"
-            )),
-            Label("Subject", Input(
-                name="subject",
-                type="text",
-                placeholder="What's this about?",
-                required=True,
-                cls="contact-input"
-            )),
-            Label("Message", Textarea(
-                name="message",
-                placeholder="Tell us what's on your mind...",
-                rows=5,
-                required=True,
-                cls="contact-textarea"
-            )),
-            cls="contact-form-fields"
-        ),
-        Div(
-            Button(
-                "Cancel",
-                type="button",
-                hx_get="/api/close-contact-modal",
-                hx_target="#contact-modal-container",
-                hx_swap="innerHTML",
-                cls="contact-btn-secondary"
+    return Div(
+        Form(
+            Div(
+                Label("Your Name", Input(
+                    name="name",
+                    type="text",
+                    placeholder="Enter your full name",
+                    required=True,
+                    cls="contact-input"
+                )),
+                Label("Your Email", Input(
+                    name="email",
+                    type="email",
+                    placeholder="your.email@example.com",
+                    required=True,
+                    cls="contact-input"
+                )),
+                Label("Subject", Input(
+                    name="subject",
+                    type="text",
+                    placeholder="What's this about?",
+                    required=True,
+                    cls="contact-input"
+                )),
+                Label("Message", Textarea(
+                    name="message",
+                    placeholder="Tell us what's on your mind...",
+                    rows=5,
+                    required=True,
+                    cls="contact-textarea"
+                )),
+                cls="contact-form-fields"
             ),
-            Button(
-                I(cls="fas fa-paper-plane"),
-                " Send Message",
-                type="submit",
-                cls="contact-btn-primary"
-            ),
-            cls="contact-form-actions"
+            hx_post="/api/contact",
+            hx_target="#contact-form-response",
+            hx_swap="innerHTML",
+            cls="contact-form",
+            id="contact-form"
         ),
-        hx_post="/api/contact",
-        hx_target="#contact-form-response",
-        hx_swap="innerHTML",
-        cls="contact-form",
-        id="contact-form"
+        # Response container for success/error messages
+        Div(id="contact-form-response"),
+        cls="contact-form-container"
     )
 
 def ContactFormSuccess():

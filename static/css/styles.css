@@ -3575,6 +3575,18 @@ section + section {
     padding: 2rem;
     overflow-y: auto;
     flex: 1;
+    max-height: calc(85vh - 200px); /* Reserve space for header and footer */
+}
+
+/* Modal footer */
+.contact-modal-footer {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    padding: 1.5rem 2rem;
+    border-top: 1px solid var(--brand-border);
+    background: linear-gradient(135deg, var(--brand-light) 0%, #ffffff 100%);
+    flex-shrink: 0;
 }
 
 /* Contact form styles */
@@ -5463,13 +5475,22 @@ section + section {
     line-height: 1.6;
 }
 
-.contact-form-actions {
+/* Contact form container */
+.contact-form-container {
     display: flex;
+    flex-direction: column;
     gap: 1rem;
-    justify-content: flex-end;
-    margin-top: 1rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid var(--brand-border);
+}
+
+/* Response area for success/error messages */
+#contact-form-response {
+    min-height: 0;
+    transition: all 0.3s ease;
+}
+
+/* Remove old form actions styles since actions are now in modal footer */
+.contact-form-actions {
+    display: none; /* Hide since actions are now in modal footer */
 }
 
 .contact-btn-primary {
@@ -5534,9 +5555,15 @@ section + section {
 
 /* Mobile responsive for enhanced contact form */
 @media (max-width: 768px) {
-    .contact-form-actions {
+    .contact-modal-body {
+        padding: 1.5rem;
+        max-height: calc(95vh - 180px); /* Adjust for mobile */
+    }
+    
+    .contact-modal-footer {
         flex-direction: column-reverse;
         gap: 0.75rem;
+        padding: 1.25rem 1.5rem;
     }
     
     .contact-btn-primary,
@@ -5560,6 +5587,15 @@ section + section {
 }
 
 @media (max-width: 480px) {
+    .contact-modal-body {
+        padding: 1rem;
+        max-height: calc(98vh - 160px); /* Adjust for very small screens */
+    }
+    
+    .contact-modal-footer {
+        padding: 1rem;
+    }
+    
     .contact-btn-primary,
     .contact-btn-secondary {
         padding: 0.75rem 1.25rem;
