@@ -861,18 +861,10 @@ def NetworkActivityFeed(activities: List[Dict], auth=None):
 def NetworkActivityPreview(activities: List[Dict], auth=None):
     """Display a compact preview of network activity for the homepage dashboard."""
     if not activities:
-        return Card(
-            Div(
-                H3("📚 Activity from your network", cls="preview-title"),
-                A("View All →", href="/network", cls="preview-view-all"),
-                cls="preview-header"
-            ),
-            Div(
-                P("No recent activity from your network.", cls="preview-empty-text"),
-                P("Follow people on Bluesky to see their book activity here!", cls="preview-empty-suggestion"),
-                cls="preview-empty-content"
-            ),
-            cls="network-preview-card"
+        return Div(
+            P("No recent activity from your network.", cls="preview-empty-text"),
+            P("Follow people on Bluesky to see their book activity here!", cls="preview-empty-suggestion"),
+            cls="preview-empty-content"
         )
     
     # Show only the 3 most recent activities
@@ -881,15 +873,7 @@ def NetworkActivityPreview(activities: List[Dict], auth=None):
     for activity in preview_activities:
         activity_cards.append(CompactActivityCard(activity))
     
-    return Card(
-        Div(
-            H3("📚 Activity from your network", cls="preview-title"),
-            A("View All →", href="/network", cls="preview-view-all"),
-            cls="preview-header"
-        ),
-        Div(*activity_cards, cls="preview-activity-list"),
-        cls="network-preview-card"
-    )
+    return Div(*activity_cards, cls="preview-activity-list")
 
 def NetworkActivityPreviewLoading():
     """Loading state for network activity with HTMX background loading."""
@@ -916,24 +900,16 @@ def NetworkActivityPreviewLoading():
 
 def NetworkActivityPreviewError():
     """Error state for network activity with retry option."""
-    return Card(
-        Div(
-            H3("📚 Activity from your network", cls="preview-title"),
-            A("View All →", href="/network", cls="preview-view-all"),
-            cls="preview-header"
+    return Div(
+        P("Unable to load network activity.", cls="error-text"),
+        Button(
+            "Try Again",
+            hx_get="/api/load-network-activity",
+            hx_target="closest .network-preview-card",
+            hx_swap="outerHTML",
+            cls="retry-btn secondary"
         ),
-        Div(
-            P("Unable to load network activity.", cls="error-text"),
-            Button(
-                "Try Again",
-                hx_get="/api/load-network-activity",
-                hx_target="closest .network-preview-card",
-                hx_swap="outerHTML",
-                cls="retry-btn secondary"
-            ),
-            cls="preview-error-content"
-        ),
-        cls="network-preview-card"
+        cls="preview-error-content"
     )
 
 def CompactActivityCard(activity: Dict):
