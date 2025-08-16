@@ -744,6 +744,165 @@ def get_recent_community_books(db_tables, limit: int = 15):
         print(f"Error fetching recent community books: {e}")
         return []
 
+def calculate_shelf_activity_score(shelf_id: int, db_tables) -> float:
+    """Calculate an activity score for a bookshelf based on various metrics."""
+    try:
+        from datetime import datetime, timedelta
+        
+        # Get shelf info
+        shelf = db_tables['bookshelves'][shelf_id]
+        
+        # Recent book additions (last 30 days) - weight: 40%
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        recent_books_query = """
+            SELECT COUNT(*) FROM book 
+            WHERE bookshelf_id = ? AND added_at >= ?
+        """
+        cursor = db_tables['db'].execute(recent_books_query, (shelf_id, thirty_days_ago.isoformat()))
+        recent_books_count = cursor.fetchone()[0]
+        
+        # Contributor count - weight: 30%
+        contributors_query = """
+            SELECT COUNT(DISTINCT user_did) FROM permission 
+            WHERE bookshelf_id = ? AND status = 'active' AND role IN ('contributor', 'moderator')
+        """
+        cursor = db_tables['db'].execute(contributors_query, (shelf_id,))
+        contributor_count = cursor.fetchone()[0]
+        
+        # Total engagement (upvotes) - weight: 20%
+        upvotes_query = """
+            SELECT COUNT(*) FROM upvote u
+            JOIN book b ON u.book_id = b.id
+            WHERE b.bookshelf_id = ?
+        """
+        cursor = db_tables['db'].execute(upvotes_query, (shelf_id,))
+        total_upvotes = cursor.fetchone()[0]
+        
+        # Shelf age boost (newer shelves get bonus) - weight: 10%
+        # Handle both datetime objects and string dates
+        if shelf.created_at:
+            if isinstance(shelf.created_at, str):
+                try:
+                    # Parse ISO format datetime string
+                    shelf_created = datetime.fromisoformat(shelf.created_at.replace('Z', '+00:00'))
+                except ValueError:
+                    # Fallback for other date formats
+                    from dateutil.parser import parse
+                    shelf_created = parse(shelf.created_at)
+            else:
+                shelf_created = shelf.created_at
+            shelf_age_days = (datetime.now() - shelf_created).days
+        else:
+            shelf_age_days = 365
+        age_score = max(0, 60 - shelf_age_days) / 60  # Boost for shelves < 60 days old
+        
+        # Calculate weighted score
+        activity_score = (
+            (recent_books_count * 10) * 0.4 +  # Recent activity
+            (contributor_count * 5) * 0.3 +    # Collaboration
+            (total_upvotes * 2) * 0.2 +        # Engagement
+            (age_score * 20) * 0.1              # Recency
+        )
+        
+        # Open collaboration bonus (+20%)
+        if getattr(shelf, 'self_join', False):
+            activity_score *= 1.2
+        
+        return activity_score
+        
+    except Exception as e:
+        print(f"Error calculating activity score for shelf {shelf_id}: {e}")
+        return 0.0
+
+def get_mixed_public_shelves(db_tables, limit: int = 20, offset: int = 0):
+    """Get a smart mix of new and popular/active public bookshelves."""
+    try:
+        # Get all public shelves with basic stats
+        public_shelves = get_public_shelves_with_stats(db_tables, limit=limit*2, offset=0)  # Get more to mix from
+        
+        # Calculate activity scores for each shelf
+        shelves_with_scores = []
+        for shelf in public_shelves:
+            activity_score = calculate_shelf_activity_score(shelf.id, db_tables)
+            shelf.activity_score = activity_score
+            shelves_with_scores.append(shelf)
+        
+        # Sort by activity score (descending)
+        shelves_with_scores.sort(key=lambda s: s.activity_score, reverse=True)
+        
+        # Get the most active shelves (top 60%)
+        active_count = int(limit * 0.6)
+        active_shelves = shelves_with_scores[:active_count]
+        
+        # Get newest shelves (remaining 40%)
+        newest_shelves = sorted(
+            [s for s in shelves_with_scores if s not in active_shelves],
+            key=lambda s: s.created_at or datetime.min,
+            reverse=True
+        )[:limit - active_count]
+        
+        # Combine and shuffle for variety
+        mixed_shelves = active_shelves + newest_shelves
+        import random
+        random.shuffle(mixed_shelves)
+        
+        # Apply pagination
+        start_idx = offset
+        end_idx = offset + limit
+        return mixed_shelves[start_idx:end_idx]
+        
+    except Exception as e:
+        print(f"Error getting mixed public shelves: {e}")
+        # Fallback to regular public shelves
+        return get_public_shelves_with_stats(db_tables, limit=limit, offset=offset)
+
+def search_shelves_enhanced(db_tables, query: str = "", book_title: str = "", book_author: str = "", book_isbn: str = "", user_did: str = None, privacy: str = "public", sort_by: str = "smart_mix", limit: int = 20, offset: int = 0, open_to_contributions: bool = None):
+    """Enhanced search for bookshelves with activity-based sorting options."""
+    
+    # If sort_by is smart_mix and no search query, use the mixed results
+    if sort_by == "smart_mix" and not any([query, book_title, book_author, book_isbn]):
+        return get_mixed_public_shelves(db_tables, limit=limit, offset=offset)
+    
+    # For other cases, use the existing search with enhanced sorting
+    shelves = search_shelves(db_tables, query, book_title, book_author, book_isbn, user_did, privacy, sort_by, limit*2, 0, open_to_contributions)
+    
+    # Apply activity-based sorting for new sort options
+    if sort_by == "recently_active":
+        # Sort by recent book additions
+        for shelf in shelves:
+            recent_books_query = """
+                SELECT COUNT(*) FROM book 
+                WHERE bookshelf_id = ? AND added_at >= datetime('now', '-30 days')
+            """
+            cursor = db_tables['db'].execute(recent_books_query, (shelf.id,))
+            shelf.recent_activity = cursor.fetchone()[0]
+        shelves.sort(key=lambda s: getattr(s, 'recent_activity', 0), reverse=True)
+        
+    elif sort_by == "most_contributors":
+        # Sort by contributor count
+        for shelf in shelves:
+            contributors_query = """
+                SELECT COUNT(DISTINCT user_did) FROM permission 
+                WHERE bookshelf_id = ? AND status = 'active' AND role IN ('contributor', 'moderator')
+            """
+            cursor = db_tables['db'].execute(contributors_query, (shelf.id,))
+            shelf.contributor_count = cursor.fetchone()[0]
+        shelves.sort(key=lambda s: getattr(s, 'contributor_count', 0), reverse=True)
+        
+    elif sort_by == "most_viewers":
+        # Sort by total member count (viewers + contributors + moderators)
+        for shelf in shelves:
+            viewers_query = """
+                SELECT COUNT(DISTINCT user_did) FROM permission 
+                WHERE bookshelf_id = ? AND status = 'active'
+            """
+            cursor = db_tables['db'].execute(viewers_query, (shelf.id,))
+            shelf.viewer_count = cursor.fetchone()[0]
+        shelves.sort(key=lambda s: getattr(s, 'viewer_count', 0), reverse=True)
+    
+    # Apply pagination
+    return shelves[offset:offset + limit]
+
 def get_user_by_handle(handle: str, db_tables):
     """Get a user by their handle, returning None if not found."""
     try:

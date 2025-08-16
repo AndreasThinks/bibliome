@@ -12,7 +12,7 @@ def NavBar(auth=None):
         links = [
             A("My Shelves", href="/"),
             A("Your Network", href="/network"),
-            A("Search", href="/search"),
+            A("Explore", href="/explore"),
             A("Create Shelf", href="/shelf/new"),
         ]
         
@@ -1305,6 +1305,27 @@ def format_time_ago(dt):
     else:
         return "just now"
 
+def UnifiedExploreHero(auth=None):
+    """Unified hero section that adapts based on authentication status."""
+    if auth:
+        # Logged-in users get enhanced explore experience
+        return Section(
+            Container(
+                H1("Explore what the community is reading", cls="explore-title"),
+                P("Discover active bookshelves, search by interests, and find your next great read.", cls="explore-subtitle"),
+            ),
+            cls="explore-hero"
+        )
+    else:
+        # Anonymous users get simple discovery experience
+        return Section(
+            Container(
+                H1("Discover what the community is reading", cls="explore-title"),
+                P("Browse curated collections from readers around the world.", cls="explore-subtitle"),
+            ),
+            cls="explore-hero"
+        )
+
 def ExplorePageHero():
     """Hero section for the public explore page."""
     return Section(
@@ -1405,6 +1426,91 @@ def CommunityReadingSection(books):
             )
         ),
         cls="community-reading-section"
+    )
+
+def ExploreSearchForm(query: str = "", privacy: str = "public", sort_by: str = "smart_mix", open_to_contributions: str = "", book_title: str = "", book_author: str = "", book_isbn: str = ""):
+    """Enhanced search form for the unified explore page with advanced search capabilities."""
+    return Form(
+        # Main search row with smart defaults
+        Div(
+            Input(
+                name="query", 
+                type="search", 
+                placeholder="Search bookshelves and books...", 
+                value=query,
+                cls="explore-search-input"
+            ),
+            Select(
+                Option("Smart Mix", value="smart_mix", selected=(sort_by == "smart_mix")),
+                Option("Recently Active", value="recently_active", selected=(sort_by == "recently_active")),
+                Option("Most Contributors", value="most_contributors", selected=(sort_by == "most_contributors")),
+                Option("Most Viewers", value="most_viewers", selected=(sort_by == "most_viewers")),
+                Option("Newest", value="created_at", selected=(sort_by == "created_at")),
+                Option("Alphabetical", value="name", selected=(sort_by == "name")),
+                name="sort_by",
+                cls="explore-sort-select"
+            ),
+            Select(
+                Option("All Shelves", value="", selected=(open_to_contributions == "")),
+                Option("Open to Contributions", value="true", selected=(open_to_contributions == "true")),
+                Option("Invite Only", value="false", selected=(open_to_contributions == "false")),
+                name="open_to_contributions",
+                title="Filter by contribution access",
+                cls="explore-filter-select"
+            ),
+            Button("🔍 Explore", type="submit", cls="explore-search-btn primary"),
+            cls="explore-search-row"
+        ),
+        
+        # Advanced search toggle and fields
+        A("Advanced Search", href="#", onclick="toggleExploreAdvancedSearch(event)", cls="advanced-search-toggle"),
+        Div(
+            Fieldset(
+                Label("Book Title", Input(name="book_title", type="text", placeholder="e.g., The Hobbit", value=book_title)),
+                Label("Book Author", Input(name="book_author", type="text", placeholder="e.g., J.R.R. Tolkien", value=book_author)),
+                Label("ISBN", Input(name="book_isbn", type="text", placeholder="e.g., 9780547928227", value=book_isbn)),
+                cls="advanced-search-fieldset"
+            ),
+            id="explore-advanced-search-fields",
+            style="display: none; margin-top: 1rem;",
+            cls="advanced-search-container"
+        ),
+        
+        # Privacy is always public for explore, but we keep it hidden for consistency
+        Hidden(name="privacy", value="public"),
+        
+        Script("""
+            function toggleExploreAdvancedSearch(event) {
+                event.preventDefault();
+                const advancedFields = document.getElementById('explore-advanced-search-fields');
+                const toggleLink = event.target;
+                if (advancedFields.style.display === 'none') {
+                    advancedFields.style.display = 'block';
+                    toggleLink.textContent = 'Hide Advanced Search';
+                } else {
+                    advancedFields.style.display = 'none';
+                    toggleLink.textContent = 'Advanced Search';
+                }
+            }
+            
+            // Show advanced search if any advanced fields have values
+            document.addEventListener('DOMContentLoaded', function() {
+                const bookTitle = document.querySelector('input[name="book_title"]').value;
+                const bookAuthor = document.querySelector('input[name="book_author"]').value;
+                const bookIsbn = document.querySelector('input[name="book_isbn"]').value;
+                
+                if (bookTitle || bookAuthor || bookIsbn) {
+                    const advancedFields = document.getElementById('explore-advanced-search-fields');
+                    const toggleLink = document.querySelector('.advanced-search-toggle');
+                    advancedFields.style.display = 'block';
+                    toggleLink.textContent = 'Hide Advanced Search';
+                }
+            });
+        """),
+        
+        action="/explore",
+        method="get",
+        cls="explore-search-form"
     )
 
 def SearchForm(query: str = "", search_type: str = "all", book_title: str = "", book_author: str = "", book_isbn: str = "", privacy: str = "public", sort_by: str = "updated_at", open_to_contributions: str = ""):

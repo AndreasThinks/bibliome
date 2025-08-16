@@ -265,12 +265,14 @@ def create_shelf(name: str, description: str, privacy: str, auth, sess, self_joi
         sess['error'] = f"Error creating bookshelf: {str(e)}"
         return RedirectResponse('/shelf/new', status_code=303)
 
-@rt("/search")
-def search_page(auth, query: str = "", search_type: str = "all", book_title: str = "", book_author: str = "", book_isbn: str = "", privacy: str = "public", sort_by: str = "updated_at", page: int = 1, open_to_contributions: str = ""):
-    """Display search page for bookshelves and users."""
-    from models import search_shelves, search_users
-    from components import SearchForm, SearchResultsGrid
+
+@rt("/explore")
+def explore_page(auth, query: str = "", privacy: str = "public", sort_by: str = "smart_mix", page: int = 1, open_to_contributions: str = "", book_title: str = "", book_author: str = "", book_isbn: str = ""):
+    """Unified explore page - simple discovery for anonymous users, enhanced search for logged-in users."""
+    from models import search_shelves_enhanced, get_mixed_public_shelves
+    from components import UnifiedExploreHero, ExploreSearchForm, SearchResultsGrid
     
+    page = int(page)
     limit = 12
     offset = (page - 1) * limit
     viewer_did = get_current_user_did(auth)
@@ -282,83 +284,112 @@ def search_page(auth, query: str = "", search_type: str = "all", book_title: str
     elif open_to_contributions == "false":
         open_to_contributions_filter = False
     
-    # Search based on type
-    shelves = []
-    users = []
-    
-    if search_type == "all" or search_type == "shelves":
-        shelves = search_shelves(
-            db_tables, 
-            query=query, 
-            book_title=book_title,
-            book_author=book_author,
-            book_isbn=book_isbn,
-            privacy=privacy, 
-            sort_by=sort_by, 
-            limit=limit, 
-            offset=offset,
-            open_to_contributions=open_to_contributions_filter
-        )
-    
-    if search_type == "all" or search_type == "users":
-        users = search_users(
-            db_tables,
-            query=query,
-            viewer_did=viewer_did,
-            limit=10  # Limit users to 10 for now
-        )
-    
-    return (
-        Title("Search - Bibliome"),
-        Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
-        NavBar(auth),
-        Container(
-            SearchPageHero(),
-            SearchForm(
-                query=query, 
-                search_type=search_type,
-                book_title=book_title, 
-                book_author=book_author, 
-                book_isbn=book_isbn, 
-                privacy=privacy, 
+    if auth:
+        # Logged-in users get enhanced explore with search functionality
+        if query or sort_by != "smart_mix" or open_to_contributions or book_title or book_author or book_isbn:
+            # User is actively searching/filtering - use enhanced search
+            shelves = search_shelves_enhanced(
+                db_tables,
+                query=query,
+                book_title=book_title,
+                book_author=book_author,
+                book_isbn=book_isbn,
+                privacy=privacy,
                 sort_by=sort_by,
-                open_to_contributions=open_to_contributions
+                limit=limit,
+                offset=offset,
+                open_to_contributions=open_to_contributions_filter
+            )
+        else:
+            # Default view - show smart mix of active and newest shelves
+            shelves = get_mixed_public_shelves(db_tables, limit=limit, offset=offset)
+        
+        # Build content for logged-in users
+        content = [
+            UnifiedExploreHero(auth=auth),
+            ExploreSearchForm(
+                query=query,
+                privacy=privacy,
+                sort_by=sort_by,
+                open_to_contributions=open_to_contributions,
+                book_title=book_title,
+                book_author=book_author,
+                book_isbn=book_isbn
             ),
             SearchResultsGrid(
-                shelves, 
-                users=users,
-                search_type=search_type,
-                page=page, 
-                query=query, 
-                privacy=privacy, 
+                shelves,
+                users=[],  # No user search in explore page
+                search_type="shelves",
+                page=page,
+                query=query,
+                privacy=privacy,
                 sort_by=sort_by,
                 open_to_contributions=open_to_contributions
             )
-        ),
+        ]
+    else:
+        # Anonymous users get simple discovery experience
+        if query:
+            # Anonymous users can still search, but with limited functionality
+            from models import search_shelves
+            shelves = search_shelves(
+                db_tables,
+                query=query,
+                privacy="public",  # Force public for anonymous users
+                sort_by="updated_at",
+                limit=limit,
+                offset=offset
+            )
+        else:
+            # Default view for anonymous users - mixed public shelves
+            shelves = get_mixed_public_shelves(db_tables, limit=limit, offset=offset)
+        
+        # Simple search form for anonymous users (just a search box)
+        simple_search = Form(
+            Div(
+                Input(
+                    name="query",
+                    type="search",
+                    placeholder="Search public bookshelves...",
+                    value=query,
+                    cls="explore-search-input"
+                ),
+                Button("🔍 Search", type="submit", cls="explore-search-btn primary"),
+                cls="simple-search-row"
+            ),
+            action="/explore",
+            method="get",
+            cls="simple-explore-search-form"
+        )
+        
+        content = [
+            UnifiedExploreHero(auth=None),
+            simple_search,
+            PublicShelvesGrid(shelves, page=page, total_pages=1)  # Simplified pagination for anonymous users
+        ]
+    
+    return (
+        Title("Explore - Bibliome"),
+        Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
+        NavBar(auth),
+        Container(*content),
         UniversalFooter()
     )
 
-@rt("/explore")
-def explore_page(auth, page: int = 1):
-    """Public page to explore all public bookshelves."""
-    page = int(page)
-    limit = 12
-    offset = (page - 1) * limit
+# Redirect /search to /explore
+@rt("/search")
+def search_redirect(auth, **kwargs):
+    """Redirect /search to /explore with query parameters preserved."""
+    # Build query string from kwargs
+    query_params = []
+    for key, value in kwargs.items():
+        if value:  # Only include non-empty values
+            query_params.append(f"{key}={value}")
     
-    shelves = get_public_shelves_with_stats(db_tables, limit=limit, offset=offset)
-    total_shelves = len(db_tables['bookshelves'](where="privacy='public'"))
-    total_pages = (total_shelves + limit - 1) // limit
+    query_string = "&".join(query_params)
+    redirect_url = f"/explore?{query_string}" if query_string else "/explore"
     
-    return (
-        Title("Explore Public Shelves - Bibliome"),
-        Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
-        NavBar(auth),
-        Container(
-            ExplorePageHero(),
-            PublicShelvesGrid(shelves, page=page, total_pages=total_pages)
-        ),
-        UniversalFooter()
-    )
+    return RedirectResponse(redirect_url, status_code=301)  # Permanent redirect
 
 @rt("/network")
 def network_page(auth, activity_type: str = "all", date_filter: str = "all", page: int = 1):
