@@ -980,18 +980,19 @@ def ContactFormSuccess():
     return Div(
         Div(
             I(cls="fas fa-check-circle", style="color: #28a745; font-size: 3rem; margin-bottom: 1rem;"),
-            H3("Message Sent Successfully!", cls="contact-success-title"),
+            H3("Message Sent!", cls="contact-success-title"),
             P("Thank you for reaching out! We've received your message and will get back to you as soon as possible.", cls="contact-success-message"),
-            Button(
-                "Close",
-                hx_get="/api/close-contact-modal",
-                hx_target="#contact-modal-container",
-                hx_swap="innerHTML",
-                cls="contact-btn-primary",
-                style="margin-top: 1rem;"
-            ),
             cls="contact-success-content"
         ),
+        # Auto-close script - closes immediately after showing success
+        Script("""
+            setTimeout(() => {
+                htmx.ajax('GET', '/api/close-contact-modal', {
+                    target: '#contact-modal-container',
+                    swap: 'innerHTML'
+                });
+            }, 1000);
+        """),
         cls="contact-success-container"
     )
 
