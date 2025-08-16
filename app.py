@@ -9,11 +9,11 @@ from models import (
 from api_clients import BookAPIClient
 from components import (
     NavBar, LandingPageHero, FeaturesSection, CommunityReadingSection,
-    HowItWorksSection, PublicShelvesPreview, LandingPageFooter, NetworkActivityFeed,
+    HowItWorksSection, PublicShelvesPreview, UniversalFooter, NetworkActivityFeed,
     NetworkActivityPreview, BookshelfCard, EmptyState, CreateBookshelfForm, SearchPageHero,
     SearchForm, SearchResultsGrid, ExplorePageHero, PublicShelvesGrid,
     BookSearchForm, SearchResultCard, ShareInterface, InviteCard, MemberCard, AddBooksToggle,
-    EnhancedEmptyState, ShelfHeader
+    EnhancedEmptyState, ShelfHeader, ContactModal, ContactForm, ContactFormSuccess, ContactFormError
 )
 import os
 import logging
@@ -96,7 +96,7 @@ def index(auth):
             CommunityReadingSection(recent_books),
             HowItWorksSection(),
             PublicShelvesPreview(public_shelves),
-            LandingPageFooter()
+            UniversalFooter()
         )
     else:
         # Show user's dashboard
@@ -134,7 +134,8 @@ def index(auth):
             Title("Dashboard - Bibliome"),
             Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
-            Container(*content)
+            Container(*content),
+            UniversalFooter()
         )
 
 # Authentication routes
@@ -214,7 +215,8 @@ def new_shelf_page(auth):
         Title("Create New Bookshelf - Bibliome"),
         Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
         NavBar(auth),
-        Container(CreateBookshelfForm())
+        Container(CreateBookshelfForm()),
+        UniversalFooter()
     )
 
 @rt("/shelf/create", methods=["POST"])
@@ -332,7 +334,8 @@ def search_page(auth, query: str = "", search_type: str = "all", book_title: str
                 sort_by=sort_by,
                 open_to_contributions=open_to_contributions
             )
-        )
+        ),
+        UniversalFooter()
     )
 
 @rt("/explore")
@@ -353,7 +356,8 @@ def explore_page(auth, page: int = 1):
         Container(
             ExplorePageHero(),
             PublicShelvesGrid(shelves, page=page, total_pages=total_pages)
-        )
+        ),
+        UniversalFooter()
     )
 
 @rt("/network")
@@ -404,7 +408,8 @@ def network_page(auth, activity_type: str = "all", date_filter: str = "all", pag
             Title("Your Network - Bibliome"),
             Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
-            Container(*content)
+            Container(*content),
+            UniversalFooter()
         )
         
     except Exception as e:
@@ -420,7 +425,8 @@ def network_page(auth, activity_type: str = "all", date_filter: str = "all", pag
             Title("Your Network - Bibliome"),
             Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
-            Container(*content)
+            Container(*content),
+            UniversalFooter()
         )
 
 @rt("/user/{handle}")
@@ -462,7 +468,8 @@ def user_profile(handle: str, auth):
             Title(f"@{user.handle} - Bibliome"),
             Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
-            Container(*content)
+            Container(*content),
+            UniversalFooter()
         )
         
     except Exception as e:
@@ -475,7 +482,8 @@ def user_profile(handle: str, auth):
                 H1("Error"),
                 P(f"An error occurred: {str(e)}"),
                 A("← Back to Home", href="/")
-            )
+            ),
+            UniversalFooter()
         )
 
 @rt("/shelf/{slug}")
@@ -658,7 +666,8 @@ def view_shelf(slug: str, auth, view: str = "grid"):
             Title(f"{shelf.name} - Bibliome"),
             Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
-            Container(*content)
+            Container(*content),
+            UniversalFooter()
         )
         
     except Exception as e:
@@ -670,7 +679,8 @@ def view_shelf(slug: str, auth, view: str = "grid"):
                 H1("Error"),
                 P(f"An error occurred: {str(e)}"),
                 A("← Back to Home", href="/")
-            )
+            ),
+            UniversalFooter()
         )
 
 # API routes for HTMX
@@ -1288,7 +1298,8 @@ def manage_shelf(slug: str, auth, req):
             Title(f"Manage: {shelf.name} - Bibliome"),
             Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
-            Container(*content)
+            Container(*content),
+            UniversalFooter()
         )
         
     except Exception as e:
@@ -1300,7 +1311,8 @@ def manage_shelf(slug: str, auth, req):
                 H1("Error"),
                 P(f"An error occurred: {str(e)}"),
                 A("← Back to Home", href="/")
-            )
+            ),
+            UniversalFooter()
         )
 
 @rt("/shelf/{slug}/share")
@@ -1384,7 +1396,8 @@ def share_shelf(slug: str, auth, req):
             Title(f"Share: {shelf.name} - Bibliome"),
             Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
-            Container(*content)
+            Container(*content),
+            UniversalFooter()
         )
         
     except Exception as e:
@@ -1396,7 +1409,8 @@ def share_shelf(slug: str, auth, req):
                 H1("Error"),
                 P(f"An error occurred: {str(e)}"),
                 A("← Back to Home", href="/")
-            )
+            ),
+            UniversalFooter()
         )
 
 # API routes for sharing and management
@@ -1486,7 +1500,7 @@ def join_shelf(invite_code: str, auth, sess):
             H1("Invalid Invitation"),
             P("This invite link is either invalid or has expired."),
             A("← Back to Home", href="/")
-        )
+        ), UniversalFooter()
     
     shelf = db_tables['bookshelves'][invite.bookshelf_id]
     user_did = get_current_user_did(auth)
@@ -2225,5 +2239,72 @@ def close_share_modal(slug: str, auth):
         return ""
     
     return ""  # Return empty content to clear the modal
+
+# Contact functionality API endpoints
+@rt("/api/contact-modal")
+def get_contact_modal():
+    """HTMX endpoint to get the contact modal content."""
+    return ContactModal()
+
+@rt("/api/close-contact-modal")
+def close_contact_modal():
+    """HTMX endpoint to close the contact modal."""
+    return ""  # Return empty content to clear the modal
+
+@rt("/api/contact", methods=["POST"])
+async def send_contact_email(name: str, email: str, subject: str, message: str):
+    """HTMX endpoint to send contact form email."""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    
+    try:
+        # Get email configuration from environment
+        contact_email = os.getenv('CONTACT_EMAIL')
+        smtp_host = os.getenv('SMTP_HOST')
+        smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        smtp_username = os.getenv('SMTP_USERNAME')
+        smtp_password = os.getenv('SMTP_PASSWORD')
+        
+        if not all([contact_email, smtp_host, smtp_username, smtp_password]):
+            logger.error("Email configuration incomplete")
+            return ContactFormError("Email service is not configured. Please try again later.")
+        
+        # Create email message
+        msg = MIMEMultipart()
+        msg['From'] = smtp_username
+        msg['To'] = contact_email
+        msg['Subject'] = f"Bibliome Contact Form: {subject}"
+        
+        # Email body
+        body = f"""
+New contact form submission from Bibliome:
+
+Name: {name}
+Email: {email}
+Subject: {subject}
+
+Message:
+{message}
+
+---
+This message was sent via the Bibliome contact form.
+Reply directly to this email to respond to {name} at {email}.
+        """
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Send email
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_username, smtp_password)
+            server.send_message(msg)
+        
+        logger.info(f"Contact form email sent from {email} ({name}) with subject: {subject}")
+        return ContactFormSuccess()
+        
+    except Exception as e:
+        logger.error(f"Error sending contact email: {e}", exc_info=True)
+        return ContactFormError("There was an error sending your message. Please try again later.")
 
 serve()

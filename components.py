@@ -841,21 +841,171 @@ def PublicShelvesPreview(public_shelves):
         id="public-shelves"
     )
 
-def LandingPageFooter():
-    """Footer for the landing page."""
+def UniversalFooter():
+    """Universal footer that appears across the entire website."""
     return Footer(
         Container(
             Div(
-                P("A project by ", A("AndreasThinks", href="https://andreasthinks.me/", target="_blank", rel="noopener"), ", built with ❤️ using FastHTML, AT-Proto, and some ✨vibes✨", cls="footer-text"),
+                # Left side: Text content
+                Div(
+                    P("A project by ", A("AndreasThinks", href="https://andreasthinks.me/", target="_blank", rel="noopener"), ", built with ❤️ using FastHTML, AT-Proto, and some ✨vibes✨", cls="footer-text"),
+                    P("© 2025 Bibliome. Open source and decentralized.", cls="footer-copyright"),
+                    cls="footer-left"
+                ),
+                # Right side: Social icons
                 Div(
                     A(I(cls="fab fa-github"), href="https://github.com/AndreasThinks/bibliome", target="_blank", rel="noopener", cls="social-icon"),
-                    cls="footer-social"
+                    Button(
+                        I(cls="fas fa-envelope"),
+                        hx_get="/api/contact-modal",
+                        hx_target="#contact-modal-container",
+                        hx_swap="innerHTML",
+                        cls="social-icon contact-icon-btn",
+                        title="Contact us"
+                    ),
+                    cls="footer-right"
                 ),
-                P("© 2025 Bibliome. Open source and decentralized.", cls="footer-copyright"),
                 cls="footer-content"
             ),
+            # Container for contact modal
+            Div(id="contact-modal-container"),
         ),
-        cls="landing-footer"
+        cls="universal-footer"
+    )
+
+def ContactModal():
+    """Modal content for the contact form."""
+    return Div(
+        Div(
+            # Modal header
+            Div(
+                Button(
+                    I(cls="fas fa-times"),
+                    hx_get="/api/close-contact-modal",
+                    hx_target="#contact-modal-container",
+                    hx_swap="innerHTML",
+                    cls="contact-modal-close",
+                    title="Close"
+                ),
+                Div(
+                    H2(
+                        I(cls="fas fa-envelope"),
+                        "Contact Us",
+                        cls="contact-modal-title"
+                    ),
+                    P("We'd love to hear from you! Send us a message and we'll get back to you soon.", cls="contact-modal-subtitle"),
+                    cls="contact-modal-title-section"
+                ),
+                cls="contact-modal-header"
+            ),
+            
+            # Modal body with form
+            Div(
+                ContactForm(),
+                cls="contact-modal-body"
+            ),
+            cls="contact-modal-dialog"
+        ),
+        cls="contact-modal-overlay"
+    )
+
+def ContactForm():
+    """Contact form component."""
+    return Form(
+        Div(
+            Label("Your Name", Input(
+                name="name",
+                type="text",
+                placeholder="Enter your full name",
+                required=True,
+                cls="contact-input"
+            )),
+            Label("Your Email", Input(
+                name="email",
+                type="email",
+                placeholder="your.email@example.com",
+                required=True,
+                cls="contact-input"
+            )),
+            Label("Subject", Input(
+                name="subject",
+                type="text",
+                placeholder="What's this about?",
+                required=True,
+                cls="contact-input"
+            )),
+            Label("Message", Textarea(
+                name="message",
+                placeholder="Tell us what's on your mind...",
+                rows=5,
+                required=True,
+                cls="contact-textarea"
+            )),
+            cls="contact-form-fields"
+        ),
+        Div(
+            Button(
+                "Cancel",
+                type="button",
+                hx_get="/api/close-contact-modal",
+                hx_target="#contact-modal-container",
+                hx_swap="innerHTML",
+                cls="contact-btn-secondary"
+            ),
+            Button(
+                I(cls="fas fa-paper-plane"),
+                " Send Message",
+                type="submit",
+                cls="contact-btn-primary"
+            ),
+            cls="contact-form-actions"
+        ),
+        hx_post="/api/contact",
+        hx_target="#contact-form-response",
+        hx_swap="innerHTML",
+        cls="contact-form",
+        id="contact-form"
+    )
+
+def ContactFormSuccess():
+    """Success message after contact form submission."""
+    return Div(
+        Div(
+            I(cls="fas fa-check-circle", style="color: #28a745; font-size: 3rem; margin-bottom: 1rem;"),
+            H3("Message Sent Successfully!", cls="contact-success-title"),
+            P("Thank you for reaching out! We've received your message and will get back to you as soon as possible.", cls="contact-success-message"),
+            Button(
+                "Close",
+                hx_get="/api/close-contact-modal",
+                hx_target="#contact-modal-container",
+                hx_swap="innerHTML",
+                cls="contact-btn-primary",
+                style="margin-top: 1rem;"
+            ),
+            cls="contact-success-content"
+        ),
+        cls="contact-success-container"
+    )
+
+def ContactFormError(error_message: str = "An error occurred while sending your message."):
+    """Error message for contact form submission."""
+    return Div(
+        Div(
+            I(cls="fas fa-exclamation-triangle", style="color: #dc3545; font-size: 2rem; margin-bottom: 1rem;"),
+            H3("Message Failed to Send", cls="contact-error-title"),
+            P(error_message, cls="contact-error-message"),
+            P("Please try again or contact us directly at the email address in the footer.", cls="contact-error-suggestion"),
+            Button(
+                "Try Again",
+                hx_get="/api/contact-modal",
+                hx_target="#contact-modal-container",
+                hx_swap="innerHTML",
+                cls="contact-btn-primary",
+                style="margin-top: 1rem;"
+            ),
+            cls="contact-error-content"
+        ),
+        cls="contact-error-container"
     )
 
 def NetworkActivityFeed(activities: List[Dict], auth=None):
