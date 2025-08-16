@@ -512,8 +512,8 @@ def view_shelf(slug: str, auth, view: str = "grid"):
         if can_edit or can_share:
             action_buttons.append(A("Manage", href=f"/shelf/{shelf.slug}/manage", cls="secondary"))
         
-        # New Shelf Header with view toggle
-        shelf_header = ShelfHeader(shelf, action_buttons, current_view=view)
+        # New Shelf Header with view toggle and share button
+        shelf_header = ShelfHeader(shelf, action_buttons, current_view=view, can_share=can_share, user_is_logged_in=bool(auth))
         
         # Show self-join button if applicable (logged in user, public shelf with self-join enabled, not already a member)
         self_join_section = None
@@ -563,7 +563,9 @@ def view_shelf(slug: str, auth, view: str = "grid"):
             shelf_header,
             self_join_section,
             add_books_section,
-            books_section
+            books_section,
+            # Share modal container
+            Div(id="share-modal-container")
         ]
         
         # Add JavaScript for book removal confirmation if user can remove books
@@ -586,6 +588,61 @@ def view_shelf(slug: str, auth, view: str = "grid"):
                 }
                 """)
             )
+        
+        # Add JavaScript for share functionality
+        content.append(
+            Script("""
+            // Copy to clipboard functionality
+            async function copyToClipboard(text, buttonElement) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    
+                    // Update button to show success
+                    const originalText = buttonElement.innerHTML;
+                    buttonElement.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                    buttonElement.classList.add('copied');
+                    
+                    // Reset after 2 seconds
+                    setTimeout(() => {
+                        buttonElement.innerHTML = originalText;
+                        buttonElement.classList.remove('copied');
+                    }, 2000);
+                } catch (err) {
+                    console.error('Failed to copy text: ', err);
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = text;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        const originalText = buttonElement.innerHTML;
+                        buttonElement.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                        buttonElement.classList.add('copied');
+                        setTimeout(() => {
+                            buttonElement.innerHTML = originalText;
+                            buttonElement.classList.remove('copied');
+                        }, 2000);
+                    } catch (fallbackErr) {
+                        console.error('Fallback copy failed: ', fallbackErr);
+                        alert('Copy failed. Please copy the text manually.');
+                    }
+                    document.body.removeChild(textArea);
+                }
+            }
+            
+            // Close modal when clicking outside
+            document.addEventListener('click', function(event) {
+                const modal = document.querySelector('.share-modal-overlay');
+                if (modal && event.target === modal) {
+                    htmx.ajax('GET', `/api/shelf/${slug}/close-share-modal`, {
+                        target: '#share-modal-container',
+                        swap: 'innerHTML'
+                    });
+                }
+            });
+            """)
+        )
         
         return (
             Title(f"{shelf.name} - Bibliome"),
@@ -2003,5 +2060,150 @@ def delete_shelf(slug: str, confirmation_name: str, auth, sess):
     except Exception as e:
         sess['error'] = f"Error deleting bookshelf: {str(e)}"
         return RedirectResponse(f'/shelf/{slug}/manage', status_code=303)
+
+# Share functionality API endpoints
+@rt("/api/shelf/{slug}/share-modal")
+def get_share_modal(slug: str, auth, req):
+    """HTMX endpoint to get the share modal content."""
+    if not auth:
+        return Div("Authentication required.", cls="error")
+    
+    try:
+        shelf = get_shelf_by_slug(slug, db_tables)
+        if not shelf:
+            return Div("Bookshelf not found.", cls="error")
+        
+        user_did = get_current_user_did(auth)
+        from models import can_generate_invites, get_user_role
+        
+        # Check if user can access share functionality at all
+        # For now, we allow anyone who can view the shelf to see share options
+        # but filter the options based on their permissions
+        if not can_view_bookshelf(shelf, user_did, db_tables):
+            return Div("Permission denied.", cls="error")
+        
+        # Get user's role and permissions
+        user_role = get_user_role(shelf, user_did, db_tables)
+        can_generate = can_generate_invites(shelf, user_did, db_tables)
+        
+        # Get base URL from request
+        base_url = f"{req.url.scheme}://{req.url.netloc}"
+        
+        from components import ShareModal
+        return ShareModal(shelf, base_url, user_role=user_role, can_generate_invites=can_generate)
+        
+    except Exception as e:
+        logger.error(f"Error getting share modal for shelf {slug}: {e}", exc_info=True)
+        return Div(f"Error: {str(e)}", cls="error")
+
+@rt("/api/shelf/{slug}/share-preview", methods=["POST"])
+def get_share_preview(slug: str, share_type: str, auth, req):
+    """HTMX endpoint to get preview of what will be shared."""
+    if not auth:
+        return Div("Authentication required.", cls="error")
+    
+    try:
+        shelf = get_shelf_by_slug(slug, db_tables)
+        if not shelf:
+            return Div("Bookshelf not found.", cls="error")
+        
+        user_did = get_current_user_did(auth)
+        from models import can_generate_invites
+        
+        # Check permissions based on share type
+        if share_type == "public_link":
+            # Anyone who can view the shelf can share public links
+            if not can_view_bookshelf(shelf, user_did, db_tables):
+                return Div("Permission denied.", cls="error")
+        else:
+            # Invite-based sharing requires invite generation permissions
+            if not can_generate_invites(shelf, user_did, db_tables):
+                return Div("Permission denied.", cls="error")
+        
+        # Get base URL from request
+        base_url = f"{req.url.scheme}://{req.url.netloc}"
+        
+        from components import SharePreview
+        return SharePreview(shelf, share_type, base_url)
+        
+    except Exception as e:
+        logger.error(f"Error getting share preview for shelf {slug}: {e}", exc_info=True)
+        return Div(f"Error: {str(e)}", cls="error")
+
+@rt("/api/shelf/{slug}/generate-share-link", methods=["POST"])
+def generate_share_link(slug: str, share_type: str, auth, req):
+    """HTMX endpoint to generate the actual sharing link."""
+    if not auth:
+        return Div("Authentication required.", cls="error")
+    
+    try:
+        shelf = get_shelf_by_slug(slug, db_tables)
+        if not shelf:
+            return Div("Bookshelf not found.", cls="error")
+        
+        user_did = get_current_user_did(auth)
+        from models import can_generate_invites
+        
+        if not can_generate_invites(shelf, user_did, db_tables):
+            return Div("Permission denied.", cls="error")
+        
+        # Get base URL from request
+        base_url = f"{req.url.scheme}://{req.url.netloc}"
+        
+        if share_type == "view":
+            # Generate view-only link
+            if shelf.privacy == "private":
+                # For private shelves, create a viewer invite
+                from models import generate_invite_code, BookshelfInvite
+                invite = BookshelfInvite(
+                    bookshelf_id=shelf.id,
+                    invite_code=generate_invite_code(),
+                    role="viewer",
+                    created_by_did=user_did,
+                    created_at=datetime.now(),
+                    expires_at=None,  # No expiration for view links
+                    max_uses=None     # No usage limit for view links
+                )
+                created_invite = db_tables['bookshelf_invites'].insert(invite)
+                link = f"{base_url}/shelf/join/{created_invite.invite_code}"
+                message = f"Check out my bookshelf '{shelf.name}' on Bibliome: {link}"
+            else:
+                # For public/link-only shelves, use direct link
+                link = f"{base_url}/shelf/{shelf.slug}"
+                message = f"Check out my bookshelf '{shelf.name}' on Bibliome: {link}"
+        
+        elif share_type == "contribute":
+            # Generate contributor invite
+            from models import generate_invite_code, BookshelfInvite
+            invite = BookshelfInvite(
+                bookshelf_id=shelf.id,
+                invite_code=generate_invite_code(),
+                role="contributor",
+                created_by_did=user_did,
+                created_at=datetime.now(),
+                expires_at=None,  # No expiration for contribution invites
+                max_uses=None     # No usage limit for contribution invites
+            )
+            created_invite = db_tables['bookshelf_invites'].insert(invite)
+            link = f"{base_url}/shelf/join/{created_invite.invite_code}"
+            message = f"Join my bookshelf '{shelf.name}' on Bibliome and help build our reading list: {link}"
+        
+        else:
+            return Div("Invalid share type.", cls="error")
+        
+        from components import ShareLinkResult
+        return ShareLinkResult(link, message, share_type)
+        
+    except Exception as e:
+        logger.error(f"Error generating share link for shelf {slug}: {e}", exc_info=True)
+        return Div(f"Error: {str(e)}", cls="error")
+
+@rt("/api/shelf/{slug}/close-share-modal")
+def close_share_modal(slug: str, auth):
+    """HTMX endpoint to close the share modal."""
+    if not auth:
+        return ""
+    
+    return ""  # Return empty content to clear the modal
 
 serve()

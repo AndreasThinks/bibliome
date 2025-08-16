@@ -299,7 +299,7 @@ def EnhancedEmptyState(can_add=False, shelf_id=None, user_auth_status="anonymous
             cls="empty-state-card"
         )
 
-def ShelfHeader(shelf, action_buttons, current_view="grid"):
+def ShelfHeader(shelf, action_buttons, current_view="grid", can_share=False, user_is_logged_in=False):
     """A visually appealing header for the shelf page."""
     # Create both toggle buttons - only one will be visible at a time
     grid_toggle_btn = Button(
@@ -322,6 +322,17 @@ def ShelfHeader(shelf, action_buttons, current_view="grid"):
         id="list-toggle-btn"
     )
     
+    # Add share button for logged-in users who can view the shelf
+    # This allows all users (including viewers/contributors) to access share options
+    share_btn = Button(
+        I(cls="fas fa-share-alt"),
+        hx_get=f"/api/shelf/{shelf.slug}/share-modal",
+        hx_target="#share-modal-container",
+        hx_swap="innerHTML",
+        cls="action-btn share-btn",
+        title="Share this shelf"
+    ) if user_is_logged_in else None
+    
     # Convert action buttons to icon buttons
     icon_action_buttons = []
     for button in action_buttons or []:
@@ -336,8 +347,11 @@ def ShelfHeader(shelf, action_buttons, current_view="grid"):
         else:
             icon_action_buttons.append(button)
     
-    # Create action button group with both toggle buttons
-    all_actions = [grid_toggle_btn, list_toggle_btn] + icon_action_buttons
+    # Create action button group with toggle buttons, share button, and other actions
+    all_actions = [grid_toggle_btn, list_toggle_btn]
+    if share_btn:
+        all_actions.append(share_btn)
+    all_actions.extend(icon_action_buttons)
     
     return Card(
         H1(shelf.name, cls="shelf-title"),
@@ -1742,4 +1756,279 @@ def SelfJoinSuccess(bookshelf_slug):
         ),
         cls="self-join-success-container",
         id="self-join-container"
+    )
+
+def ShareModal(shelf, base_url, user_role=None, can_generate_invites=False):
+    """Modal content for sharing a bookshelf with permission-based filtering."""
+    privacy_icon = {
+        'public': '🌍',
+        'link-only': '🔗',
+        'private': '🔒'
+    }.get(shelf.privacy, '🌍')
+    
+    # Determine available share options based on user permissions
+    share_options = []
+    first_option_checked = True
+    
+    # Option 1: Share public link (only for public/link-only shelves, available to all roles)
+    if shelf.privacy in ['public', 'link-only']:
+        share_options.append(
+            Label(
+                Input(
+                    type="radio", 
+                    name="share_type", 
+                    value="public_link",
+                    checked=first_option_checked,
+                    hx_trigger="change",
+                    hx_post=f"/api/shelf/{shelf.slug}/share-preview",
+                    hx_target="#share-preview",
+                    hx_include="[name='share_type']:checked"
+                ),
+                Div(
+                    Strong("Share public link"),
+                    P("Anyone can view this shelf immediately", cls="share-option-description"),
+                    cls="share-option-content"
+                ),
+                cls="share-type-option"
+            )
+        )
+        first_option_checked = False
+    
+    # Option 2 & 3: Invite options (only for moderators and owners)
+    if can_generate_invites:
+        # Invite as viewer
+        share_options.append(
+            Label(
+                Input(
+                    type="radio", 
+                    name="share_type", 
+                    value="invite_viewer",
+                    checked=first_option_checked,
+                    hx_trigger="change",
+                    hx_post=f"/api/shelf/{shelf.slug}/share-preview",
+                    hx_target="#share-preview",
+                    hx_include="[name='share_type']:checked"
+                ),
+                Div(
+                    Strong("Invite as viewer"),
+                    P("Creates a formal member relationship" if shelf.privacy in ['public', 'link-only'] 
+                      else "Give view-only access to this private shelf", cls="share-option-description"),
+                    cls="share-option-content"
+                ),
+                cls="share-type-option"
+            )
+        )
+        if first_option_checked:
+            first_option_checked = False
+        
+        # Invite as contributor
+        share_options.append(
+            Label(
+                Input(
+                    type="radio", 
+                    name="share_type", 
+                    value="invite_contributor",
+                    checked=first_option_checked,
+                    hx_trigger="change",
+                    hx_post=f"/api/shelf/{shelf.slug}/share-preview",
+                    hx_target="#share-preview",
+                    hx_include="[name='share_type']:checked"
+                ),
+                Div(
+                    Strong("Invite as contributor"),
+                    P("Allow adding books and voting", cls="share-option-description"),
+                    cls="share-option-content"
+                ),
+                cls="share-type-option"
+            )
+        )
+    
+    # If no options are available (shouldn't happen if permissions are checked correctly)
+    if not share_options:
+        share_options.append(
+            Div(
+                P("No sharing options available for your role.", cls="no-share-options"),
+                cls="share-option-content"
+            )
+        )
+    
+    return Div(
+        Div(
+            Div(
+                Button(
+                    "×",
+                    hx_get=f"/api/shelf/{shelf.slug}/close-share-modal",
+                    hx_target="#share-modal-container",
+                    hx_swap="innerHTML",
+                    cls="share-modal-close",
+                    title="Close"
+                ),
+                H3(
+                    I(cls="fas fa-share-alt", style="margin-right: 0.5rem;"),
+                    f"Share: {shelf.name}",
+                    cls="share-modal-title"
+                ),
+                P(f"{privacy_icon} {shelf.privacy.replace('-', ' ').title()} shelf", cls="share-modal-privacy"),
+                cls="share-modal-header"
+            ),
+            Div(
+                H4("How would you like to share this shelf?", cls="share-options-title"),
+                Div(*share_options, cls="share-options"),
+                Div(id="share-preview", cls="share-preview-container"),
+                cls="share-modal-content"
+            ),
+            cls="share-modal-content"
+        ),
+        cls="share-modal-overlay"
+    )
+
+def ShareLinkResult(link, message, share_type):
+    """Display the generated sharing link with copy functionality."""
+    return Div(
+        Div(
+            H4("Ready to share!", cls="share-result-title"),
+            P("Your sharing link has been generated:", cls="share-result-subtitle"),
+            cls="share-result-header"
+        ),
+        Div(
+            Textarea(
+                message,
+                readonly=True,
+                cls="share-message-text",
+                rows=3,
+                onclick="this.select()"
+            ),
+            Button(
+                I(cls="fas fa-copy", style="margin-right: 0.5rem;"),
+                "Copy Message",
+                onclick=f"copyShareMessage(this)",
+                cls="copy-message-btn primary",
+                id="copy-btn"
+            ),
+            cls="share-result-content"
+        ),
+        Div(
+            Button(
+                "Share Another Way",
+                hx_get=f"/api/shelf/{link.split('/')[-2] if '/shelf/' in link else ''}/share-modal",
+                hx_target="#share-modal-container",
+                hx_swap="innerHTML",
+                cls="secondary"
+            ),
+            Button(
+                "Done",
+                hx_get=f"/api/shelf/{link.split('/')[-2] if '/shelf/' in link else ''}/close-share-modal",
+                hx_target="#share-modal-container",
+                hx_swap="innerHTML",
+                cls="primary"
+            ),
+            cls="share-result-actions"
+        ),
+        Script("""
+            function copyShareMessage(button) {
+                const textarea = button.parentElement.querySelector('.share-message-text');
+                navigator.clipboard.writeText(textarea.value).then(() => {
+                    const original = button.innerHTML;
+                    button.innerHTML = '<i class="fas fa-check" style="margin-right: 0.5rem;"></i>Copied!';
+                    button.style.background = '#28a745';
+                    button.style.borderColor = '#28a745';
+                    setTimeout(() => {
+                        button.innerHTML = original;
+                        button.style.background = '';
+                        button.style.borderColor = '';
+                    }, 2000);
+                }).catch(() => {
+                    button.innerHTML = '<i class="fas fa-exclamation-triangle" style="margin-right: 0.5rem;"></i>Copy failed';
+                    button.style.background = '#dc3545';
+                    setTimeout(() => {
+                        button.innerHTML = original;
+                        button.style.background = '';
+                    }, 2000);
+                });
+            }
+        """),
+        cls="share-result-container"
+    )
+
+def SharePreview(shelf, share_type, base_url):
+    """Preview of what will be shared based on the selected share type."""
+    privacy_descriptions = {
+        'public': 'This public shelf can be viewed by anyone',
+        'link-only': 'This shelf can be viewed by anyone with the link',
+        'private': 'This private shelf requires an invitation to view'
+    }
+    
+    if share_type == "public_link":
+        preview_link = f"{base_url}/shelf/{shelf.slug}"
+        preview_message = f"Check out this bookshelf: {shelf.name} - {preview_link}"
+        description = privacy_descriptions.get(shelf.privacy, '')
+        message_icon = "🔗"
+        message_type = "Public Link"
+    elif share_type == "invite_viewer":
+        preview_link = f"{base_url}/shelf/join/[INVITE-CODE]"
+        if shelf.privacy == 'private':
+            preview_message = f"I've shared my private bookshelf with you: {shelf.name} - {preview_link}"
+        else:
+            preview_message = f"I've shared a bookshelf with you: {shelf.name} - {preview_link}"
+        description = "Recipients will be able to view the shelf and see all books"
+        message_icon = "👁️"
+        message_type = "Viewer Invitation"
+    else:  # invite_contributor
+        preview_link = f"{base_url}/shelf/join/[INVITE-CODE]"
+        preview_message = f"Join me in building this bookshelf: {shelf.name} - {preview_link}"
+        description = "Recipients will be able to add books, vote, and view the shelf"
+        message_icon = "🤝"
+        message_type = "Contributor Invitation"
+    
+    return Div(
+        # Enhanced header with icon and better typography
+        Div(
+            Div(
+                I(cls="fas fa-eye", style="margin-right: 0.5rem; color: var(--brand-amber);"),
+                H5("Preview", cls="share-preview-title"),
+                cls="share-preview-title-container"
+            ),
+            P(description, cls="share-preview-description"),
+            cls="share-preview-header"
+        ),
+        
+        # Enhanced message section with card-like appearance
+        Div(
+            Div(
+                I(cls="fas fa-comment-dots", style="margin-right: 0.5rem; color: var(--brand-amber);"),
+                P("Ready to share:", cls="share-preview-label"),
+                cls="share-preview-label-container"
+            ),
+            Div(
+                Div(
+                    Div(
+                        Span(message_icon, cls="message-type-icon"),
+                        Span(message_type, cls="message-type-label"),
+                        cls="message-type-header"
+                    ),
+                    Div(preview_message, cls="share-preview-message-text"),
+                    Div(
+                        I(cls="fas fa-copy", style="margin-right: 0.25rem; font-size: 0.8rem;"),
+                        "Click to select",
+                        cls="message-copy-hint"
+                    ),
+                    cls="share-preview-message-content",
+                    onclick="this.querySelector('.share-preview-message-text').select(); this.querySelector('.share-preview-message-text').setSelectionRange(0, 99999);"
+                ),
+                cls="share-preview-message-card"
+            ),
+            cls="share-preview-content"
+        ),
+        
+        # Enhanced generate button with better styling
+        Button(
+            I(cls="fas fa-magic", style="margin-right: 0.5rem;"),
+            "Generate Share Link",
+            hx_post=f"/api/shelf/{shelf.slug}/generate-share-link",
+            hx_vals=f'{{"share_type": "{share_type}"}}',
+            hx_target="#share-modal-container",
+            hx_swap="innerHTML",
+            cls="generate-link-btn enhanced-primary"
+        ),
+        cls="share-preview-card enhanced"
     )
