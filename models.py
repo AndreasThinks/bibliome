@@ -727,10 +727,14 @@ def get_recent_community_books(db_tables, limit: int = 15):
     
     try:
         cursor = db_tables['db'].execute(query, (limit,))
+        # Get column descriptions BEFORE calling fetchall()
+        columns = [d[0] for d in cursor.description]
+        rows = cursor.fetchall()
+        
         # Manually map results to Book objects since it's a raw query
         books = []
-        for row in cursor.fetchall():
-            book_data = dict(zip([d[0] for d in cursor.description], row))
+        for row in rows:
+            book_data = dict(zip(columns, row))
             book = Book(**{k: v for k, v in book_data.items() if k in Book.__annotations__})
             book.bookshelf_name = book_data.get('bookshelf_name')
             book.bookshelf_slug = book_data.get('bookshelf_slug')
