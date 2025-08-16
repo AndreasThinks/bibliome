@@ -110,19 +110,9 @@ def index(auth):
             )
         ]
         
-        # Add network activity preview
-        try:
-            from models import get_network_activity
-            logger.info(f"Attempting to load network activity for user: {auth.get('handle')}")
-            network_activities = get_network_activity(auth, db_tables, bluesky_auth, limit=5)
-            logger.info(f"Network activities loaded: {len(network_activities)} activities found")
-            
-            # Always show the network activity preview (with empty state if no activities)
-            content.append(NetworkActivityPreview(network_activities, auth))
-        except Exception as e:
-            logger.error(f"Could not load network activity: {e}", exc_info=True)
-            # Show empty state even if there's an error
-            content.append(NetworkActivityPreview([], auth))
+        # Add network activity preview with background loading
+        from components import NetworkActivityPreviewLoading
+        content.append(NetworkActivityPreviewLoading())
         
         # Add user's shelves with proper permission checking
         if user_shelves:
@@ -1706,6 +1696,26 @@ def cancel_delete(slug: str, auth):
         style="border: 2px solid #dc3545; border-radius: 0.5rem; padding: 1.5rem; margin-top: 2rem;",
         id="delete-section"
     )
+
+@rt("/api/load-network-activity")
+def load_network_activity_api(auth):
+    """HTMX endpoint to load network activity in the background."""
+    if not auth:
+        from components import NetworkActivityPreviewError
+        return NetworkActivityPreviewError()
+    
+    try:
+        from models import get_network_activity
+        logger.info(f"Background loading network activity for user: {auth.get('handle')}")
+        network_activities = get_network_activity(auth, db_tables, bluesky_auth, limit=5)
+        logger.info(f"Background network activities loaded: {len(network_activities)} activities found")
+        
+        return NetworkActivityPreview(network_activities, auth)
+    except Exception as e:
+        logger.error(f"Error loading network activity in background: {e}", exc_info=True)
+        # Return error state with retry option
+        from components import NetworkActivityPreviewError
+        return NetworkActivityPreviewError()
 
 @rt("/shelf/{slug}/delete", methods=["POST"])
 def delete_shelf(slug: str, confirmation_name: str, auth, sess):

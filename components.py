@@ -810,6 +810,51 @@ def NetworkActivityPreview(activities: List[Dict], auth=None):
         cls="network-preview-card"
     )
 
+def NetworkActivityPreviewLoading():
+    """Loading state for network activity with HTMX background loading."""
+    return Card(
+        Div(
+            H3("📚 Activity from your network", cls="preview-title"),
+            A("View All →", href="/network", cls="preview-view-all"),
+            cls="preview-header"
+        ),
+        Div(
+            Div(
+                Div(cls="loading-spinner"),
+                P("Loading your Network...", cls="loading-text"),
+                cls="loading-content"
+            ),
+            cls="preview-loading-container",
+            hx_get="/api/load-network-activity",
+            hx_trigger="load",
+            hx_swap="outerHTML",
+            hx_target="this"
+        ),
+        cls="network-preview-card"
+    )
+
+def NetworkActivityPreviewError():
+    """Error state for network activity with retry option."""
+    return Card(
+        Div(
+            H3("📚 Activity from your network", cls="preview-title"),
+            A("View All →", href="/network", cls="preview-view-all"),
+            cls="preview-header"
+        ),
+        Div(
+            P("Unable to load network activity.", cls="error-text"),
+            Button(
+                "Try Again",
+                hx_get="/api/load-network-activity",
+                hx_target="closest .network-preview-card",
+                hx_swap="outerHTML",
+                cls="retry-btn secondary"
+            ),
+            cls="preview-error-content"
+        ),
+        cls="network-preview-card"
+    )
+
 def CompactActivityCard(activity: Dict):
     """Render a compact activity card for the homepage preview."""
     user_profile = activity['user_profile']
