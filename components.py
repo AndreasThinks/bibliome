@@ -86,11 +86,16 @@ def BookshelfCard(bookshelf, is_owner=False, can_edit=False):
     if getattr(bookshelf, 'self_join', False):
         badges.append(P("🤝 Open to contributions", cls="contribution-badge"))
     
-    return Card(
-        H3(bookshelf.name),
-        Div(*badges, cls="shelf-badges"),
-        P(bookshelf.description) if bookshelf.description else None,
-        footer=A("View", href=f"/shelf/{bookshelf.slug}", cls="primary")
+    return A(
+        href=f"/shelf/{bookshelf.slug}",
+        cls="bookshelf-card-link"
+    )(
+        Card(
+            H3(bookshelf.name),
+            P(bookshelf.description) if bookshelf.description else None,
+            Div(*badges, cls="shelf-badges"),
+            cls="bookshelf-card-content"
+        )
     )
 
 def BookCard(book, can_upvote=True, user_has_upvoted=False):

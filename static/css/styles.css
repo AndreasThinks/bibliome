@@ -262,15 +262,118 @@ h1, h2, h3, h4, h5, h6 {
     margin: 2rem 0;
 }
 
-.bookshelf-card {
-    border: 1px solid var(--muted-border-color);
+/* Clickable Bookshelf Card Link */
+.bookshelf-card-link {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    transition: all 0.3s ease;
     border-radius: 0.5rem;
-    padding: 1.5rem;
-    transition: box-shadow 0.2s;
+    overflow: hidden;
 }
 
-.bookshelf-card:hover {
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+.bookshelf-card-link:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    color: inherit;
+    text-decoration: none;
+}
+
+.bookshelf-card-link:focus {
+    outline: 3px solid var(--brand-amber);
+    outline-offset: 2px;
+}
+
+.bookshelf-card-link:active {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Bookshelf Card Content */
+.bookshelf-card-content {
+    border: 1px solid var(--brand-border);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+    background: var(--brand-white);
+    cursor: pointer;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.bookshelf-card-link:hover .bookshelf-card-content {
+    border-color: var(--brand-amber);
+    background: linear-gradient(135deg, var(--brand-white) 0%, var(--brand-light) 100%);
+}
+
+/* Ensure card content fills the link properly */
+.bookshelf-card-content h3 {
+    margin-top: 0;
+    color: var(--brand-navy);
+    font-weight: 600;
+    transition: color 0.2s ease;
+}
+
+.bookshelf-card-link:hover .bookshelf-card-content h3 {
+    color: var(--brand-amber);
+}
+
+/* Shelf badges styling - improved alignment and consistency */
+.shelf-badges {
+    display: flex;
+    gap: 0.5rem;
+    margin: 1rem 0 0 0;
+    flex-wrap: wrap;
+    align-items: center;
+    min-height: 32px; /* Consistent height to prevent layout shifts */
+}
+
+.privacy-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: linear-gradient(135deg, var(--brand-light) 0%, #e9ecef 100%);
+    color: var(--brand-text);
+    border: 1px solid var(--brand-border);
+    margin: 0;
+    height: 32px;
+    box-sizing: border-box;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.privacy-badge:hover {
+    background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+    border-color: var(--brand-amber);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.contribution-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    margin: 0;
+    height: 32px;
+    box-sizing: border-box;
+    white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(40, 167, 69, 0.2);
+    transition: all 0.2s ease;
+}
+
+.contribution-badge:hover {
+    background: linear-gradient(135deg, #218838 0%, #1ea085 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3);
 }
 
 /* Book Grid - Mobile First Approach */
@@ -348,18 +451,18 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--brand-muted);
 }
 
-.shelf-badges {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-.shelf-actions {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-}
+    .shelf-badges {
+        margin: 0.5rem 0 0 0;
+        gap: 0.25rem;
+        min-height: 26px;
+    }
+    
+    .privacy-badge,
+    .contribution-badge {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.5rem;
+        height: 26px;
+    }
 
 /* Action Button Styles */
 .action-btn {
@@ -1714,6 +1817,45 @@ h1, h2, h3, h4, h5, h6 {
     .bookshelf-grid {
         grid-template-columns: 1fr;
     }
+    
+    /* Mobile bookshelf card adjustments */
+    .bookshelf-card-link {
+        border-radius: 0.75rem;
+    }
+    
+    .bookshelf-card-link:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+    }
+    
+    .bookshelf-card-content {
+        padding: 1.25rem;
+        border-radius: 0.75rem;
+        min-height: 120px;
+    }
+    
+    .bookshelf-card-content h3 {
+        font-size: 1.1rem;
+        margin-bottom: 0.75rem;
+    }
+    
+    .shelf-badges {
+        margin: 0.75rem 0 0 0;
+        gap: 0.375rem;
+        min-height: 28px;
+    }
+    
+    .privacy-badge {
+        font-size: 0.75rem;
+        padding: 0.3rem 0.6rem;
+        height: 28px;
+    }
+    
+    .contribution-badge {
+        font-size: 0.75rem;
+        padding: 0.3rem 0.6rem;
+        height: 28px;
+    }
 
     .book-grid {
         display: flex;
@@ -1830,6 +1972,35 @@ h1, h2, h3, h4, h5, h6 {
         width: 100%;
         text-align: center;
         max-width: 300px;
+    }
+    
+    /* Extra small screen bookshelf card adjustments */
+    .bookshelf-card-content {
+        padding: 1rem;
+        min-height: 100px;
+    }
+    
+    .bookshelf-card-content h3 {
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+        line-height: 1.2;
+    }
+    
+    .bookshelf-card-content p {
+        font-size: 0.85rem;
+        line-height: 1.4;
+        margin: 0.5rem 0;
+    }
+    
+    .shelf-badges {
+        margin: 0.5rem 0;
+        gap: 0.25rem;
+    }
+    
+    .privacy-badge,
+    .contribution-badge {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.4rem;
     }
 }
 
