@@ -692,6 +692,23 @@ def search_shelves(db_tables, query: str = "", book_title: str = "", book_author
             shelf.owner_handle = shelf_data.get('owner_handle')
             shelf.book_count = book_count
             shelves.append(shelf)
+        
+        # Add book covers and owner info for each shelf (same as get_public_shelves_with_stats)
+        for shelf in shelves:
+            # Get up to 4 recent book covers
+            recent_books = db_tables['books'](
+                "bookshelf_id=?", (shelf.id,), 
+                limit=4, 
+                order_by='added_at DESC'
+            )
+            shelf.recent_covers = [book.cover_url for book in recent_books if book.cover_url]
+            
+            # Get owner's profile
+            try:
+                shelf.owner = db_tables['users'][shelf.owner_did]
+            except IndexError:
+                shelf.owner = None
+        
         return shelves
     except Exception as e:
         print(f"Error searching shelves: {e}")
