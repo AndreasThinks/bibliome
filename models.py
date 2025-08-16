@@ -247,10 +247,14 @@ def can_vote_books(bookshelf, user_did: str, db_tables) -> bool:
 
 def can_remove_books(bookshelf, user_did: str, db_tables) -> bool:
     """Check if user can remove books (moderator, owner)."""
+    if not user_did:
+        return False  # Anonymous users can never remove books
     return check_permission(bookshelf, user_did, ['moderator', 'owner'], db_tables)
 
 def can_edit_bookshelf(bookshelf, user_did: str, db_tables) -> bool:
     """Check if user can edit bookshelf details (moderator, owner)."""
+    if not user_did:
+        return False  # Anonymous users can never edit
     return check_permission(bookshelf, user_did, ['moderator', 'owner'], db_tables)
 
 def can_manage_members(bookshelf, user_did: str, db_tables) -> bool:
@@ -262,7 +266,7 @@ def can_manage_members(bookshelf, user_did: str, db_tables) -> bool:
 def can_generate_invites(bookshelf, user_did: str, db_tables) -> bool:
     """Check if user can generate invites (moderator, owner)."""
     if not user_did:
-        return False
+        return False  # Anonymous users can never generate invites
     
     # Owner can always generate invites
     if bookshelf.owner_did == user_did:
