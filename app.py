@@ -2144,36 +2144,48 @@ def generate_share_link(slug: str, share_type: str, auth, req):
         user_did = get_current_user_did(auth)
         from models import can_generate_invites
         
-        if not can_generate_invites(shelf, user_did, db_tables):
-            return Div("Permission denied.", cls="error")
-        
         # Get base URL from request
         base_url = f"{req.url.scheme}://{req.url.netloc}"
         
-        if share_type == "view":
-            # Generate view-only link
+        if share_type == "public_link":
+            # Generate direct public link (for public/link-only shelves)
+            # Check if user can view the shelf (less restrictive than invite generation)
+            if not can_view_bookshelf(shelf, user_did, db_tables):
+                return Div("Permission denied.", cls="error")
+            
+            if shelf.privacy not in ['public', 'link-only']:
+                return Div("Direct links are only available for public and link-only shelves.", cls="error")
+            
+            link = f"{base_url}/shelf/{shelf.slug}"
+            message = f"Check out my bookshelf '{shelf.name}' on Bibliome: {link}"
+        
+        elif share_type == "invite_viewer":
+            # Generate view-only invite
+            if not can_generate_invites(shelf, user_did, db_tables):
+                return Div("Permission denied.", cls="error")
+            
+            from models import generate_invite_code, BookshelfInvite
+            invite = BookshelfInvite(
+                bookshelf_id=shelf.id,
+                invite_code=generate_invite_code(),
+                role="viewer",
+                created_by_did=user_did,
+                created_at=datetime.now(),
+                expires_at=None,  # No expiration for view links
+                max_uses=None     # No usage limit for view links
+            )
+            created_invite = db_tables['bookshelf_invites'].insert(invite)
+            link = f"{base_url}/shelf/join/{created_invite.invite_code}"
             if shelf.privacy == "private":
-                # For private shelves, create a viewer invite
-                from models import generate_invite_code, BookshelfInvite
-                invite = BookshelfInvite(
-                    bookshelf_id=shelf.id,
-                    invite_code=generate_invite_code(),
-                    role="viewer",
-                    created_by_did=user_did,
-                    created_at=datetime.now(),
-                    expires_at=None,  # No expiration for view links
-                    max_uses=None     # No usage limit for view links
-                )
-                created_invite = db_tables['bookshelf_invites'].insert(invite)
-                link = f"{base_url}/shelf/join/{created_invite.invite_code}"
-                message = f"Check out my bookshelf '{shelf.name}' on Bibliome: {link}"
+                message = f"I've shared my private bookshelf with you: '{shelf.name}' - {link}"
             else:
-                # For public/link-only shelves, use direct link
-                link = f"{base_url}/shelf/{shelf.slug}"
                 message = f"Check out my bookshelf '{shelf.name}' on Bibliome: {link}"
         
-        elif share_type == "contribute":
+        elif share_type == "invite_contributor":
             # Generate contributor invite
+            if not can_generate_invites(shelf, user_did, db_tables):
+                return Div("Permission denied.", cls="error")
+            
             from models import generate_invite_code, BookshelfInvite
             invite = BookshelfInvite(
                 bookshelf_id=shelf.id,

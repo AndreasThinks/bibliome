@@ -1889,71 +1889,155 @@ def ShareModal(shelf, base_url, user_role=None, can_generate_invites=False):
     )
 
 def ShareLinkResult(link, message, share_type):
-    """Display the generated sharing link with copy functionality."""
+    """Display the generated sharing link with copy functionality - replaces entire modal content."""
+    # Extract shelf slug from link for proper navigation
+    shelf_slug = ""
+    if "/shelf/" in link:
+        parts = link.split("/shelf/")
+        if len(parts) > 1:
+            shelf_slug = parts[1].split("/")[0]
+    elif "/join/" in link:
+        # For invite links, we need to extract from the referrer or pass it differently
+        # For now, we'll use a generic approach
+        shelf_slug = link.split('/')[-2] if '/' in link else ''
+    
     return Div(
         Div(
-            H4("Ready to share!", cls="share-result-title"),
-            P("Your sharing link has been generated:", cls="share-result-subtitle"),
-            cls="share-result-header"
+            # Modal header with improved spacing - matches ShareModal design
+            Div(
+                Button(
+                    I(cls="fas fa-times"),
+                    hx_get=f"/api/shelf/{shelf_slug}/close-share-modal",
+                    hx_target="#share-modal-container",
+                    hx_swap="innerHTML",
+                    cls="share-modal-close",
+                    title="Close"
+                ),
+                Div(
+                    H2(
+                        I(cls="fas fa-check-circle", style="color: #28a745; margin-right: 0.5rem;"),
+                        "Ready to share!",
+                        cls="share-modal-title"
+                    ),
+                    P("Your sharing link has been generated", cls="share-modal-privacy"),
+                    cls="share-modal-title-section"
+                ),
+                cls="share-modal-header"
+            ),
+            
+            # Main content with better organization - matches app design system
+            Div(
+                # Success message section
+                Div(
+                    H3("Share this message", cls="share-section-title"),
+                    P("Copy and paste this message to share your bookshelf:", cls="share-section-subtitle"),
+                    
+                    # Message display with improved styling
+                    Div(
+                        Div(
+                            Div(
+                                Span("📋", cls="message-type-icon"),
+                                Span("Ready to Share", cls="message-type-label"),
+                                cls="message-type-header"
+                            ),
+                            Div(
+                                message,
+                                cls="share-preview-message-text",
+                                onclick="this.select(); document.execCommand('selectAll');"
+                            ),
+                            Div(
+                                I(cls="fas fa-copy", style="margin-right: 0.25rem; font-size: 0.8rem;"),
+                                "Click message to select all text",
+                                cls="message-copy-hint"
+                            ),
+                            cls="share-preview-message-content"
+                        ),
+                        cls="share-preview-message-card"
+                    ),
+                    
+                    # Copy button with app styling
+                    Button(
+                        I(cls="fas fa-copy", style="margin-right: 0.5rem;"),
+                        "Copy Message",
+                        onclick="copyShareMessage(this)",
+                        cls="generate-link-btn enhanced-primary",
+                        id="copy-message-btn",
+                        style="margin-top: 1rem;"
+                    ),
+                    
+                    cls="share-options-section"
+                ),
+                
+                cls="share-modal-body"
+            ),
+            
+            # Footer with action buttons - matches modal design
+            Div(
+                Button(
+                    "Share Another Way",
+                    hx_get=f"/api/shelf/{shelf_slug}/share-modal",
+                    hx_target="#share-modal-container",
+                    hx_swap="innerHTML",
+                    cls="secondary",
+                    style="margin-right: 1rem;"
+                ),
+                Button(
+                    "Done",
+                    hx_get=f"/api/shelf/{shelf_slug}/close-share-modal",
+                    hx_target="#share-modal-container",
+                    hx_swap="innerHTML",
+                    cls="primary"
+                ),
+                cls="share-result-actions",
+                style="padding: 1.5rem 2rem; border-top: 1px solid var(--brand-border); display: flex; justify-content: flex-end; background: var(--brand-light);"
+            ),
+            
+            cls="share-modal-dialog"
         ),
-        Div(
-            Textarea(
-                message,
-                readonly=True,
-                cls="share-message-text",
-                rows=3,
-                onclick="this.select()"
-            ),
-            Button(
-                I(cls="fas fa-copy", style="margin-right: 0.5rem;"),
-                "Copy Message",
-                onclick=f"copyShareMessage(this)",
-                cls="copy-message-btn primary",
-                id="copy-btn"
-            ),
-            cls="share-result-content"
-        ),
-        Div(
-            Button(
-                "Share Another Way",
-                hx_get=f"/api/shelf/{link.split('/')[-2] if '/shelf/' in link else ''}/share-modal",
-                hx_target="#share-modal-container",
-                hx_swap="innerHTML",
-                cls="secondary"
-            ),
-            Button(
-                "Done",
-                hx_get=f"/api/shelf/{link.split('/')[-2] if '/shelf/' in link else ''}/close-share-modal",
-                hx_target="#share-modal-container",
-                hx_swap="innerHTML",
-                cls="primary"
-            ),
-            cls="share-result-actions"
-        ),
+        # Enhanced copy functionality with better feedback
         Script("""
             function copyShareMessage(button) {
-                const textarea = button.parentElement.querySelector('.share-message-text');
-                navigator.clipboard.writeText(textarea.value).then(() => {
+                const messageText = document.querySelector('.share-preview-message-text').textContent;
+                
+                navigator.clipboard.writeText(messageText).then(() => {
                     const original = button.innerHTML;
                     button.innerHTML = '<i class="fas fa-check" style="margin-right: 0.5rem;"></i>Copied!';
-                    button.style.background = '#28a745';
+                    button.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
                     button.style.borderColor = '#28a745';
+                    button.style.transform = 'translateY(-2px)';
+                    button.style.boxShadow = '0 6px 24px rgba(40, 167, 69, 0.4)';
+                    
                     setTimeout(() => {
                         button.innerHTML = original;
                         button.style.background = '';
                         button.style.borderColor = '';
-                    }, 2000);
-                }).catch(() => {
-                    button.innerHTML = '<i class="fas fa-exclamation-triangle" style="margin-right: 0.5rem;"></i>Copy failed';
-                    button.style.background = '#dc3545';
+                        button.style.transform = '';
+                        button.style.boxShadow = '';
+                    }, 2500);
+                }).catch((err) => {
+                    console.error('Copy failed:', err);
+                    const original = button.innerHTML;
+                    button.innerHTML = '<i class="fas fa-exclamation-triangle" style="margin-right: 0.5rem;"></i>Copy failed - please select text manually';
+                    button.style.background = 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)';
+                    button.style.borderColor = '#dc3545';
+                    
                     setTimeout(() => {
                         button.innerHTML = original;
                         button.style.background = '';
-                    }, 2000);
+                        button.style.borderColor = '';
+                    }, 3000);
                 });
             }
+            
+            // Auto-select message text when modal loads
+            setTimeout(() => {
+                const messageElement = document.querySelector('.share-preview-message-text');
+                if (messageElement) {
+                    messageElement.focus();
+                }
+            }, 300);
         """),
-        cls="share-result-container"
+        cls="share-modal-overlay"
     )
 
 def SharePreview(shelf, share_type, base_url):
