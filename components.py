@@ -851,7 +851,7 @@ def LandingPageFooter():
                     A(I(cls="fab fa-github"), href="https://github.com/AndreasThinks/bibliome", target="_blank", rel="noopener", cls="social-icon"),
                     cls="footer-social"
                 ),
-                P("© 2024 Bibliome. Open source and decentralized.", cls="footer-copyright"),
+                P("© 2025 Bibliome. Open source and decentralized.", cls="footer-copyright"),
                 cls="footer-content"
             ),
         ),
