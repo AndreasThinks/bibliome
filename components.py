@@ -209,7 +209,20 @@ def CreateBookshelfForm():
                 Option("Link Only - Only people with the link can view", value="link-only"),
                 Option("Private - Only invited people can view", value="private"),
                 name="privacy"
-            ))
+            )),
+            Label(
+                CheckboxX(
+                    id="self_join",
+                    name="self_join",
+                    label="Allow anyone to join as a contributor"
+                ),
+                "Open Collaboration",
+                cls="self-join-label"
+            ),
+            P(
+                "When enabled, anyone who can view this shelf will see a 'Join as Contributor' button to add books and vote.",
+                cls="self-join-help-text"
+            )
         ),
         Button("Create Bookshelf", type="submit", cls="primary")
     )
@@ -373,11 +386,11 @@ def Pagination(current_page: int, total_pages: int, base_url: str):
     return Nav(*links, cls="pagination")
 
 def MemberCard(user, permission, is_owner=False, can_manage=False, bookshelf_slug=""):
-    """Render a member card with role management."""
+    """Render a member card with improved role management."""
     role_badge_colors = {
         'owner': 'badge-owner',
-        'admin': 'badge-admin', 
-        'editor': 'badge-editor',
+        'moderator': 'badge-moderator', 
+        'contributor': 'badge-contributor',
         'viewer': 'badge-viewer',
         'pending': 'badge-pending'
     }
@@ -392,26 +405,31 @@ def MemberCard(user, permission, is_owner=False, can_manage=False, bookshelf_slu
         cls="member-avatar"
     ) if user.avatar_url else Div("👤", cls="member-avatar-placeholder")
     
-    # Role management controls
+    # Role management controls with improved UX
     role_controls = None
     if can_manage and not is_owner and permission.status == 'active':
         role_controls = Div(
-            Select(
-                Option("Admin", value="admin", selected=(permission.role == "admin")),
-                Option("Editor", value="editor", selected=(permission.role == "editor")),
-                Option("Viewer", value="viewer", selected=(permission.role == "viewer")),
-                name="role",
-                hx_post=f"/api/shelf/{bookshelf_slug}/member/{user.did}/role",
-                hx_target=f"#member-{user.did}",
-                hx_swap="outerHTML"
-            ),
-            Button(
-                "Remove",
-                hx_delete=f"/api/shelf/{bookshelf_slug}/member/{user.did}",
-                hx_target=f"#member-{user.did}",
-                hx_swap="outerHTML",
-                hx_confirm="Are you sure you want to remove this member?",
-                cls="secondary small"
+            # Read mode - show current role with edit button
+            Div(
+                Span(f"{display_role.title()}", cls=f"role-display {role_badge_colors.get(display_role, 'badge-viewer')}"),
+                Button(
+                    "Edit",
+                    hx_get=f"/api/shelf/{bookshelf_slug}/member/{user.did}/edit-role",
+                    hx_target=f"#member-controls-{user.did}",
+                    hx_swap="outerHTML",
+                    cls="edit-role-btn secondary small",
+                    title="Change member role"
+                ),
+                Button(
+                    "Remove",
+                    hx_delete=f"/api/shelf/{bookshelf_slug}/member/{user.did}",
+                    hx_target=f"#member-{user.did}",
+                    hx_swap="outerHTML",
+                    hx_confirm="Are you sure you want to remove this member?",
+                    cls="remove-member-btn secondary small"
+                ),
+                cls="role-controls-read",
+                id=f"member-controls-{user.did}"
             ),
             cls="member-controls"
         )
@@ -447,46 +465,96 @@ def MemberCard(user, permission, is_owner=False, can_manage=False, bookshelf_slu
         id=f"member-{user.did}"
     )
 
-def ShareInterface(bookshelf, members, invites, can_manage=False, can_generate_invites=False, req=None):
-    """Complete share interface for a bookshelf."""
-    privacy_icon = {
-        'public': '🌍',
-        'link-only': '🔗', 
-        'private': '🔒'
-    }.get(bookshelf.privacy, '🌍')
-    
-    # Privacy settings section - build all children first
-    privacy_children = [
-        H3("Privacy Settings"),
-        Div(
-            Span(f"{privacy_icon} {bookshelf.privacy.replace('-', ' ').title()}", cls="current-privacy"),
-            P({
-                'public': "Anyone can find and view this bookshelf",
-                'link-only': "Only people with the link can view this bookshelf", 
-                'private': "Only invited members can view this bookshelf"
-            }.get(bookshelf.privacy, "")),
-            cls="privacy-info"
-        )
+def MemberRoleEditor(user, current_role, bookshelf_slug):
+    """Component for editing a member's role with confirmation flow."""
+    role_options = [
+        ("viewer", "Viewer", "Can view the bookshelf"),
+        ("contributor", "Contributor", "Can add and vote on books"),
+        ("moderator", "Moderator", "Can manage books and members")
     ]
     
-    if can_manage:
-        privacy_children.append(
-            Form(
-                Select(
-                    Option("🌍 Public - Anyone can find and view", value="public", selected=(bookshelf.privacy == "public")),
-                    Option("🔗 Link Only - Only people with the link can view", value="link-only", selected=(bookshelf.privacy == "link-only")),
-                    Option("🔒 Private - Only invited members can view", value="private", selected=(bookshelf.privacy == "private")),
-                    name="privacy",
-                    hx_post=f"/api/shelf/{bookshelf.slug}/privacy",
-                    hx_target="#privacy-section",
-                    hx_swap="outerHTML"
-                ),
-                cls="privacy-form"
-            )
-        )
+    return Div(
+        Select(
+            *[Option(
+                f"{title} - {description}", 
+                value=value, 
+                selected=(current_role == value)
+            ) for value, title, description in role_options],
+            name="new_role",
+            id=f"role-select-{user.did}",
+            cls="role-select"
+        ),
+        Div(
+            Button(
+                "Save",
+                hx_post=f"/api/shelf/{bookshelf_slug}/member/{user.did}/role-preview",
+                hx_include=f"#role-select-{user.did}",
+                hx_target=f"#member-controls-{user.did}",
+                hx_swap="outerHTML",
+                cls="save-role-btn primary small",
+                title="Preview role change"
+            ),
+            Button(
+                "Cancel",
+                hx_get=f"/api/shelf/{bookshelf_slug}/member/{user.did}/cancel-edit",
+                hx_target=f"#member-controls-{user.did}",
+                hx_swap="outerHTML",
+                cls="cancel-role-btn secondary small"
+            ),
+            cls="role-edit-buttons"
+        ),
+        cls="role-controls-edit",
+        id=f"member-controls-{user.did}"
+    )
+
+def RoleChangePreview(user, current_role, new_role, bookshelf_slug):
+    """Component showing role change preview with confirmation."""
+    role_descriptions = {
+        'viewer': "Can view the bookshelf",
+        'contributor': "Can add and vote on books", 
+        'moderator': "Can manage books and members"
+    }
     
-    privacy_section = Div(*privacy_children, cls="privacy-section")
+    # Determine if this is a sensitive change (role downgrade)
+    role_hierarchy = ['viewer', 'contributor', 'moderator']
+    current_level = role_hierarchy.index(current_role) if current_role in role_hierarchy else 0
+    new_level = role_hierarchy.index(new_role) if new_role in role_hierarchy else 0
+    is_downgrade = new_level < current_level
     
+    confirmation_text = f"Change {user.display_name or user.handle} from {current_role.title()} to {new_role.title()}?"
+    if is_downgrade:
+        confirmation_text += f" This will reduce their permissions."
+    
+    return Div(
+        Div(
+            P(confirmation_text, cls="role-change-confirmation"),
+            P(f"New permissions: {role_descriptions.get(new_role, 'Unknown')}", cls="role-change-description"),
+            cls="role-change-preview"
+        ),
+        Div(
+            Button(
+                "Confirm",
+                hx_post=f"/api/shelf/{bookshelf_slug}/member/{user.did}/role-confirm",
+                hx_vals=f'{{"new_role": "{new_role}"}}',
+                hx_target=f"#member-{user.did}",
+                hx_swap="outerHTML",
+                cls="confirm-role-btn primary small"
+            ),
+            Button(
+                "Cancel",
+                hx_get=f"/api/shelf/{bookshelf_slug}/member/{user.did}/cancel-edit",
+                hx_target=f"#member-controls-{user.did}",
+                hx_swap="outerHTML",
+                cls="cancel-role-btn secondary small"
+            ),
+            cls="role-confirm-buttons"
+        ),
+        cls="role-controls-confirm",
+        id=f"member-controls-{user.did}"
+    )
+
+def ShareInterface(bookshelf, members, invites, can_manage=False, can_generate_invites=False, req=None):
+    """Complete share interface for a bookshelf."""
     # Members section
     member_cards = [MemberCard(member['user'], member['permission'], 
                               is_owner=(member['user'].did == bookshelf.owner_did),
@@ -551,7 +619,6 @@ def ShareInterface(bookshelf, members, invites, can_manage=False, can_generate_i
         )
     
     return Div(
-        privacy_section,
         members_section,
         invite_section,
         cls="share-interface"
@@ -1642,4 +1709,37 @@ def EmptyNetworkStateFullPage():
         ),
         cls="empty-network-state",
         id="network-content"
+    )
+
+def SelfJoinButton(bookshelf_slug):
+    """Component for users to join an open bookshelf as a contributor."""
+    return Div(
+        Button(
+            "🤝 Contribute to this shelf",
+            hx_post=f"/api/shelf/{bookshelf_slug}/self-join",
+            hx_target="#self-join-container",
+            hx_swap="outerHTML",
+            cls="self-join-btn primary small"
+        ),
+        P(
+            "This bookshelf is open to the public! Join to add your own book suggestions",
+            cls="self-join-subtitle"
+        ),
+        cls="self-join-container",
+        id="self-join-container"
+    )
+
+def SelfJoinSuccess(bookshelf_slug):
+    """Success state after user joins a bookshelf."""
+    return Div(
+        Div(
+            "✅ You've joined as a contributor!",
+            cls="self-join-success-message"
+        ),
+        P(
+            "You can now add books and vote on this shelf.",
+            cls="self-join-success-subtitle"
+        ),
+        cls="self-join-success-container",
+        id="self-join-container"
     )

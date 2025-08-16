@@ -89,6 +89,7 @@ class Bookshelf:
     slug: str = ""  # URL-friendly identifier
     description: str = ""
     privacy: str = "public"  # 'public', 'link-only', 'private'
+    self_join: bool = False  # Allow anyone to join as contributor
     atproto_uri: str = "" # AT-Proto URI of the record
     created_at: datetime = None
     updated_at: datetime = None
@@ -229,12 +230,20 @@ def can_view_bookshelf(bookshelf, user_did: str, db_tables) -> bool:
         return check_permission(bookshelf, user_did, ['viewer', 'contributor', 'moderator', 'owner'], db_tables)
 
 def can_add_books(bookshelf, user_did: str, db_tables) -> bool:
-    """Check if user can add books and vote (contributor, moderator, owner)."""
-    return check_permission(bookshelf, user_did, ['contributor', 'moderator', 'owner'], db_tables)
+    """Check if user can add books and vote (contributor, moderator, owner, or self-join enabled)."""
+    if not user_did:
+        return False
+    # Check explicit permissions OR self-join enabled for logged-in users
+    return (check_permission(bookshelf, user_did, ['contributor', 'moderator', 'owner'], db_tables) 
+            or bookshelf.self_join)
 
 def can_vote_books(bookshelf, user_did: str, db_tables) -> bool:
-    """Check if user can vote on books (contributor, moderator, owner)."""
-    return check_permission(bookshelf, user_did, ['contributor', 'moderator', 'owner'], db_tables)
+    """Check if user can vote on books (contributor, moderator, owner, or self-join enabled)."""
+    if not user_did:
+        return False
+    # Check explicit permissions OR self-join enabled for logged-in users
+    return (check_permission(bookshelf, user_did, ['contributor', 'moderator', 'owner'], db_tables) 
+            or bookshelf.self_join)
 
 def can_remove_books(bookshelf, user_did: str, db_tables) -> bool:
     """Check if user can remove books (moderator, owner)."""

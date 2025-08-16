@@ -998,12 +998,12 @@ h1, h2, h3, h4, h5, h6 {
     color: #000;
 }
 
-.badge-admin {
+.badge-moderator {
     background: #dc3545;
     color: white;
 }
 
-.badge-editor {
+.badge-contributor {
     background: #007bff;
     color: white;
 }
@@ -1016,6 +1016,229 @@ h1, h2, h3, h4, h5, h6 {
 .badge-pending {
     background: #ffc107;
     color: #000;
+}
+
+/* Enhanced Role Management Styles */
+.role-display {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-right: 0.5rem;
+}
+
+.role-controls-read {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.role-controls-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: var(--brand-light);
+    border: 2px solid var(--brand-amber);
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 8px rgba(212, 148, 30, 0.2);
+}
+
+.role-controls-confirm {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: #fff3cd;
+    border: 2px solid #ffc107;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
+}
+
+.role-select {
+    width: 100%;
+    padding: 0.5rem;
+    border: 2px solid var(--brand-border);
+    border-radius: 0.25rem;
+    font-size: 0.9rem;
+    background: var(--brand-white);
+    transition: border-color 0.2s ease;
+}
+
+.role-select:focus {
+    outline: none;
+    border-color: var(--brand-amber);
+    box-shadow: 0 0 0 2px rgba(212, 148, 30, 0.2);
+}
+
+.role-edit-buttons,
+.role-confirm-buttons {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+.edit-role-btn,
+.save-role-btn,
+.confirm-role-btn {
+    transition: all 0.2s ease;
+}
+
+.edit-role-btn:hover {
+    background: var(--brand-amber);
+    color: var(--brand-navy);
+    border-color: var(--brand-amber);
+}
+
+.save-role-btn {
+    background: var(--brand-amber);
+    color: var(--brand-navy);
+    border: none;
+}
+
+.save-role-btn:hover {
+    background: #c08419;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(212, 148, 30, 0.3);
+}
+
+.confirm-role-btn {
+    background: #28a745;
+    color: white;
+    border: none;
+}
+
+.confirm-role-btn:hover {
+    background: #218838;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
+}
+
+.cancel-role-btn {
+    background: var(--brand-white);
+    color: var(--brand-muted);
+    border: 1px solid var(--brand-border);
+}
+
+.cancel-role-btn:hover {
+    background: var(--brand-light);
+    color: var(--brand-text);
+}
+
+.remove-member-btn {
+    background: var(--brand-white);
+    color: #dc3545;
+    border: 1px solid #dc3545;
+}
+
+.remove-member-btn:hover {
+    background: #dc3545;
+    color: white;
+}
+
+.role-change-preview {
+    text-align: center;
+    margin-bottom: 0.75rem;
+}
+
+.role-change-confirmation {
+    font-weight: 600;
+    color: var(--brand-text);
+    margin: 0 0 0.5rem 0;
+    font-size: 0.95rem;
+}
+
+.role-change-description {
+    color: var(--brand-muted);
+    font-size: 0.85rem;
+    margin: 0;
+    font-style: italic;
+}
+
+/* Loading states for role changes */
+.htmx-request .role-controls-edit,
+.htmx-request .role-controls-confirm {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.htmx-request .save-role-btn,
+.htmx-request .confirm-role-btn {
+    position: relative;
+}
+
+.htmx-request .save-role-btn::after,
+.htmx-request .confirm-role-btn::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border: 2px solid transparent;
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Success highlight animation */
+.member-card.role-updated {
+    background: #d4edda !important;
+    border-color: #c3e6cb !important;
+    transition: all 0.3s ease;
+}
+
+/* Mobile responsive for role management */
+@media (max-width: 768px) {
+    .role-controls-read {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .role-edit-buttons,
+    .role-confirm-buttons {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .role-select {
+        font-size: 0.85rem;
+    }
+    
+    .role-change-confirmation {
+        font-size: 0.9rem;
+    }
+    
+    .role-change-description {
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .role-controls-edit,
+    .role-controls-confirm {
+        padding: 0.5rem;
+    }
+    
+    .role-edit-buttons,
+    .role-confirm-buttons {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    
+    .edit-role-btn,
+    .save-role-btn,
+    .confirm-role-btn,
+    .cancel-role-btn,
+    .remove-member-btn {
+        width: 100%;
+        text-align: center;
+    }
 }
 
 /* Invite Interface */
@@ -1563,6 +1786,175 @@ h1, h2, h3, h4, h5, h6 {
         width: 100%;
         text-align: center;
         max-width: 300px;
+    }
+}
+
+/* ===== SELF-JOIN COMPONENT STYLES ===== */
+
+/* Self-join container */
+.self-join-container {
+    background: linear-gradient(135deg, #e8f5e8 0%, #f0f8ff 100%);
+    border: 2px solid #28a745;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15);
+    transition: all 0.3s ease;
+}
+
+.self-join-container:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(40, 167, 69, 0.2);
+}
+
+/* Self-join button */
+.self-join-btn {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: var(--brand-white);
+    border: none;
+    padding: 1rem 2rem;
+    border-radius: 0.5rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+    text-decoration: none;
+    min-height: 48px;
+}
+
+.self-join-btn:hover {
+    background: linear-gradient(135deg, #218838 0%, #1ea085 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(40, 167, 69, 0.4);
+    color: var(--brand-white);
+}
+
+.self-join-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}
+
+/* Self-join subtitle */
+.self-join-subtitle {
+    color: #155724;
+    font-size: 0.95rem;
+    margin: 0;
+    line-height: 1.4;
+    font-weight: 500;
+}
+
+/* Success state */
+.self-join-success-container {
+    background: linear-gradient(135deg, #d4edda 0%, #e8f5e8 100%);
+    border: 2px solid #28a745;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15);
+}
+
+.self-join-success-message {
+    color: #155724;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.self-join-success-subtitle {
+    color: #155724;
+    font-size: 0.95rem;
+    margin: 0;
+    line-height: 1.4;
+    font-weight: 500;
+}
+
+/* Form label for self-join checkbox in create/edit forms */
+.self-join-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid var(--brand-border);
+    border-radius: 0.5rem;
+    margin: 1rem 0;
+    transition: all 0.2s ease;
+}
+
+.self-join-label:hover {
+    background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+    border-color: var(--brand-amber);
+}
+
+.self-join-help-text {
+    color: var(--brand-muted);
+    font-size: 0.9rem;
+    margin: 0.5rem 0 0 0;
+    line-height: 1.4;
+    font-style: italic;
+}
+
+/* Mobile responsive for self-join components */
+@media (max-width: 768px) {
+    .self-join-container,
+    .self-join-success-container {
+        margin: 1rem -1rem;
+        border-radius: 0;
+        padding: 1.25rem;
+    }
+    
+    .self-join-btn {
+        padding: 0.875rem 1.5rem;
+        font-size: 1rem;
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .self-join-subtitle,
+    .self-join-success-subtitle {
+        font-size: 0.9rem;
+    }
+    
+    .self-join-success-message {
+        font-size: 1rem;
+    }
+    
+    .self-join-label {
+        padding: 0.875rem;
+        margin: 0.75rem 0;
+    }
+    
+    .self-join-help-text {
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .self-join-btn {
+        padding: 0.75rem 1.25rem;
+        font-size: 0.95rem;
+    }
+    
+    .self-join-subtitle,
+    .self-join-success-subtitle {
+        font-size: 0.85rem;
+    }
+    
+    .self-join-success-message {
+        font-size: 0.95rem;
+        flex-direction: column;
+        gap: 0.25rem;
     }
 }
 

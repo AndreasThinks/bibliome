@@ -218,7 +218,7 @@ def new_shelf_page(auth):
     )
 
 @rt("/shelf/create", methods=["POST"])
-def create_shelf(name: str, description: str, privacy: str, auth, sess):
+def create_shelf(name: str, description: str, privacy: str, auth, sess, self_join: bool = False):
     """Handle bookshelf creation."""
     if not auth:
         return RedirectResponse('/auth/login', status_code=303)
@@ -243,6 +243,7 @@ def create_shelf(name: str, description: str, privacy: str, auth, sess):
             description=description.strip(),
             owner_did=auth['did'],
             privacy=privacy,
+            self_join=self_join,
             atproto_uri=atproto_uri, # Store the canonical URI
             created_at=datetime.now(),
             updated_at=datetime.now()
@@ -514,6 +515,16 @@ def view_shelf(slug: str, auth, view: str = "grid"):
         # New Shelf Header with view toggle
         shelf_header = ShelfHeader(shelf, action_buttons, current_view=view)
         
+        # Show self-join button if applicable (logged in user, public shelf with self-join enabled, not already a member)
+        self_join_section = None
+        if (auth and shelf.privacy == 'public' and shelf.self_join and user_did and 
+            not can_add and shelf.owner_did != user_did):
+            # Check if user is already a member
+            existing_permission = db_tables['permissions']("bookshelf_id=? AND user_did=?", (shelf.id, user_did))
+            if not existing_permission:
+                from components import SelfJoinButton
+                self_join_section = Section(SelfJoinButton(shelf.slug), cls="self-join-section")
+        
         # Show book search form if user can add books
         add_books_section = Section(AddBooksToggle(shelf.id), cls="add-books-section") if can_add else None
         
@@ -550,6 +561,7 @@ def view_shelf(slug: str, auth, view: str = "grid"):
         
         content = [
             shelf_header,
+            self_join_section,
             add_books_section,
             books_section
         ]
@@ -1137,7 +1149,21 @@ def manage_shelf(slug: str, auth, req):
                                 Option("Link Only - Only people with the link can view", value="link-only", selected=(shelf.privacy == "link-only")),
                                 Option("Private - Only invited people can view", value="private", selected=(shelf.privacy == "private")),
                                 name="privacy"
-                            ))
+                            )),
+                            Label(
+                                CheckboxX(
+                                    id="self_join",
+                                    name="self_join",
+                                    checked=shelf.self_join,
+                                    label="Allow anyone to join as a contributor"
+                                ),
+                                "Open Collaboration",
+                                cls="self-join-label"
+                            ),
+                            P(
+                                "When enabled, anyone who can view this shelf will see a 'Join as Contributor' button to add books and vote.",
+                                cls="self-join-help-text"
+                            )
                         ),
                         Button("Save Changes", type="submit", cls="primary"),
                         action=f"/shelf/{shelf.slug}/update",
@@ -1476,9 +1502,32 @@ def update_privacy(slug: str, privacy: str, auth):
         logger.error(f"Error updating privacy for shelf {slug}: {e}", exc_info=True)
         return Div(f"Error: {str(e)}", cls="error")
 
-@rt("/api/shelf/{slug}/member/{member_did}/role", methods=["POST"])
-def update_member_role(slug: str, member_did: str, role: str, auth):
-    """HTMX endpoint to update a member's role."""
+@rt("/api/shelf/{slug}/member/{member_did}/edit-role")
+def get_role_editor(slug: str, member_did: str, auth):
+    """HTMX endpoint to get the role editing form."""
+    if not auth: return Div("Authentication required.", cls="error")
+    
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0]
+        user_did = get_current_user_did(auth)
+        
+        from models import can_manage_members
+        if not can_manage_members(shelf, user_did, db_tables):
+            return Div("Permission denied.", cls="error")
+        
+        member_user = db_tables['users'][member_did]
+        permission = db_tables['permissions']("bookshelf_id=? AND user_did=?", (shelf.id, member_did))[0]
+        
+        from components import MemberRoleEditor
+        return MemberRoleEditor(member_user, permission.role, slug)
+        
+    except Exception as e:
+        logger.error(f"Error getting role editor for member {member_did} on shelf {slug}: {e}", exc_info=True)
+        return Div(f"Error: {str(e)}", cls="error")
+
+@rt("/api/shelf/{slug}/member/{member_did}/role-preview", methods=["POST"])
+def preview_role_change(slug: str, member_did: str, new_role: str, auth):
+    """HTMX endpoint to preview a role change before confirmation."""
     if not auth: return Div("Authentication required.", cls="error")
     
     try:
@@ -1493,19 +1542,121 @@ def update_member_role(slug: str, member_did: str, role: str, auth):
         
         # Check if manager can assign the target role
         manager_role = get_user_role(shelf, user_did, db_tables)
-        if not can_invite_role(manager_role, role):
-            return Div(f"You cannot assign the role '{role}'.", cls="error")
+        if not can_invite_role(manager_role, new_role):
+            return Div(f"You cannot assign the role '{new_role}'.", cls="error")
         
-        # Update the permission
-        db_tables['permissions'].update({'role': role}, f"bookshelf_id={shelf.id} AND user_did='{member_did}'")
-        
-        # Return the updated member card
         member_user = db_tables['users'][member_did]
         permission = db_tables['permissions']("bookshelf_id=? AND user_did=?", (shelf.id, member_did))[0]
-        return MemberCard(member_user, permission, can_manage=True, bookshelf_slug=slug)
+        
+        from components import RoleChangePreview
+        return RoleChangePreview(member_user, permission.role, new_role, slug)
         
     except Exception as e:
-        logger.error(f"Error updating role for member {member_did} on shelf {slug}: {e}", exc_info=True)
+        logger.error(f"Error previewing role change for member {member_did} on shelf {slug}: {e}", exc_info=True)
+        return Div(f"Error: {str(e)}", cls="error")
+
+@rt("/api/shelf/{slug}/member/{member_did}/role-confirm", methods=["POST"])
+def confirm_role_change(slug: str, member_did: str, new_role: str, auth):
+    """HTMX endpoint to confirm and apply a role change."""
+    if not auth: return Div("Authentication required.", cls="error")
+    
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0]
+        user_did = get_current_user_did(auth)
+        
+        from models import can_manage_members, get_user_role, can_invite_role
+        
+        # Check permission to manage members
+        if not can_manage_members(shelf, user_did, db_tables):
+            return Div("Permission denied.", cls="error")
+        
+        # Check if manager can assign the target role
+        manager_role = get_user_role(shelf, user_did, db_tables)
+        if not can_invite_role(manager_role, new_role):
+            return Div(f"You cannot assign the role '{new_role}'.", cls="error")
+        
+        # Update the permission
+        db_tables['permissions'].update({'role': new_role}, f"bookshelf_id={shelf.id} AND user_did='{member_did}'")
+        
+        # Return the updated member card with success highlight
+        member_user = db_tables['users'][member_did]
+        permission = db_tables['permissions']("bookshelf_id=? AND user_did=?", (shelf.id, member_did))[0]
+        
+        from components import MemberCard
+        updated_card = MemberCard(member_user, permission, can_manage=True, bookshelf_slug=slug)
+        
+        # Add success styling temporarily
+        return Div(
+            updated_card,
+            Script(f"""
+                setTimeout(() => {{
+                    const card = document.getElementById('member-{member_did}');
+                    if (card) {{
+                        card.style.background = '#d4edda';
+                        card.style.borderColor = '#c3e6cb';
+                        setTimeout(() => {{
+                            card.style.background = '';
+                            card.style.borderColor = '';
+                        }}, 2000);
+                    }}
+                }}, 100);
+            """),
+            id=f"member-{member_did}"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error confirming role change for member {member_did} on shelf {slug}: {e}", exc_info=True)
+        return Div(f"Error: {str(e)}", cls="error")
+
+@rt("/api/shelf/{slug}/member/{member_did}/cancel-edit")
+def cancel_role_edit(slug: str, member_did: str, auth):
+    """HTMX endpoint to cancel role editing and return to read mode."""
+    if not auth: return Div("Authentication required.", cls="error")
+    
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0]
+        user_did = get_current_user_did(auth)
+        
+        from models import can_manage_members
+        if not can_manage_members(shelf, user_did, db_tables):
+            return Div("Permission denied.", cls="error")
+        
+        member_user = db_tables['users'][member_did]
+        permission = db_tables['permissions']("bookshelf_id=? AND user_did=?", (shelf.id, member_did))[0]
+        
+        # Return the read-mode controls
+        role_badge_colors = {
+            'owner': 'badge-owner',
+            'moderator': 'badge-moderator', 
+            'contributor': 'badge-contributor',
+            'viewer': 'badge-viewer',
+            'pending': 'badge-pending'
+        }
+        
+        return Div(
+            Span(f"{permission.role.title()}", cls=f"role-display {role_badge_colors.get(permission.role, 'badge-viewer')}"),
+            Button(
+                "Edit",
+                hx_get=f"/api/shelf/{slug}/member/{member_did}/edit-role",
+                hx_target=f"#member-controls-{member_did}",
+                hx_swap="outerHTML",
+                cls="edit-role-btn secondary small",
+                title="Change member role"
+            ),
+            Button(
+                "Remove",
+                hx_delete=f"/api/shelf/{slug}/member/{member_did}",
+                hx_target=f"#member-{member_did}",
+                hx_swap="outerHTML",
+                hx_confirm="Are you sure you want to remove this member?",
+                cls="remove-member-btn secondary small"
+            ),
+            cls="role-controls-read",
+            id=f"member-controls-{member_did}"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error canceling role edit for member {member_did} on shelf {slug}: {e}", exc_info=True)
         return Div(f"Error: {str(e)}", cls="error")
 
 @rt("/api/shelf/{slug}/member/{member_did}", methods=["DELETE"])
@@ -1562,7 +1713,7 @@ def approve_member(slug: str, member_did: str, auth):
         return Div(f"Error: {str(e)}", cls="error")
 
 @rt("/shelf/{slug}/update", methods=["POST"])
-def update_shelf(slug: str, name: str, description: str, privacy: str, auth, sess):
+def update_shelf(slug: str, name: str, description: str, privacy: str, auth, sess, self_join: bool = False):
     """Handle bookshelf update."""
     if not auth:
         return RedirectResponse('/auth/login', status_code=303)
@@ -1583,6 +1734,7 @@ def update_shelf(slug: str, name: str, description: str, privacy: str, auth, ses
             'name': name.strip(),
             'description': description.strip(),
             'privacy': privacy,
+            'self_join': self_join,
             'updated_at': datetime.now()
         }
         
@@ -1716,6 +1868,81 @@ def load_network_activity_api(auth):
         # Return error state with retry option
         from components import NetworkActivityPreviewError
         return NetworkActivityPreviewError()
+
+@rt("/api/shelf/{slug}/self-join", methods=["POST"])
+def self_join_shelf(slug: str, auth):
+    """HTMX endpoint for users to join a public shelf as a contributor."""
+    if not auth:
+        return Div("Authentication required.", cls="error")
+    
+    try:
+        shelf = get_shelf_by_slug(slug, db_tables)
+        if not shelf:
+            return Div("Bookshelf not found.", cls="error")
+        
+        user_did = get_current_user_did(auth)
+        
+        # Validate self-join conditions
+        if shelf.privacy != 'public':
+            return Div("This bookshelf is not public.", cls="error")
+        
+        if not shelf.self_join:
+            return Div("This bookshelf does not allow self-joining.", cls="error")
+        
+        if shelf.owner_did == user_did:
+            return Div("You are the owner of this bookshelf.", cls="error")
+        
+        # Check if user is already a member
+        existing_permission = db_tables['permissions']("bookshelf_id=? AND user_did=?", (shelf.id, user_did))
+        if existing_permission:
+            return Div("You are already a member of this bookshelf.", cls="error")
+        
+        # Ensure user exists in the database
+        try:
+            user = db_tables['users'][user_did]
+            # Update user info if needed
+            update_data = {
+                'handle': auth.get('handle'),
+                'display_name': auth.get('display_name'),
+                'avatar_url': auth.get('avatar_url'),
+                'last_login': datetime.now()
+            }
+            db_tables['users'].update(update_data, user_did)
+        except IndexError:
+            # User does not exist, create them
+            new_user_data = {
+                'did': user_did,
+                'handle': auth.get('handle'),
+                'display_name': auth.get('display_name'),
+                'avatar_url': auth.get('avatar_url'),
+                'created_at': datetime.now(),
+                'last_login': datetime.now()
+            }
+            db_tables['users'].insert(**new_user_data)
+            logger.info(f"New user created via self-join: {auth.get('handle')}")
+        
+        # Add user as contributor
+        from models import Permission
+        permission = Permission(
+            bookshelf_id=shelf.id,
+            user_did=user_did,
+            role='contributor',
+            status='active',
+            granted_by_did=shelf.owner_did,  # System grants on behalf of owner
+            granted_at=datetime.now(),
+            joined_at=datetime.now()
+        )
+        db_tables['permissions'].insert(permission)
+        
+        logger.info(f"User {auth.get('handle')} self-joined shelf '{shelf.name}' as contributor")
+        
+        # Return success component
+        from components import SelfJoinSuccess
+        return SelfJoinSuccess(shelf.name)
+        
+    except Exception as e:
+        logger.error(f"Error in self-join for shelf {slug}: {e}", exc_info=True)
+        return Div(f"Error joining bookshelf: {str(e)}", cls="error")
 
 @rt("/shelf/{slug}/delete", methods=["POST"])
 def delete_shelf(slug: str, confirmation_name: str, auth, sess):
