@@ -2253,32 +2253,25 @@ def close_contact_modal():
 
 @rt("/api/contact", methods=["POST"])
 async def send_contact_email(name: str, email: str, subject: str, message: str):
-    """HTMX endpoint to send contact form email."""
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
+    """HTMX endpoint to send contact form email via SMTP2GO API."""
+    import httpx
     
     try:
         # Get email configuration from environment
         contact_email = os.getenv('CONTACT_EMAIL')
-        smtp_host = os.getenv('SMTP_HOST')
-        smtp_port = int(os.getenv('SMTP_PORT', '587'))
-        smtp_username = os.getenv('SMTP_USERNAME')
-        smtp_password = os.getenv('SMTP_PASSWORD')
+        sender_email = os.getenv('SENDER_EMAIL')
+        api_key = os.getenv('SMTP2GO_API_KEY')
         
-        if not all([contact_email, smtp_host, smtp_username, smtp_password]):
-            logger.error("Email configuration incomplete")
+        if not all([contact_email, sender_email, api_key]):
+            logger.error("SMTP2GO configuration incomplete")
             return ContactFormError("Email service is not configured. Please try again later.")
         
-        # Create email message
-        msg = MIMEMultipart()
-        msg['From'] = smtp_username
-        msg['To'] = contact_email
-        msg['Subject'] = f"Bibliome Contact Form: {subject}"
-        
-        # Email body
-        body = f"""
-New contact form submission from Bibliome:
+        # Prepare email payload for SMTP2GO API
+        email_payload = {
+            "sender": sender_email,
+            "to": [contact_email],
+            "subject": f"Bibliome Contact Form: {subject}",
+            "text_body": f"""New contact form submission from Bibliome:
 
 Name: {name}
 Email: {email}
@@ -2289,22 +2282,66 @@ Message:
 
 ---
 This message was sent via the Bibliome contact form.
-Reply directly to this email to respond to {name} at {email}.
-        """
+Reply directly to this email to respond to {name} at {email}.""",
+            "html_body": f"""
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+    <h2 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px;">
+        New Contact Form Submission
+    </h2>
+    
+    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Name:</strong> {name}</p>
+        <p><strong>Email:</strong> <a href="mailto:{email}">{email}</a></p>
+        <p><strong>Subject:</strong> {subject}</p>
+    </div>
+    
+    <div style="margin: 20px 0;">
+        <h3 style="color: #333;">Message:</h3>
+        <div style="background: white; padding: 15px; border-left: 4px solid #007bff; border-radius: 4px;">
+            {message.replace(chr(10), '<br>')}
+        </div>
+    </div>
+    
+    <hr style="margin: 30px 0; border: none; border-top: 1px solid #ddd;">
+    <p style="color: #666; font-size: 14px;">
+        This message was sent via the Bibliome contact form.<br>
+        Reply directly to this email to respond to {name} at {email}.
+    </p>
+</div>
+"""
+        }
         
-        msg.attach(MIMEText(body, 'plain'))
+        # Send email via SMTP2GO API
+        headers = {
+            'Content-Type': 'application/json',
+            'X-Smtp2go-Api-Key': api_key,
+            'accept': 'application/json'
+        }
         
-        # Send email
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            server.starttls()
-            server.login(smtp_username, smtp_password)
-            server.send_message(msg)
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                'https://api.smtp2go.com/v3/email/send',
+                json=email_payload,
+                headers=headers,
+                timeout=30.0
+            )
         
-        logger.info(f"Contact form email sent from {email} ({name}) with subject: {subject}")
-        return ContactFormSuccess()
+        if response.status_code == 200:
+            response_data = response.json()
+            email_id = response_data.get('data', {}).get('email_id', 'unknown')
+            logger.info(f"Contact form email sent successfully via SMTP2GO. Email ID: {email_id}. From: {email} ({name}) Subject: {subject}")
+            return ContactFormSuccess()
+        else:
+            error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+            error_msg = error_data.get('data', {}).get('error', f'HTTP {response.status_code}')
+            logger.error(f"SMTP2GO API error: {error_msg} (Status: {response.status_code})")
+            return ContactFormError("There was an error sending your message. Please try again later.")
         
+    except httpx.TimeoutException:
+        logger.error("SMTP2GO API timeout")
+        return ContactFormError("Email service timeout. Please try again later.")
     except Exception as e:
-        logger.error(f"Error sending contact email: {e}", exc_info=True)
+        logger.error(f"Error sending contact email via SMTP2GO: {e}", exc_info=True)
         return ContactFormError("There was an error sending your message. Please try again later.")
 
 serve()
