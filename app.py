@@ -264,7 +264,7 @@ def create_shelf(name: str, description: str, privacy: str, auth, sess, self_joi
         return RedirectResponse('/shelf/new', status_code=303)
 
 @rt("/search")
-def search_page(auth, query: str = "", search_type: str = "all", book_title: str = "", book_author: str = "", book_isbn: str = "", privacy: str = "public", sort_by: str = "updated_at", page: int = 1):
+def search_page(auth, query: str = "", search_type: str = "all", book_title: str = "", book_author: str = "", book_isbn: str = "", privacy: str = "public", sort_by: str = "updated_at", page: int = 1, open_to_contributions: str = ""):
     """Display search page for bookshelves and users."""
     from models import search_shelves, search_users
     from components import SearchForm, SearchResultsGrid
@@ -272,6 +272,13 @@ def search_page(auth, query: str = "", search_type: str = "all", book_title: str
     limit = 12
     offset = (page - 1) * limit
     viewer_did = get_current_user_did(auth)
+    
+    # Convert open_to_contributions string to boolean or None
+    open_to_contributions_filter = None
+    if open_to_contributions == "true":
+        open_to_contributions_filter = True
+    elif open_to_contributions == "false":
+        open_to_contributions_filter = False
     
     # Search based on type
     shelves = []
@@ -287,7 +294,8 @@ def search_page(auth, query: str = "", search_type: str = "all", book_title: str
             privacy=privacy, 
             sort_by=sort_by, 
             limit=limit, 
-            offset=offset
+            offset=offset,
+            open_to_contributions=open_to_contributions_filter
         )
     
     if search_type == "all" or search_type == "users":
@@ -311,7 +319,8 @@ def search_page(auth, query: str = "", search_type: str = "all", book_title: str
                 book_author=book_author, 
                 book_isbn=book_isbn, 
                 privacy=privacy, 
-                sort_by=sort_by
+                sort_by=sort_by,
+                open_to_contributions=open_to_contributions
             ),
             SearchResultsGrid(
                 shelves, 
@@ -320,7 +329,8 @@ def search_page(auth, query: str = "", search_type: str = "all", book_title: str
                 page=page, 
                 query=query, 
                 privacy=privacy, 
-                sort_by=sort_by
+                sort_by=sort_by,
+                open_to_contributions=open_to_contributions
             )
         )
     )
@@ -886,11 +896,10 @@ def add_book_and_close_api(bookshelf_id: int, title: str, author: str, isbn: str
                 )
                 db_tables['upvotes'].insert(upvote)
                 
-                # Get updated book with vote count and return it in a book-grid
+                # Get updated book with vote count and return it
                 existing_book.upvote_count = len(db_tables['upvotes']("book_id=?", (existing_book.id,)))
                 existing_book.user_has_upvoted = True
-                book_grid = Div(existing_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=existing_book.upvote_count), cls="book-grid", id="book-grid")
-                return book_grid, close_interface
+                return existing_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=existing_book.upvote_count), close_interface
         else:
             atproto_uri = None
             try:
@@ -934,11 +943,10 @@ def add_book_and_close_api(bookshelf_id: int, title: str, author: str, isbn: str
             except Exception as e:
                 logger.warning(f"Could not log book addition activity: {e}")
             
-            # Set the computed attributes and return the book card in a book-grid with close interface
+            # Set the computed attributes and return the book card with close interface
             created_book.upvote_count = 1
             created_book.user_has_upvoted = True
-            book_grid = Div(created_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=1), cls="book-grid", id="book-grid")
-            return book_grid, close_interface
+            return created_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=1), close_interface
         
     except Exception as e:
         return Div(f"Error adding book: {str(e)}", cls="error")

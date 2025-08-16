@@ -1018,6 +1018,43 @@ h1, h2, h3, h4, h5, h6 {
     color: #000;
 }
 
+/* Contribution Badges */
+.contribution-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: bold;
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    margin-left: 0.5rem;
+    box-shadow: 0 1px 3px rgba(40, 167, 69, 0.2);
+    transition: all 0.2s ease;
+}
+
+.contribution-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3);
+}
+
+.shelf-preview-contribution-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    margin-top: 0.5rem;
+    box-shadow: 0 1px 3px rgba(40, 167, 69, 0.2);
+    transition: all 0.2s ease;
+}
+
+.shelf-preview-contribution-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3);
+}
+
 /* Enhanced Role Management Styles */
 .role-display {
     display: inline-block;

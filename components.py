@@ -79,9 +79,16 @@ def BookshelfCard(bookshelf, is_owner=False, can_edit=False):
         'private': '🔒'
     }.get(bookshelf.privacy, '🌍')
     
+    # Add badges for shelf features
+    badges = [P(f"{privacy_icon} {bookshelf.privacy.replace('-', ' ').title()}", cls="privacy-badge")]
+    
+    # Add "open to contributions" badge if applicable
+    if getattr(bookshelf, 'self_join', False):
+        badges.append(P("🤝 Open to contributions", cls="contribution-badge"))
+    
     return Card(
         H3(bookshelf.name),
-        P(f"{privacy_icon} {bookshelf.privacy.replace('-', ' ').title()}", cls="privacy-badge"),
+        Div(*badges, cls="shelf-badges"),
         P(bookshelf.description) if bookshelf.description else None,
         footer=A("View", href=f"/shelf/{bookshelf.slug}", cls="primary")
     )
@@ -177,8 +184,8 @@ def SearchResultCard(book_data: Dict[str, Any], bookshelf_id: int):
                 Hidden(name="page_count", value=book_data.get('page_count', 0)),
                 Button("Add to Shelf", type="submit", cls="add-book-btn"),
                 hx_post="/api/add-book-and-close",
-                hx_target="#books-container",
-                hx_swap="innerHTML"
+                hx_target="#book-grid",
+                hx_swap="beforeend"
             ),
             cls="search-result-info"
         )
@@ -1170,12 +1177,18 @@ def ShelfPreviewCard(shelf):
         owner_details.extend([owner_avatar, Span(shelf.owner.display_name or shelf.owner.handle)])
     owner_info = Div(*owner_details, cls="shelf-owner-info")
 
+    # Add contribution badge if shelf is open to contributions
+    contribution_badge = None
+    if getattr(shelf, 'self_join', False):
+        contribution_badge = Div("🤝 Open to contributions", cls="shelf-preview-contribution-badge")
+
     return A(
         href=f"/shelf/{shelf.slug}",
         cls="shelf-preview-card"
     )(
         Card(
             cover_previews,
+            contribution_badge,
             H3(shelf.name),
             P(shelf.description, cls="shelf-description") if shelf.description else None,
             footer=Div(
@@ -1223,7 +1236,7 @@ def CommunityReadingSection(books):
         cls="community-reading-section"
     )
 
-def SearchForm(query: str = "", search_type: str = "all", book_title: str = "", book_author: str = "", book_isbn: str = "", privacy: str = "public", sort_by: str = "updated_at"):
+def SearchForm(query: str = "", search_type: str = "all", book_title: str = "", book_author: str = "", book_isbn: str = "", privacy: str = "public", sort_by: str = "updated_at", open_to_contributions: str = ""):
     """Enhanced search form for shelves, books, and users."""
     return Form(
         # Search type tabs
@@ -1259,7 +1272,15 @@ def SearchForm(query: str = "", search_type: str = "all", book_title: str = "", 
                 Option("Most Recent", value="updated_at", selected=(sort_by == "updated_at")),
                 Option("Newest", value="created_at", selected=(sort_by == "created_at")),
                 Option("Alphabetical", value="name", selected=(sort_by == "name")),
+                Option("Most Books", value="book_count", selected=(sort_by == "book_count")),
                 name="sort_by"
+            ),
+            Select(
+                Option("All Shelves", value="", selected=(open_to_contributions == "")),
+                Option("Open to Contributions", value="true", selected=(open_to_contributions == "true")),
+                Option("Invite Only", value="false", selected=(open_to_contributions == "false")),
+                name="open_to_contributions",
+                title="Filter by contribution access"
             ),
             Button("Search", type="submit"),
             cls="search-form-grid"
@@ -1341,7 +1362,7 @@ def UserSearchResultCard(user):
         )
     )
 
-def SearchResultsGrid(shelves, users=None, search_type="all", page: int = 1, query: str = "", privacy: str = "public", sort_by: str = "updated_at"):
+def SearchResultsGrid(shelves, users=None, search_type="all", page: int = 1, query: str = "", privacy: str = "public", sort_by: str = "updated_at", open_to_contributions: str = ""):
     """Grid of search results with tabs for different content types."""
     shelf_count = len(shelves) if shelves else 0
     user_count = len(users) if users else 0
@@ -1383,12 +1404,12 @@ def SearchResultsGrid(shelves, users=None, search_type="all", page: int = 1, que
             "No shelves or users matched your search criteria. Try a different search."
         )
     
-    # Simple pagination (for now, just for shelves)
+    # Simple pagination (for now, just for shelves) - include open_to_contributions parameter
     pagination_links = []
     if page > 1:
-        pagination_links.append(A("← Previous", href=f"/search?query={query}&search_type={search_type}&privacy={privacy}&sort_by={sort_by}&page={page - 1}"))
+        pagination_links.append(A("← Previous", href=f"/search?query={query}&search_type={search_type}&privacy={privacy}&sort_by={sort_by}&open_to_contributions={open_to_contributions}&page={page - 1}"))
     if shelf_count == 12: # If we got a full page, there might be a next page
-        pagination_links.append(A("Next →", href=f"/search?query={query}&search_type={search_type}&privacy={privacy}&sort_by={sort_by}&page={page + 1}"))
+        pagination_links.append(A("Next →", href=f"/search?query={query}&search_type={search_type}&privacy={privacy}&sort_by={sort_by}&open_to_contributions={open_to_contributions}&page={page + 1}"))
     
     pagination = Nav(*pagination_links, cls="pagination") if pagination_links else None
     

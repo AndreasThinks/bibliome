@@ -616,11 +616,12 @@ def get_public_shelves_with_stats(db_tables, limit: int = 20, offset: int = 0):
             
     return public_shelves
 
-def search_shelves(db_tables, query: str = "", book_title: str = "", book_author: str = "", book_isbn: str = "", user_did: str = None, privacy: str = "public", sort_by: str = "updated_at", limit: int = 20, offset: int = 0):
+def search_shelves(db_tables, query: str = "", book_title: str = "", book_author: str = "", book_isbn: str = "", user_did: str = None, privacy: str = "public", sort_by: str = "updated_at", limit: int = 20, offset: int = 0, open_to_contributions: bool = None):
     """Search for bookshelves based on various criteria, including contained books."""
-    # Base query
+    # Base query with proper book count aggregation
     sql_query = """
-        SELECT DISTINCT bs.*, u.display_name as owner_name, u.handle as owner_handle
+        SELECT bs.*, u.display_name as owner_name, u.handle as owner_handle,
+               COUNT(DISTINCT b.id) as book_count
         FROM bookshelf bs
         JOIN user u ON bs.owner_did = u.did
         LEFT JOIN book b ON bs.id = b.bookshelf_id
@@ -651,9 +652,17 @@ def search_shelves(db_tables, query: str = "", book_title: str = "", book_author
         conditions.append("bs.privacy = ?")
         params.append(privacy)
     
+    # Open to contributions filter
+    if open_to_contributions is not None:
+        conditions.append("bs.self_join = ?")
+        params.append(1 if open_to_contributions else 0)
+    
     # Build WHERE clause
     if conditions:
         sql_query += " WHERE " + " AND ".join(conditions)
+    
+    # Group by bookshelf to aggregate book counts
+    sql_query += " GROUP BY bs.id, u.display_name, u.handle"
     
     # Sorting
     if sort_by == "updated_at":
@@ -662,6 +671,8 @@ def search_shelves(db_tables, query: str = "", book_title: str = "", book_author
         sql_query += " ORDER BY bs.created_at DESC"
     elif sort_by == "name":
         sql_query += " ORDER BY bs.name ASC"
+    elif sort_by == "book_count":
+        sql_query += " ORDER BY book_count DESC"
     
     # Pagination
     sql_query += " LIMIT ? OFFSET ?"
@@ -674,9 +685,12 @@ def search_shelves(db_tables, query: str = "", book_title: str = "", book_author
         shelves = []
         for row in rows:
             shelf_data = dict(zip(columns, row))
+            # Extract book_count before creating Bookshelf object
+            book_count = shelf_data.pop('book_count', 0)
             shelf = Bookshelf(**{k: v for k, v in shelf_data.items() if k in Bookshelf.__annotations__})
             shelf.owner_name = shelf_data.get('owner_name')
             shelf.owner_handle = shelf_data.get('owner_handle')
+            shelf.book_count = book_count
             shelves.append(shelf)
         return shelves
     except Exception as e:
