@@ -474,7 +474,7 @@ def network_page(auth, activity_type: str = "all", date_filter: str = "all", pag
         )
 
 @rt("/user/{handle}")
-def user_profile(handle: str, auth):
+def user_profile(handle: str, auth, req):
     """Display a user's profile page."""
     try:
         from models import get_user_by_handle, get_user_public_shelves, get_user_activity
@@ -501,6 +501,10 @@ def user_profile(handle: str, auth):
         public_shelves = get_user_public_shelves(user.did, db_tables, viewer_did=viewer_did, limit=12)
         user_activities = get_user_activity(user.did, db_tables, viewer_did=viewer_did, limit=15)
         
+        # Generate meta tags for user profile
+        shelf_count = len(public_shelves)
+        meta_tags = create_user_profile_meta_tags(user, req, shelf_count=shelf_count)
+        
         # Build page content
         content = [
             UserProfileHeader(user, is_own_profile=is_own_profile, public_shelves_count=len(public_shelves)),
@@ -510,6 +514,7 @@ def user_profile(handle: str, auth):
         
         return (
             Title(f"@{user.handle} - Bibliome"),
+            *meta_tags,
             Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             Container(*content),
@@ -531,7 +536,7 @@ def user_profile(handle: str, auth):
         )
 
 @rt("/shelf/{slug}")
-def view_shelf(slug: str, auth, view: str = "grid"):
+def view_shelf(slug: str, auth, req, view: str = "grid"):
     """Display a bookshelf."""
     try:
         shelf = get_shelf_by_slug(slug, db_tables)
@@ -565,6 +570,11 @@ def view_shelf(slug: str, auth, view: str = "grid"):
         # Get books with upvote counts using the new helper function
         from models import get_books_with_upvotes
         shelf_books = get_books_with_upvotes(shelf.id, user_did, db_tables)
+        
+        # Generate meta tags for bookshelf with dynamic content
+        book_count = len(shelf_books)
+        sample_books = get_sample_book_titles(shelf_books, max_titles=3)
+        meta_tags = create_bookshelf_meta_tags(shelf, req, book_count=book_count, sample_books=sample_books)
         
         # Determine user authentication status
         user_auth_status = "anonymous" if not auth else "logged_in"
@@ -708,6 +718,7 @@ def view_shelf(slug: str, auth, view: str = "grid"):
         
         return (
             Title(f"{shelf.name} - Bibliome"),
+            *meta_tags,
             Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             Container(*content),
