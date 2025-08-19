@@ -15,6 +15,7 @@ from components import (
     BookSearchForm, SearchResultCard, ShareInterface, InviteCard, MemberCard, AddBooksToggle,
     EnhancedEmptyState, ShelfHeader, ContactModal, ContactForm, ContactFormSuccess, ContactFormError
 )
+from meta_utils import create_homepage_meta_tags, create_explore_meta_tags, create_bookshelf_meta_tags, create_user_profile_meta_tags, get_sample_book_titles
 import os
 import logging
 from datetime import datetime
@@ -80,15 +81,19 @@ def static_files(fname: str, ext: str):
 
 # Home page
 @rt("/")
-def index(auth):
+def index(auth, req):
     """Homepage - beautiful landing page for visitors, dashboard for logged-in users."""
     if not auth:
         # Show beautiful landing page for anonymous users
         public_shelves = get_public_shelves(db_tables, limit=6)
         recent_books = get_recent_community_books(db_tables, limit=15)
         
+        # Generate meta tags for homepage
+        meta_tags = create_homepage_meta_tags(req)
+        
         return (
             Title("Bibliome - Building the very best reading lists, together"),
+            *meta_tags,
             Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             LandingPageHero(),
@@ -130,8 +135,12 @@ def index(auth):
                 "/shelf/new"
             ))
         
+        # Generate meta tags for dashboard
+        meta_tags = create_homepage_meta_tags(req)
+        
         return (
             Title("Dashboard - Bibliome"),
+            *meta_tags,
             Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(auth),
             Container(*content),
@@ -267,7 +276,7 @@ def create_shelf(name: str, description: str, privacy: str, auth, sess, self_joi
 
 
 @rt("/explore")
-def explore_page(auth, query: str = "", privacy: str = "public", sort_by: str = "smart_mix", page: int = 1, open_to_contributions: str = "", book_title: str = "", book_author: str = "", book_isbn: str = ""):
+def explore_page(auth, req, query: str = "", privacy: str = "public", sort_by: str = "smart_mix", page: int = 1, open_to_contributions: str = "", book_title: str = "", book_author: str = "", book_isbn: str = ""):
     """Unified explore page - simple discovery for anonymous users, enhanced search for logged-in users."""
     from models import search_shelves_enhanced, get_mixed_public_shelves
     from components import UnifiedExploreHero, ExploreSearchForm, SearchResultsGrid
@@ -368,8 +377,12 @@ def explore_page(auth, query: str = "", privacy: str = "public", sort_by: str = 
             PublicShelvesGrid(shelves, page=page, total_pages=1)  # Simplified pagination for anonymous users
         ]
     
+    # Generate meta tags for explore page
+    meta_tags = create_explore_meta_tags(req)
+    
     return (
         Title("Explore - Bibliome"),
+        *meta_tags,
         Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
         NavBar(auth),
         Container(*content),
