@@ -34,7 +34,6 @@ def NavBar(auth=None):
     else:
         links = [
             A("Explore", href="/explore"),
-            A("Search", href="/search"),
             A("Login", href="/auth/login", cls="login-btn"),
         ]
         user_profile_card = None
