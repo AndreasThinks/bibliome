@@ -392,15 +392,26 @@ def explore_page(auth, req, query: str = "", privacy: str = "public", sort_by: s
 
 # Redirect /search to /explore
 @rt("/search")
-def search_redirect(auth, req, **kwargs):
+def search_redirect(query: str = "", privacy: str = "public", sort_by: str = "smart_mix", open_to_contributions: str = "", book_title: str = "", book_author: str = "", book_isbn: str = ""):
     """Redirect /search to /explore with query parameters preserved."""
-    # Build query string from kwargs
-    query_params = []
-    for key, value in kwargs.items():
-        if value:  # Only include non-empty values
-            query_params.append(f"{key}={value}")
+    from urllib.parse import urlencode
     
-    query_string = "&".join(query_params)
+    # Collect all query parameters into a dictionary
+    params = {
+        "query": query,
+        "privacy": privacy,
+        "sort_by": sort_by,
+        "open_to_contributions": open_to_contributions,
+        "book_title": book_title,
+        "book_author": book_author,
+        "book_isbn": book_isbn
+    }
+    
+    # Filter out empty values
+    filtered_params = {k: v for k, v in params.items() if v}
+    
+    # Build query string
+    query_string = urlencode(filtered_params)
     redirect_url = f"/explore?{query_string}" if query_string else "/explore"
     
     return RedirectResponse(redirect_url, status_code=301)  # Permanent redirect
