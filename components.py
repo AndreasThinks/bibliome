@@ -254,16 +254,17 @@ def Modal(title: str, content, id: str = "modal"):
     """Modal dialog component."""
     return Div(
         Div(
-            Header(
-                H3(title),
-                Button("×", cls="close-btn", onclick=f"document.getElementById('{id}').style.display='none'")
+            Div(
+                H2(title),
+                Button("×", onclick=f"document.getElementById('{id}').style.display='none'", cls="modal-close"),
+                cls="modal-header"
             ),
-            Div(content, cls="modal-content"),
-            cls="modal-dialog"
+            Div(content, cls="modal-body"),
+            cls="modal-content"
         ),
-        cls="modal",
+        cls="modal-overlay",
         id=id,
-        style="display: none;"
+        onclick=f"if(event.target === this) document.getElementById('{id}').style.display='none'"
     )
 
 def EmptyState(title: str, description: str, action_text: str = None, action_href: str = None):
@@ -915,6 +916,7 @@ def UniversalFooter():
                 # Right side: Social icons
                 Div(
                     A(I(cls="fab fa-github"), href="https://github.com/AndreasThinks/bibliome", target="_blank", rel="noopener", cls="social-icon"),
+                    A(I(cls="fab fa-bluesky"), href="https://bsky.app/profile/did:plc:pqtgwoddmusib6v2csjxcskh", target="_blank", rel="noopener", cls="social-icon"),
                     Button(
                         I(cls="fas fa-envelope"),
                         hx_get="/api/contact-modal",
