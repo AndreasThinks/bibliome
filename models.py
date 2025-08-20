@@ -549,6 +549,17 @@ def get_shelf_by_slug(slug: str, db_tables):
     except IndexError:
         return None
 
+def get_book_count_for_shelf(bookshelf_id: int, db_tables) -> int:
+    """Get the total number of books on a specific bookshelf."""
+    try:
+        # Use a more efficient count query
+        query = "SELECT COUNT(*) FROM book WHERE bookshelf_id = ?"
+        cursor = db_tables['db'].execute(query, (bookshelf_id,))
+        return cursor.fetchone()[0]
+    except Exception as e:
+        print(f"Error getting book count for shelf {bookshelf_id}: {e}")
+        return 0
+
 def get_public_shelves(db_tables, limit: int = 20, offset: int = 0):
     """Fetch a paginated list of public bookshelves."""
     return db_tables['bookshelves'](where="privacy='public'", limit=limit, offset=offset, order_by='created_at DESC')

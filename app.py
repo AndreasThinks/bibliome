@@ -21,6 +21,7 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from auth import BlueskyAuth, get_current_user_did, auth_beforeware
+from bluesky_automation import trigger_automation
 
 load_dotenv()
 
@@ -883,6 +884,26 @@ def add_book_api(bookshelf_id: int, title: str, author: str, isbn: str, descript
                 log_activity(user_did, 'book_added', db_tables, bookshelf_id=bookshelf_id, book_id=created_book.id)
             except Exception as e:
                 logger.warning(f"Could not log book addition activity: {e}")
+
+            # Trigger automation if threshold is met
+            try:
+                from models import get_book_count_for_shelf
+                book_count = get_book_count_for_shelf(bookshelf_id, db_tables)
+                
+                # Define post_threshold here or get from a config
+                post_threshold = int(os.getenv('BLUESKY_POST_THRESHOLD', 3))
+
+                if book_count == post_threshold:
+                    base_url = f"http://{os.getenv('HOST', 'localhost')}:{os.getenv('PORT', 5001)}"
+                    shelf_url = f"{base_url}/shelf/{shelf.slug}"
+                    context = {
+                        'shelf_name': shelf.name,
+                        'book_count': book_count,
+                        'shelf_url': shelf_url
+                    }
+                    trigger_automation('shelf_threshold_reached', context)
+            except Exception as e:
+                logger.error(f"Error triggering automation for shelf {bookshelf_id}: {e}", exc_info=True)
             
             # Set the computed attributes and return the book card
             created_book.upvote_count = 1
