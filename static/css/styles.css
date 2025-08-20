@@ -2105,7 +2105,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Form label for self-join checkbox in create/edit forms */
 .self-join-label {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 0.75rem;
     padding: 1rem;
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);

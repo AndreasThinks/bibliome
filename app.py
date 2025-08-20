@@ -1290,10 +1290,6 @@ def manage_shelf(slug: str, auth, req):
                                 "Open Collaboration",
                                 cls="self-join-label"
                             ),
-                            P(
-                                "When enabled, anyone who can view this shelf will see a 'Join as Contributor' button to add books and vote.",
-                                cls="self-join-help-text"
-                            )
                         ),
                         Button("Save Changes", type="submit", cls="primary"),
                         action=f"/shelf/{shelf.slug}/update",

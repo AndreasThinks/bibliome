@@ -234,10 +234,6 @@ def CreateBookshelfForm():
                 ),
                 cls="self-join-label"
             ),
-            P(
-                "When enabled, anyone who can view this shelf will see a 'Join as Contributor' button to add books and vote.",
-                cls="self-join-help-text"
-            )
         ),
         Button("Create Bookshelf", type="submit", cls="primary")
     )
