@@ -6269,3 +6269,28 @@ section + section {
         min-height: 100px;
     }
 }
+
+/* ===== SELF-JOIN LABEL STYLING ===== */
+
+/* Container for the hierarchical label structure */
+.self-join-label-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-left: 0.5rem;
+}
+
+/* Primary label styling for "Open Collaboration" */
+.self-join-primary-label {
+    font-weight: 600;
+    color: var(--brand-navy);
+    font-size: 0.9rem;
+}
+
+/* Secondary label styling for explanatory text */
+.self-join-secondary-label {
+    font-size: 0.8rem;
+    color: var(--brand-muted, #6b7280);
+    font-style: italic;
+    line-height: 1.2;
+}

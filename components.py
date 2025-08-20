@@ -225,10 +225,13 @@ def CreateBookshelfForm():
             Label(
                 CheckboxX(
                     id="self_join",
-                    name="self_join",
-                    label="Allow anyone to join as a contributor"
+                    name="self_join"
                 ),
-                "Open Collaboration",
+                Div(
+                    Span("Open Collaboration", cls="self-join-primary-label"),
+                    Span("Allow anyone to join as a contributor", cls="self-join-secondary-label"),
+                    cls="self-join-label-content"
+                ),
                 cls="self-join-label"
             ),
             P(
