@@ -5732,6 +5732,362 @@ section + section {
     box-shadow: none !important;
 }
 
+/* ===== PAGINATION STYLES ===== */
+
+/* Pagination container wrapper */
+.pagination-container {
+    width: 100%;
+    margin: 2rem 0;
+}
+
+/* Screen reader context for accessibility */
+.sr-only {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+/* Core pagination container */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 2rem 0;
+    flex-wrap: wrap;
+    padding: 0;
+    list-style: none;
+}
+
+/* Base pagination item styles */
+.pagination a,
+.pagination .current-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.95rem;
+    transition: all 0.2s ease;
+    border: 2px solid var(--brand-border);
+    background: var(--brand-white);
+    color: var(--brand-navy);
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Regular page links */
+.pagination a {
+    background: var(--brand-white);
+    color: var(--brand-navy);
+    border-color: var(--brand-border);
+}
+
+.pagination a:hover {
+    background: var(--brand-light);
+    border-color: var(--brand-amber);
+    color: var(--brand-navy);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(212, 148, 30, 0.15);
+}
+
+.pagination a:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(212, 148, 30, 0.2);
+}
+
+/* Current page styling */
+.pagination .current-page {
+    background: linear-gradient(135deg, var(--brand-amber) 0%, #e6a429 100%);
+    color: var(--brand-navy);
+    border-color: var(--brand-amber);
+    box-shadow: 0 2px 8px rgba(212, 148, 30, 0.2);
+    font-weight: 600;
+    transform: scale(1.05);
+    z-index: 1;
+}
+
+/* Previous/Next button enhancements */
+.pagination a[href*="previous"],
+.pagination a[href*="next"] {
+    font-weight: 600;
+    background: var(--brand-white);
+    border-color: var(--brand-amber);
+    color: var(--brand-amber);
+    min-width: 52px;
+}
+
+.pagination a[href*="previous"]:hover,
+.pagination a[href*="next"]:hover {
+    background: var(--brand-amber);
+    color: var(--brand-navy);
+    border-color: var(--brand-amber);
+    box-shadow: 0 4px 12px rgba(212, 148, 30, 0.25);
+}
+
+/* Arrow indicators for Prev/Next */
+.pagination a[href*="previous"]::before {
+    content: "← ";
+    font-weight: bold;
+}
+
+.pagination a[href*="next"]::after {
+    content: " →";
+    font-weight: bold;
+}
+
+/* Ellipsis styling */
+.pagination .pagination-ellipsis {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0.75rem 0.5rem;
+    color: var(--brand-muted);
+    font-weight: 600;
+    user-select: none;
+    background: transparent;
+    border: none;
+}
+
+/* Loading state for HTMX requests */
+.htmx-request .pagination {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.htmx-request .pagination::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid transparent;
+    border-top: 2px solid var(--brand-amber);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Disabled state */
+.pagination a:disabled,
+.pagination a.disabled {
+    background: var(--brand-light);
+    color: var(--brand-muted);
+    border-color: var(--brand-border);
+    cursor: not-allowed;
+    opacity: 0.6;
+    transform: none;
+    box-shadow: none;
+}
+
+.pagination a:disabled:hover,
+.pagination a.disabled:hover {
+    background: var(--brand-light);
+    color: var(--brand-muted);
+    border-color: var(--brand-border);
+    transform: none;
+    box-shadow: none;
+}
+
+/* ===== MOBILE RESPONSIVE PAGINATION ===== */
+
+@media (max-width: 768px) {
+    .pagination {
+        gap: 0.25rem;
+        margin: 1.5rem 0;
+    }
+
+    .pagination a,
+    .pagination .current-page {
+        min-width: 48px;
+        min-height: 48px;
+        padding: 0.875rem 1rem;
+        font-size: 0.9rem;
+    }
+
+    .pagination a[href*="previous"],
+    .pagination a[href*="next"] {
+        min-width: 56px;
+        font-size: 0.85rem;
+    }
+
+    /* Simplify text for mobile */
+    .pagination a[href*="previous"] {
+        font-size: 0;
+    }
+
+    .pagination a[href*="previous"]::before {
+        content: "←";
+        font-size: 1.2rem;
+    }
+
+    .pagination a[href*="next"] {
+        font-size: 0;
+    }
+
+    .pagination a[href*="next"]::after {
+        content: "→";
+        font-size: 1.2rem;
+    }
+
+    /* Hide some page numbers on very small screens */
+    .pagination a:nth-child(n+6):not([href*="previous"]):not([href*="next"]):not(.current-page) {
+        display: none;
+    }
+
+    .pagination .pagination-ellipsis {
+        min-width: 32px;
+        min-height: 48px;
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .pagination {
+        gap: 0.125rem;
+        margin: 1rem 0;
+        justify-content: space-between;
+        padding: 0 1rem;
+    }
+
+    .pagination a,
+    .pagination .current-page {
+        min-width: 40px;
+        min-height: 40px;
+        padding: 0.75rem 0.875rem;
+        font-size: 0.85rem;
+        flex: 1;
+    }
+
+    .pagination a[href*="previous"],
+    .pagination a[href*="next"] {
+        flex: 0 0 auto;
+        min-width: 48px;
+    }
+
+    /* Hide most page numbers on very small screens, show only current + prev/next */
+    .pagination a:not([href*="previous"]):not([href*="next"]):not(.current-page) {
+        display: none;
+    }
+
+    .pagination .current-page {
+        flex: 0 0 auto;
+        transform: scale(1.1);
+        font-size: 1rem;
+        font-weight: 700;
+    }
+
+    .pagination .pagination-ellipsis {
+        display: none;
+    }
+}
+
+/* ===== DESKTOP ENHANCEMENTS ===== */
+
+@media (min-width: 769px) {
+    .pagination {
+        gap: 0.75rem;
+        margin: 2.5rem 0;
+    }
+
+    .pagination a,
+    .pagination .current-page {
+        min-width: 48px;
+        min-height: 48px;
+        padding: 0.875rem 1.125rem;
+        font-size: 1rem;
+    }
+
+    .pagination a[href*="previous"],
+    .pagination a[href*="next"] {
+        min-width: 64px;
+        font-weight: 600;
+    }
+
+    .pagination .current-page {
+        transform: scale(1.1);
+        box-shadow: 0 4px 16px rgba(212, 148, 30, 0.3);
+    }
+
+    .pagination a:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 20px rgba(212, 148, 30, 0.2);
+    }
+}
+
+/* ===== ACCESSIBILITY ENHANCEMENTS ===== */
+
+.pagination a:focus {
+    outline: none;
+    border-color: var(--brand-amber);
+    box-shadow: 0 0 0 3px rgba(212, 148, 30, 0.3);
+    transform: translateY(-1px);
+}
+
+.pagination a:focus:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 0 0 3px rgba(212, 148, 30, 0.3), 0 6px 20px rgba(212, 148, 30, 0.2);
+}
+
+/* Screen reader improvements */
+.pagination .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .pagination a {
+        border-width: 3px;
+    }
+
+    .pagination .current-page {
+        border-color: var(--brand-navy);
+    }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    .pagination a,
+    .pagination .current-page {
+        transition: none;
+    }
+
+    .pagination a:hover {
+        transform: none;
+    }
+
+    .pagination a:active {
+        transform: none;
+    }
+
+    .htmx-request .pagination::after {
+        animation: none;
+    }
+}
+
 /* ===== ENHANCED CONTACT FORM STYLES ===== */
 
 .contact-modal-subtitle {

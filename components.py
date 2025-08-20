@@ -389,31 +389,88 @@ def LoadingSpinner():
     )
 
 def Pagination(current_page: int, total_pages: int, base_url: str):
-    """Pagination component."""
+    """Enhanced pagination component with accessibility and mobile support."""
     if total_pages <= 1:
         return None
-    
+
     links = []
-    
-    # Previous page
+
+    # Previous page with better accessibility
     if current_page > 1:
-        links.append(A("← Previous", href=f"{base_url}?page={current_page - 1}"))
-    
-    # Page numbers (show up to 5 pages around current)
+        prev_url = f"{base_url}?page={current_page - 1}"
+        prev_label = "Previous page"
+        links.append(A(
+            "← Previous",
+            href=prev_url,
+            title=prev_label,
+            aria_label=prev_label,
+            cls="pagination-prev"
+        ))
+
+    # Page numbers with smart truncation
     start_page = max(1, current_page - 2)
     end_page = min(total_pages, current_page + 2)
-    
+
+    # Add ellipsis for large page ranges
+    if start_page > 1:
+        links.append(Span("…", cls="pagination-ellipsis", aria_hidden="true"))
+
     for page in range(start_page, end_page + 1):
         if page == current_page:
-            links.append(Span(str(page), cls="current-page"))
+            links.append(Span(
+                str(page),
+                cls="current-page",
+                title=f"Current page, page {page} of {total_pages}",
+                aria_current="page",
+                aria_label=f"Current page, page {page} of {total_pages}"
+            ))
         else:
-            links.append(A(str(page), href=f"{base_url}?page={page}"))
-    
-    # Next page
+            page_url = f"{base_url}?page={page}"
+            page_label = f"Go to page {page}"
+            links.append(A(
+                str(page),
+                href=page_url,
+                title=page_label,
+                aria_label=page_label
+            ))
+
+    # Add ellipsis for large page ranges
+    if end_page < total_pages:
+        links.append(Span("…", cls="pagination-ellipsis", aria_hidden="true"))
+
+    # Next page with better accessibility
     if current_page < total_pages:
-        links.append(A("Next →", href=f"{base_url}?page={current_page + 1}"))
-    
-    return Nav(*links, cls="pagination")
+        next_url = f"{base_url}?page={current_page + 1}"
+        next_label = "Next page"
+        links.append(A(
+            "Next →",
+            href=next_url,
+            title=next_label,
+            aria_label=next_label,
+            cls="pagination-next"
+        ))
+
+    # Add screen reader context
+    sr_context = Span(
+        f"Page {current_page} of {total_pages}",
+        cls="sr-only",
+        id="pagination-context"
+    )
+
+    # Create pagination with ARIA navigation role
+    pagination_nav = Nav(
+        *links,
+        cls="pagination",
+        role="navigation",
+        aria_labelledby="pagination-context",
+        aria_label="Pagination navigation"
+    )
+
+    return Div(
+        sr_context,
+        pagination_nav,
+        cls="pagination-container"
+    )
 
 def MemberCard(user, permission, is_owner=False, can_manage=False, bookshelf_slug=""):
     """Render a member card with improved role management."""

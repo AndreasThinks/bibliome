@@ -391,7 +391,7 @@ def explore_page(auth, req, query: str = "", privacy: str = "public", sort_by: s
 
 # Redirect /search to /explore
 @rt("/search")
-def search_redirect(auth, **kwargs):
+def search_redirect(auth, req, **kwargs):
     """Redirect /search to /explore with query parameters preserved."""
     # Build query string from kwargs
     query_params = []
