@@ -64,6 +64,14 @@ h1, h2, h3, h4, h5, h6 {
     width: 100%;
 }
 
+.logo-with-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    margin-right: auto;
+}
+
 .logo {
     display: flex;
     align-items: center;
@@ -73,7 +81,6 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--brand-navy);
     text-decoration: none;
     flex-shrink: 0;
-    margin-right: auto;
 }
 
 .logo-img {
@@ -1155,6 +1162,68 @@ h1, h2, h3, h4, h5, h6 {
     box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3);
 }
 
+/* Alpha Badge Styles */
+.alpha-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    color: #856404;
+    border: 1px solid #ffc107;
+    box-shadow: 0 1px 3px rgba(255, 193, 7, 0.2);
+    transition: all 0.2s ease;
+    cursor: help;
+}
+
+.alpha-badge:hover {
+    background: linear-gradient(135deg, #ffeaa7 0%, #ffdd57 100%);
+    border-color: #e0a800;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(255, 193, 7, 0.3);
+}
+
+/* Footer Alpha Badge */
+.footer-alpha-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+    border-radius: 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    color: #856404;
+    border: 1px solid #ffc107;
+    box-shadow: 0 1px 3px rgba(255, 193, 7, 0.2);
+    transition: all 0.2s ease;
+    cursor: help;
+    margin-top: 0.5rem;
+}
+
+.footer-alpha-badge:hover {
+    background: linear-gradient(135deg, #ffeaa7 0%, #ffdd57 100%);
+    border-color: #e0a800;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(255, 193, 7, 0.3);
+}
+
+/* Alpha Form Disclaimer */
+.alpha-form-disclaimer {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    border: 1px solid #ffc107;
+    border-left: 3px solid #ffc107;
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    margin: 1rem 0;
+    font-size: 0.85rem;
+    color: #856404;
+    font-style: italic;
+    line-height: 1.4;
+    box-shadow: 0 2px 4px rgba(255, 193, 7, 0.1);
+}
+
 .shelf-preview-contribution-badge {
     display: inline-block;
     padding: 0.25rem 0.5rem;
@@ -1728,6 +1797,28 @@ h1, h2, h3, h4, h5, h6 {
 /* ===== RESPONSIVE DESIGN ===== */
 
 @media (max-width: 768px) {
+    /* Alpha component mobile styles */
+    .alpha-badge {
+        margin-left: 0.5rem;
+        font-size: 0.75rem;
+        padding: 0.3rem 0.6rem;
+    }
+    
+    .alpha-disclaimer-container {
+        padding: 0.75rem 0;
+    }
+    
+    .alpha-disclaimer {
+        font-size: 0.85rem;
+        padding: 0 0.5rem;
+    }
+    
+    .alpha-form-disclaimer {
+        padding: 0.6rem 0.8rem;
+        font-size: 0.8rem;
+        margin: 0.75rem 0;
+    }
+    
     /* Fix search form for mobile */
     .search-form-row {
         flex-direction: column;

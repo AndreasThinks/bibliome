@@ -5,6 +5,14 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 import os
 
+def AlphaBadge():
+    """Alpha status badge component."""
+    return Span(
+        "⚠️ Alpha",
+        cls="alpha-badge",
+        title="Bibliome is in very early, active development. Data may be reset and features may change as we improve the platform."
+    )
+
 def NavBar(auth=None):
     """Main navigation bar with HTMX-powered mobile hamburger menu."""
     # Define menu links based on auth status
@@ -40,11 +48,16 @@ def NavBar(auth=None):
 
     return Nav(
         Div(
-            A(
-                Img(src="/static/bibliome_transparent_no_text.png", alt="Bibliome", cls="logo-img"),
-                "Bibliome",
-                href="/", 
-                cls="logo"
+            # Logo and alpha badge grouped together
+            Div(
+                A(
+                    Img(src="/static/bibliome_transparent_no_text.png", alt="Bibliome", cls="logo-img"),
+                    "Bibliome",
+                    href="/", 
+                    cls="logo"
+                ),
+                AlphaBadge(),
+                cls="logo-with-badge"
             ),
             # Desktop menu
             Div(
@@ -236,6 +249,9 @@ def CreateBookshelfForm():
                 ),
                 cls="self-join-label"
             ),
+            P("⚠️ Alpha Version: Data may be reset during development.", 
+              cls="alpha-form-disclaimer", 
+              style="font-size: 0.8rem; color: var(--brand-warning); margin-top: 1rem; padding: 0.5rem; background: var(--brand-warning-bg); border-radius: 4px; border-left: 3px solid var(--brand-warning);"),
         ),
         Button("Create Bookshelf", type="submit", cls="primary")
     )
@@ -905,10 +921,11 @@ def UniversalFooter():
     return Footer(
         Container(
             Div(
-                # Left side: Text content
+                # Left side: Text content with alpha badge
                 Div(
                     P("A project by ", A("AndreasThinks", href="https://andreasthinks.me/", target="_blank", rel="noopener"), ", built with ❤️ using FastHTML, AT-Proto, and some ✨vibes✨", cls="footer-text"),
                     P("© 2025 Bibliome. Open source and decentralized.", cls="footer-copyright"),
+                    Span("⚠️ Alpha", cls="footer-alpha-badge", title="Bibliome is in very early active development. Data may be reset and features may change as we improve the platform."),
                     cls="footer-left"
                 ),
                 # Right side: Social icons

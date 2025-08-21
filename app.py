@@ -1325,6 +1325,9 @@ def manage_shelf(slug: str, auth, req):
                                 "Open Collaboration",
                                 cls="self-join-label"
                             ),
+                            P("⚠️ Alpha Version: Data may be reset during development.", 
+                              cls="alpha-form-disclaimer", 
+                              style="font-size: 0.8rem; color: var(--brand-warning); margin-top: 1rem; padding: 0.5rem; background: var(--brand-warning-bg); border-radius: 4px; border-left: 3px solid var(--brand-warning);"),
                         ),
                         Button("Save Changes", type="submit", cls="primary"),
                         action=f"/shelf/{shelf.slug}/update",
