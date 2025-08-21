@@ -906,7 +906,7 @@ def PublicShelvesPreview(public_shelves):
         Container(
             H2("Discover Public Collections", cls="section-title"),
             P("See what the community is reading and sharing", cls="section-subtitle"),
-            Div(*[BookshelfCard(shelf) for shelf in public_shelves[:6]], cls="bookshelf-grid"),
+            Div(*[ShelfPreviewCard(shelf) for shelf in public_shelves[:6]], cls="bookshelf-grid"),
             Div(
                 A("Explore All Collections", href="/explore", cls="primary"),
                 cls="section-cta"

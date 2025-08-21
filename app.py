@@ -86,7 +86,7 @@ def index(auth, req):
     """Homepage - beautiful landing page for visitors, dashboard for logged-in users."""
     if not auth:
         # Show beautiful landing page for anonymous users
-        public_shelves = get_public_shelves(db_tables, limit=6)
+        public_shelves = get_public_shelves_with_stats(db_tables, limit=6)
         recent_books = get_recent_community_books(db_tables, limit=15)
         
         # Generate meta tags for homepage
