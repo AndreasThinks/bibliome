@@ -2808,6 +2808,9 @@ section + section {
     text-decoration: none;
     color: inherit;
     transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    flex-direction: column;
+    height: 100%; /* Ensure the card fills the grid cell */
 }
 
 .shelf-preview-card:hover {
@@ -2824,6 +2827,7 @@ section + section {
     background: var(--brand-light);
     border-radius: 0.5rem;
     overflow: hidden;
+    flex-grow: 1; /* Allow this area to grow */
 }
 
 .shelf-preview-covers img {
@@ -2845,6 +2849,7 @@ section + section {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    margin-top: auto; /* Push footer to the bottom */
 }
 
 .shelf-footer-left {
