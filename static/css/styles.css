@@ -1163,6 +1163,11 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Alpha Badge Styles */
+.alpha-badge-container {
+    position: relative;
+    display: inline-block;
+}
+
 .alpha-badge {
     display: inline-flex;
     align-items: center;
@@ -1175,7 +1180,7 @@ h1, h2, h3, h4, h5, h6 {
     border: 1px solid #ffc107;
     box-shadow: 0 1px 3px rgba(255, 193, 7, 0.2);
     transition: all 0.2s ease;
-    cursor: help;
+    cursor: pointer;
 }
 
 .alpha-badge:hover {
@@ -1185,7 +1190,51 @@ h1, h2, h3, h4, h5, h6 {
     box-shadow: 0 2px 6px rgba(255, 193, 7, 0.3);
 }
 
+.alpha-message {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--brand-navy);
+    color: var(--brand-white);
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    max-width: 280px;
+    width: max-content;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    margin-top: 0.5rem;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    pointer-events: none;
+}
+
+.alpha-message::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-bottom-color: var(--brand-navy);
+}
+
+.alpha-message.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+}
+
 /* Footer Alpha Badge */
+.footer-alpha-badge-container {
+    position: relative;
+    display: inline-block;
+    margin-top: 0.5rem;
+}
+
 .footer-alpha-badge {
     display: inline-flex;
     align-items: center;
@@ -1198,8 +1247,7 @@ h1, h2, h3, h4, h5, h6 {
     border: 1px solid #ffc107;
     box-shadow: 0 1px 3px rgba(255, 193, 7, 0.2);
     transition: all 0.2s ease;
-    cursor: help;
-    margin-top: 0.5rem;
+    cursor: pointer;
 }
 
 .footer-alpha-badge:hover {
@@ -1207,6 +1255,44 @@ h1, h2, h3, h4, h5, h6 {
     border-color: #e0a800;
     transform: translateY(-1px);
     box-shadow: 0 2px 6px rgba(255, 193, 7, 0.3);
+}
+
+.footer-alpha-message {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--brand-navy);
+    color: var(--brand-white);
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    max-width: 280px;
+    width: max-content;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    margin-bottom: 0.5rem;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    pointer-events: none;
+}
+
+.footer-alpha-message::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--brand-navy);
+}
+
+.footer-alpha-message.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
 }
 
 /* Alpha Form Disclaimer */

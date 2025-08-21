@@ -6,11 +6,34 @@ from typing import Optional, List, Dict, Any
 import os
 
 def AlphaBadge():
-    """Alpha status badge component."""
-    return Span(
-        "⚠️ Alpha",
-        cls="alpha-badge",
-        title="Bibliome is in very early, active development. Data may be reset and features may change as we improve the platform."
+    """Alpha status badge component with mobile-friendly click functionality."""
+    return Div(
+        Span(
+            "⚠️ Alpha",
+            cls="alpha-badge",
+            title="Bibliome is in very early, active development. Data may be reset and features may change as we improve the platform.",
+            onclick="showAlphaMessage(this)"
+        ),
+        Div(
+            "Bibliome is in very early, active development. Data may be reset and features may change as we improve the platform.",
+            cls="alpha-message",
+            id="alpha-message"
+        ),
+        Script("""
+            function showAlphaMessage(badge) {
+                const message = document.getElementById('alpha-message');
+                if (message) {
+                    // Show the message
+                    message.classList.add('show');
+                    
+                    // Hide after 2 seconds with fade
+                    setTimeout(() => {
+                        message.classList.remove('show');
+                    }, 2000);
+                }
+            }
+        """),
+        cls="alpha-badge-container"
     )
 
 def NavBar(auth=None):
@@ -925,7 +948,34 @@ def UniversalFooter():
                 Div(
                     P("A project by ", A("AndreasThinks", href="https://andreasthinks.me/", target="_blank", rel="noopener"), ", built with ❤️ using FastHTML, AT-Proto, and some ✨vibes✨", cls="footer-text"),
                     P("© 2025 Bibliome. Open source and decentralized.", cls="footer-copyright"),
-                    Span("⚠️ Alpha", cls="footer-alpha-badge", title="Bibliome is in very early active development. Data may be reset and features may change as we improve the platform."),
+                    Div(
+                        Span(
+                            "⚠️ Alpha",
+                            cls="footer-alpha-badge",
+                            title="Bibliome is in very early active development. Data may be reset and features may change as we improve the platform.",
+                            onclick="showFooterAlphaMessage(this)"
+                        ),
+                        Div(
+                            "Bibliome is in very early, active development. Data may be reset and features may change as we improve the platform.",
+                            cls="footer-alpha-message",
+                            id="footer-alpha-message"
+                        ),
+                        Script("""
+                            function showFooterAlphaMessage(badge) {
+                                const message = document.getElementById('footer-alpha-message');
+                                if (message) {
+                                    // Show the message
+                                    message.classList.add('show');
+                                    
+                                    // Hide after 2 seconds with fade
+                                    setTimeout(() => {
+                                        message.classList.remove('show');
+                                    }, 2000);
+                                }
+                            }
+                        """),
+                        cls="footer-alpha-badge-container"
+                    ),
                     cls="footer-left"
                 ),
                 # Right side: Social icons
