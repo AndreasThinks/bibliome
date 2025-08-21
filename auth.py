@@ -1,15 +1,10 @@
 """Bluesky/AT-Proto authentication for BookdIt."""
 import requests
-from atproto import models
 from atproto import Client as AtprotoClient
 from fasthtml.common import *
 from fastcore.xtras import flexicache, time_policy
 from typing import Optional, Dict, Any
-
-from uvicorn.protocols.http.flow_control import service_unavailable
-
 from components import Alert, NavBar
-import os
 import logging
 from dotenv import load_dotenv
 
