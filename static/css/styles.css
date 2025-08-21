@@ -2814,17 +2814,22 @@ section + section {
 }
 
 .shelf-preview-card {
-    text-decoration: none;
+    background: var(--brand-white);
+    border: 1px solid var(--brand-border);
+    border-radius: 0.5rem;
     color: inherit;
-    transition: transform 0.2s, box-shadow 0.2s;
     display: flex;
     flex-direction: column;
     height: 100%;
+    overflow: hidden;
+    text-decoration: none;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
 }
 
 .shelf-preview-card:hover {
-    transform: translateY(-5px);
+    border-color: var(--brand-amber);
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+    transform: translateY(-5px);
 }
 
 .shelf-preview-covers {
