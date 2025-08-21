@@ -216,11 +216,14 @@ def CreateBookshelfForm():
                 maxlength=500
             )),
             Label("Privacy Level", Select(
-                Option("Public - Anyone can find and view", value="public", selected=True),
-                Option("Link Only - Only people with the link can view", value="link-only"),
-                Option("Private - Only invited people can view", value="private"),
+                Option("Public - Visible to everyone and appears in search results", value="public", selected=True),
+                Option("Link Only - Hidden from search, but viewable by anyone with the link", value="link-only"),
+                Option("Private - Coming soon (we're working on true privacy)", value="private", disabled=True),
                 name="privacy"
             )),
+            P("Note: All shelves are shared across the decentralized network. True private shelves are coming soon!", 
+              cls="privacy-explanation", 
+              style="font-size: 0.85rem; color: var(--brand-muted); margin-top: 0.5rem; font-style: italic;"),
             Label(
                 CheckboxX(
                     id="self_join",
