@@ -315,6 +315,7 @@ h1, h2, h3, h4, h5, h6 {
     height: 100%;
     display: flex;
     flex-direction: column;
+    justify-content: space-between;
 }
 
 .bookshelf-card-link:hover .bookshelf-card-content {
@@ -411,6 +412,8 @@ h1, h2, h3, h4, h5, h6 {
     overflow: hidden;
     transition: transform 0.2s, box-shadow 0.2s;
     background: var(--brand-white);
+    display: flex;
+    flex-direction: column;
 }
 
 .book-card:hover {
@@ -890,6 +893,7 @@ h1, h2, h3, h4, h5, h6 {
     gap: 1rem;
     padding: 1rem;
     border-bottom: 1px solid var(--muted-border-color);
+    flex-direction: column;
 }
 
 .search-result-card:last-child {
@@ -1058,6 +1062,7 @@ h1, h2, h3, h4, h5, h6 {
     border: 1px solid var(--muted-border-color);
     border-radius: 0.5rem;
     background: var(--background-color);
+    flex-direction: column;
 }
 
 .member-avatar {
@@ -1097,6 +1102,7 @@ h1, h2, h3, h4, h5, h6 {
     display: flex;
     gap: 0.5rem;
     align-items: center;
+    margin-top: auto;
 }
 
 .member-controls select {
@@ -2404,6 +2410,8 @@ section + section {
     padding: 1.5rem;
     border: 1px solid var(--brand-border);
     transition: box-shadow 0.2s ease;
+    display: flex;
+    flex-direction: column;
 }
 
 .activity-card:hover {
@@ -2450,6 +2458,7 @@ section + section {
 
 .activity-content {
     margin-left: 4rem;
+    flex-grow: 1;
 }
 
 .activity-action {
@@ -2810,7 +2819,7 @@ section + section {
     transition: transform 0.2s, box-shadow 0.2s;
     display: flex;
     flex-direction: column;
-    height: 100%; /* Ensure the card fills the grid cell */
+    height: 100%;
 }
 
 .shelf-preview-card:hover {
@@ -2827,7 +2836,6 @@ section + section {
     background: var(--brand-light);
     border-radius: 0.5rem;
     overflow: hidden;
-    flex-grow: 1; /* Allow this area to grow */
 }
 
 .shelf-preview-covers img {
@@ -2845,11 +2853,16 @@ section + section {
     color: var(--brand-muted);
 }
 
+.shelf-preview-content {
+    flex-grow: 1;
+}
+
 .shelf-card-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-top: auto; /* Push footer to the bottom */
+    margin-top: auto;
+    flex-shrink: 0;
 }
 
 .shelf-footer-left {
@@ -3134,6 +3147,9 @@ section + section {
     text-decoration: none;
     color: inherit;
     transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }
 
 .user-search-card:hover {
@@ -3146,6 +3162,7 @@ section + section {
     align-items: center;
     gap: 1rem;
     margin-bottom: 1rem;
+    flex-grow: 1;
 }
 
 .user-search-avatar {
@@ -4719,6 +4736,8 @@ section + section {
     border: 1px solid var(--brand-border);
     transition: all 0.2s ease;
     position: relative;
+    display: flex;
+    flex-direction: column;
 }
 
 .compact-activity-card:hover {
@@ -4758,6 +4777,7 @@ section + section {
 .compact-activity-content {
     flex: 1;
     min-width: 0; /* Allow text truncation */
+    flex-grow: 1;
 }
 
 .compact-activity-user {
