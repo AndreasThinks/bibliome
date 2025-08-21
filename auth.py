@@ -1,10 +1,13 @@
 """Bluesky/AT-Proto authentication for BookdIt."""
-
+import requests
 from atproto import models
 from atproto import Client as AtprotoClient
 from fasthtml.common import *
 from fastcore.xtras import flexicache, time_policy
 from typing import Optional, Dict, Any
+
+from uvicorn.protocols.http.flow_control import service_unavailable
+
 from components import Alert, NavBar
 import os
 import logging
@@ -106,6 +109,8 @@ class BlueskyAuth:
             
             # Login to Bluesky - this returns a profile object
             logger.info("Attempting Bluesky login...")
+            if not (service := self.get_service_from_handle(handle)).endswith(".bsky.network"):
+                self.client = AtprotoClient(service)
             profile = self.client.login(handle, password)
             logger.debug(f"Login successful, profile: {profile is not None}")
             
@@ -139,6 +144,14 @@ class BlueskyAuth:
                 # Unexpected error (network, service down, etc.) - log as error with traceback
                 logger.error(f"Authentication system error for handle {handle}: {e}", exc_info=True)
                 return None
+
+    def get_service_from_handle(self, handle: str) -> str:
+        did = self.client.com.atproto.identity.resolve_handle({"handle": handle})
+        logger.debug(f"Resolved identity: {did.did}")
+        did_doc = requests.get(f"https://plc.directory/{did.did}").json()
+        service = did_doc['service'][0]['serviceEndpoint']
+        logger.debug(f"Resolved service endpoint: {service}")
+        return service
 
     def get_client_from_session(self, session_data: dict) -> AtprotoClient:
         """Restore a client instance from a session string."""
