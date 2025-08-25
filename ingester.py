@@ -4,6 +4,7 @@ import os
 import signal
 import sys
 from datetime import datetime
+from pathlib import Path
 from atproto_firehose import FirehoseSubscribeReposClient, parse_subscribe_repos_message
 from atproto_core.cid import CID
 from models import get_database, log_activity
@@ -22,6 +23,30 @@ PROCESS_NAME = "firehose_ingester"
 
 # Use shared database instance
 db_tables = get_database()
+
+# Cursor file for resume functionality
+CURSOR_FILE = Path("firehose.cursor")
+
+# Collections we're interested in
+WANTED = {"com.bibliome.bookshelf", "com.bibliome.book"}
+
+def collection_of(op_path: str) -> str:
+    """Extract collection from operation path (e.g., 'com.bibliome.bookshelf/3l6abc...')"""
+    return op_path.split("/", 1)[0] if op_path else ""
+
+def load_cursor():
+    """Load the last processed sequence number from cursor file."""
+    try:
+        return int(CURSOR_FILE.read_text().strip())
+    except Exception:
+        return None
+
+def save_cursor(seq: int):
+    """Save the current sequence number to cursor file."""
+    try:
+        CURSOR_FILE.write_text(str(seq))
+    except Exception as e:
+        logger.warning(f"Failed saving cursor: {e}")
 
 def ensure_user_exists(repo_did: str):
     """Ensure user exists in database, create placeholder if needed."""
@@ -151,87 +176,92 @@ book_count = 0
 error_count = 0
 
 def on_message_handler(message):
-    """Handle incoming firehose messages with error handling."""
+    """Handle incoming firehose messages with optimized filtering and error handling."""
     global message_count, bookshelf_count, book_count, error_count
     
     try:
-        commit = parse_subscribe_repos_message(message)
-        if not isinstance(commit, models.ComAtprotoSyncSubscribeRepos.Commit):
+        evt = parse_subscribe_repos_message(message)
+        if not isinstance(evt, models.ComAtprotoSyncSubscribeRepos.Commit):
             return
-        if not commit.blocks:
+        if not evt.ops:
             return
+
+        # Save cursor for resume functionality
+        save_cursor(evt.seq)
 
         message_count += 1
         message_processed = False
 
-        # Decode the CAR format blocks first
+        # Fast pre-filter: do we have any CREATEs in collections we care about?
+        wanted_ops = [op for op in evt.ops
+                      if op.action == "create" and collection_of(op.path) in WANTED and op.cid]
+
+        if not wanted_ops:
+            # No relevant creates: send heartbeat periodically without CAR decode overhead
+            if message_count % 100 == 0:
+                process_heartbeat(PROCESS_NAME, {
+                    "messages_processed": message_count,
+                    "bookshelves_found": bookshelf_count,
+                    "books_found": book_count,
+                    "errors_count": error_count
+                }, db_tables=db_tables)
+            return
+
+        # Decode CAR once, only when necessary
         try:
-            car = CAR.from_bytes(commit.blocks)
+            car = CAR.from_bytes(evt.blocks)
         except Exception as car_error:
-            logger.warning(f"Failed to decode CAR blocks for {commit.repo}: {car_error}")
+            logger.warning(f"CAR decode error for {evt.repo}: {car_error}")
             log_process_event(PROCESS_NAME, f"CAR decode error: {car_error}", "WARNING", "error", db_tables=db_tables)
             return
 
-        for op in commit.ops:
+        for op in wanted_ops:
             try:
-                if op.action == 'create':
-                    # Handle CID decoding with proper error handling
-                    try:
-                        # Check if op.cid is already a CID object or needs decoding
-                        if isinstance(op.cid, CID):
-                            record_cid = op.cid
-                        elif hasattr(op.cid, 'encode'):
-                            # If it has an encode method, it might already be a CID
-                            record_cid = op.cid
-                        else:
-                            # Try to decode the CID
-                            record_cid = CID.decode(op.cid)
-                    except Exception as cid_error:
-                        logger.warning(f"Failed to decode CID for {commit.repo}/{op.path}: {cid_error} (CID type: {type(op.cid)}, value: {op.cid})")
-                        log_process_event(PROCESS_NAME, f"CID decode error: {cid_error}", "WARNING", "error", db_tables=db_tables)
-                        continue  # Skip this operation and continue with others
-                    
-                    # Get the record from the decoded CAR
-                    try:
-                        record = car.blocks.get(record_cid)
-                        if not record:
-                            logger.debug(f"No record found for CID {record_cid}")
-                            continue
-                    except Exception as record_error:
-                        logger.warning(f"Failed to get record for CID {record_cid}: {record_error}")
-                        continue
-                    
-                    if record and record.get('$type') == 'com.bibliome.bookshelf':
-                        store_bookshelf_from_network(record, commit.repo, f"at://{commit.repo}/{op.path}")
-                        bookshelf_count += 1
-                        message_processed = True
-                        log_process_event(PROCESS_NAME, f"Processed bookshelf: {record.get('name')}", "INFO", "activity", db_tables=db_tables)
-                    
-                    elif record and record.get('$type') == 'com.bibliome.book':
-                        store_book_from_network(record, commit.repo, f"at://{commit.repo}/{op.path}")
-                        book_count += 1
-                        message_processed = True
-                        log_process_event(PROCESS_NAME, f"Processed book: {record.get('title')}", "INFO", "activity", db_tables=db_tables)
-                        
+                record = car.blocks.get(op.cid)  # op.cid is already a CID
+                if not record:
+                    logger.debug(f"No record for CID {op.cid}")
+                    continue
+
+                path_collection = collection_of(op.path)
+                rec_type = record.get("$type")
+
+                # defensive: ensure collection matches $type
+                if rec_type and rec_type != path_collection:
+                    logger.debug(f"Type mismatch {rec_type} vs {path_collection}")
+                    continue
+
+                record_uri = f"at://{evt.repo}/{op.path}"
+
+                if path_collection == "com.bibliome.bookshelf":
+                    store_bookshelf_from_network(record, evt.repo, record_uri)
+                    bookshelf_count += 1
+                    message_processed = True
+                    log_process_event(PROCESS_NAME, f"Processed bookshelf: {record.get('name')}", "INFO", "activity", db_tables=db_tables)
+
+                elif path_collection == "com.bibliome.book":
+                    store_book_from_network(record, evt.repo, record_uri)
+                    book_count += 1
+                    message_processed = True
+                    log_process_event(PROCESS_NAME, f"Processed book: {record.get('title')}", "INFO", "activity", db_tables=db_tables)
+
             except Exception as e:
                 error_count += 1
-                logger.error(f"Error processing operation {op.action} for {commit.repo}: {e}")
+                logger.error(f"Error processing op for {evt.repo}: {e}", exc_info=True)
                 log_process_event(PROCESS_NAME, f"Error processing operation: {e}", "ERROR", "error", db_tables=db_tables)
-                continue  # Continue processing other operations
-        
-        # Send heartbeat every 100 messages or when we process relevant records
+                continue
+
+        # Heartbeat on activity or every 100 messages
         if message_count % 100 == 0 or message_processed:
-            activity_info = {
+            process_heartbeat(PROCESS_NAME, {
                 "messages_processed": message_count,
                 "bookshelves_found": bookshelf_count,
                 "books_found": book_count,
                 "errors_count": error_count
-            }
-            process_heartbeat(PROCESS_NAME, activity_info, db_tables=db_tables)
+            }, db_tables=db_tables)
             
             if message_count % 100 == 0:
                 log_process_event(PROCESS_NAME, f"Processed {message_count} messages total", "INFO", "activity", db_tables=db_tables)
-                
+
     except Exception as e:
         error_count += 1
         logger.error(f"Error handling firehose message: {e}", exc_info=True)
@@ -280,8 +310,19 @@ async def main():
             book_count = 0
             error_count = 0
             
+            # Load cursor for resume functionality
+            cursor = load_cursor()
+            if cursor:
+                logger.info(f"Resuming from cursor position: {cursor}")
+                log_process_event(PROCESS_NAME, f"Resuming from cursor: {cursor}", "INFO", "activity", db_tables=db_tables)
+                params = models.ComAtprotoSyncSubscribeRepos.Params(cursor=cursor)
+            else:
+                logger.info("Starting from beginning (no cursor found)")
+                log_process_event(PROCESS_NAME, "Starting from beginning", "INFO", "activity", db_tables=db_tables)
+                params = models.ComAtprotoSyncSubscribeRepos.Params()
+            
             log_process_event(PROCESS_NAME, "Connected to AT-Proto firehose", "INFO", "activity", db_tables=db_tables)
-            await firehose.start(on_message_handler)
+            await firehose.start(on_message_handler, params)
             
         except KeyboardInterrupt:
             logger.info("Firehose monitoring stopped by user")
