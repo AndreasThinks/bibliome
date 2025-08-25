@@ -355,7 +355,7 @@ def EnhancedEmptyState(can_add=False, shelf_id=None, user_auth_status="anonymous
             cls="empty-state-card"
         )
 
-def ShelfHeader(shelf, action_buttons, current_view="grid", can_share=False, user_is_logged_in=False):
+def ShelfHeader(shelf, action_buttons, current_view="grid", can_share=False, user_is_logged_in=False, creator=None):
     """A visually appealing header for the shelf page."""
     # Create both toggle buttons - only one will be visible at a time
     grid_toggle_btn = Button(
@@ -416,6 +416,9 @@ def ShelfHeader(shelf, action_buttons, current_view="grid", can_share=False, use
             Div(
                 Span(f"🌍 {shelf.privacy.replace('-', ' ').title()}", cls="privacy-badge"),
                 Span("🤝 Open to contributions", cls="contribution-badge") if getattr(shelf, 'self_join', False) else None,
+                # Creator information
+                (Span(f"👤 Created by {creator.display_name or creator.handle}", cls="creator-badge") if creator else None),
+                (Span(f"📅 {format_shelf_creation_date(shelf.created_at)}", cls="creation-date-badge") if shelf.created_at else None),
                 cls="shelf-badges"
             ),
             Div(*all_actions, cls="shelf-actions"),
@@ -1434,6 +1437,26 @@ def format_time_ago(dt):
         return f"{minutes}m ago"
     else:
         return "just now"
+
+def format_shelf_creation_date(dt):
+    """Format shelf creation date for display in shelf header."""
+    if not dt:
+        return "Unknown"
+    
+    try:
+        if isinstance(dt, str):
+            # Handle ISO format strings
+            creation_date = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+        else:
+            creation_date = dt
+        
+        # Remove timezone info for consistent formatting
+        if creation_date.tzinfo is not None:
+            creation_date = creation_date.replace(tzinfo=None)
+        
+        return creation_date.strftime("%B %d, %Y")
+    except:
+        return "Unknown"
 
 def UnifiedExploreHero(auth=None):
     """Unified hero section that adapts based on authentication status."""

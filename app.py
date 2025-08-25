@@ -864,6 +864,13 @@ def view_shelf(slug: str, auth, req, view: str = "grid"):
         can_manage = can_manage_members(shelf, user_did, db_tables)
         can_share = can_generate_invites(shelf, user_did, db_tables)
         
+        # Get creator information
+        creator = None
+        try:
+            creator = db_tables['users'][shelf.owner_did]
+        except Exception as e:
+            logger.debug(f"Could not find creator for shelf {shelf.slug}: {e}")
+        
         # Get books with upvote counts using the new helper function
         from models import get_books_with_upvotes
         shelf_books = get_books_with_upvotes(shelf.id, user_did, db_tables)
@@ -882,7 +889,7 @@ def view_shelf(slug: str, auth, req, view: str = "grid"):
             action_buttons.append(A("Manage", href=f"/shelf/{shelf.slug}/manage", cls="secondary"))
         
         # New Shelf Header with view toggle and share button
-        shelf_header = ShelfHeader(shelf, action_buttons, current_view=view, can_share=can_share, user_is_logged_in=bool(auth))
+        shelf_header = ShelfHeader(shelf, action_buttons, current_view=view, can_share=can_share, user_is_logged_in=bool(auth), creator=creator)
         
         # Show self-join button if applicable (logged in user, public shelf with self-join enabled, not already a member)
         self_join_section = None
