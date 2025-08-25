@@ -20,8 +20,9 @@ import os
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
-from auth import BlueskyAuth, get_current_user_did, auth_beforeware
+from auth import BlueskyAuth, get_current_user_did, auth_beforeware, is_admin, require_admin
 from bluesky_automation import trigger_automation
+from admin_operations import get_database_path, backup_database, upload_database
 
 load_dotenv()
 
@@ -147,6 +148,104 @@ def index(auth, req):
             Container(*content),
             UniversalFooter()
         )
+
+# Admin route
+@rt("/admin")
+def admin_page(auth):
+    """Admin dashboard page."""
+    if not is_admin(auth):
+        return RedirectResponse('/', status_code=303)
+    
+    from components import AdminDashboard, AdminDatabaseSection
+    
+    # Fetch stats for the dashboard
+    total_users = len(db_tables['users']())
+    total_bookshelves = len(db_tables['bookshelves']())
+    total_books = len(db_tables['books']())
+    
+    stats = {
+        "total_users": total_users,
+        "total_bookshelves": total_bookshelves,
+        "total_books": total_books
+    }
+    
+    return (
+        Title("Admin Dashboard - Bibliome"),
+        Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
+        NavBar(auth),
+        Container(AdminDashboard(stats), AdminDatabaseSection()),
+        UniversalFooter()
+    )
+
+@rt("/admin/backup-database")
+def download_db_backup(auth):
+    """Route to trigger a database backup and download."""
+    if not is_admin(auth):
+        return RedirectResponse('/', status_code=303)
+    
+    try:
+        db_path = get_database_path()
+        backup_path = backup_database(db_path)
+        return FileResponse(backup_path, media_type='application/octet-stream', filename=os.path.basename(backup_path))
+    except Exception as e:
+        return Div(f"Error creating backup: {e}", cls="alert alert-danger")
+
+@rt("/admin/upload-database", methods=["POST"])
+async def upload_db(auth, req):
+    """Route to handle database file upload."""
+    if not is_admin(auth):
+        return Div("Permission denied.", cls="alert alert-danger")
+    
+    try:
+        form = await req.form()
+        db_file = form.get("db_file")
+        if not db_file or not db_file.filename:
+            return Div("No file selected.", cls="alert alert-warning")
+        
+        file_content = await db_file.read()
+        db_path = get_database_path()
+        upload_database(db_path, file_content)
+        
+        return Div("Database restored successfully. The application will now restart.", 
+                   cls="alert-success", 
+                   hx_trigger="load", 
+                   hx_oob="true", 
+                   hx_on_load="setTimeout(() => window.location.reload(), 2000)")
+
+    except Exception as e:
+        return Div(f"Error uploading database: {e}", cls="alert alert-danger")
+
+@rt("/admin/list-backups")
+def list_backups(auth):
+    """HTMX route to list available database backups."""
+    if not is_admin(auth):
+        return ""
+    
+    backup_dir = "backups"
+    if not os.path.exists(backup_dir):
+        return P("No backups found.")
+    
+    backups = sorted(
+        [f for f in os.listdir(backup_dir) if f.endswith(".bak")],
+        reverse=True
+    )
+    
+    if not backups:
+        return P("No backups found.")
+    
+    return Ul(*[Li(A(backup, href=f"/admin/download-backup/{backup}")) for backup in backups])
+
+@rt("/admin/download-backup/{backup_file:path}")
+def download_backup_file(auth, backup_file: str):
+    """Route to download a specific backup file."""
+    if not is_admin(auth):
+        return RedirectResponse('/', status_code=303)
+    
+    backup_path = os.path.join("backups", backup_file)
+    if not os.path.exists(backup_path):
+        return "File not found."
+    
+    return FileResponse(backup_path, media_type='application/octet-stream', filename=backup_file)
 
 # Authentication routes
 @app.get("/auth/login")

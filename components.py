@@ -38,6 +38,7 @@ def AlphaBadge():
 
 def NavBar(auth=None):
     """Main navigation bar with HTMX-powered mobile hamburger menu."""
+    from auth import is_admin
     # Define menu links based on auth status
     if auth:
         links = [
@@ -46,6 +47,8 @@ def NavBar(auth=None):
             A("Explore", href="/explore"),
             A("Create Shelf", href="/shelf/new"),
         ]
+        if is_admin(auth):
+            links.append(A("Admin", href="/admin"))
         
         # Create user profile card
         user_avatar = Img(
@@ -2557,4 +2560,69 @@ def SharePreview(shelf, share_type, base_url):
             cls="generate-link-btn enhanced-primary"
         ),
         cls="share-preview-card enhanced"
+    )
+
+def AdminDashboard(stats: Dict[str, Any]):
+    """Admin dashboard component."""
+    return Div(
+        H1("Admin Dashboard"),
+        Div(
+            AdminStatsCard("Total Users", stats.get("total_users", 0), "fa-users"),
+            AdminStatsCard("Total Bookshelves", stats.get("total_bookshelves", 0), "fa-book-bookmark"),
+            AdminStatsCard("Total Books", stats.get("total_books", 0), "fa-book"),
+            cls="admin-stats-grid"
+        ),
+        cls="admin-dashboard"
+    )
+
+def AdminStatsCard(title: str, value, icon: str):
+    """A card for displaying a single stat on the admin dashboard."""
+    return Div(
+        Div(
+            I(cls=f"fas {icon} fa-2x"),
+            cls="admin-stats-card-icon"
+        ),
+        Div(
+            H3(value, cls="admin-stats-card-value"),
+            P(title, cls="admin-stats-card-title"),
+            cls="admin-stats-card-info"
+        ),
+        cls="admin-stats-card"
+    )
+
+def AdminDatabaseSection():
+    """Section for database management in the admin dashboard."""
+    return Div(
+        H2("Database Management"),
+        Card(
+            DatabaseUploadForm(),
+            BackupHistoryCard(),
+            A("Download Backup", href="/admin/backup-database", cls="button primary"),
+            cls="admin-card"
+        ),
+        cls="admin-database-section"
+    )
+
+def DatabaseUploadForm():
+    """Form for uploading a new database file."""
+    return Form(
+        H3("Upload & Restore Database"),
+        P("Replace the current database with a backup file. The current database will be backed up before replacement."),
+        Input(type="file", name="db_file", id="db_file", required=True),
+        Button("Upload & Restore", type="submit", cls="primary"),
+        Div(id="upload-status"),
+        hx_post="/admin/upload-database",
+        hx_encoding="multipart/form-data",
+        hx_target="#upload-status",
+        hx_swap="innerHTML",
+        cls="database-upload-form"
+    )
+
+def BackupHistoryCard():
+    """Card to display database backup history."""
+    return Div(
+        H3("Backup History"),
+        Button("Refresh Backups", hx_get="/admin/list-backups", hx_target="#backup-list", hx_swap="innerHTML"),
+        Div(id="backup-list", hx_get="/admin/list-backups", hx_trigger="load", hx_swap="innerHTML"),
+        cls="backup-history-card"
     )

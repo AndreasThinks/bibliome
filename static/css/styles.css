@@ -6538,3 +6538,60 @@ select:focus {
         border-radius: 0.4rem;
     }
 }
+
+/* ===== ADMIN DASHBOARD STYLES ===== */
+
+.admin-dashboard {
+    padding: 2rem 0;
+}
+
+.admin-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.admin-stats-card {
+    background: var(--brand-white);
+    border: 1px solid var(--brand-border);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    transition: all 0.2s ease;
+}
+
+.admin-stats-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: var(--brand-amber);
+}
+
+.admin-stats-card-icon {
+    background: var(--brand-light);
+    color: var(--brand-amber);
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.admin-stats-card-info {
+    flex: 1;
+}
+
+.admin-stats-card-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--brand-navy);
+    margin: 0;
+}
+
+.admin-stats-card-title {
+    font-size: 1rem;
+    color: var(--brand-muted);
+    margin: 0;
+}
