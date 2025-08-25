@@ -417,7 +417,7 @@ def ShelfHeader(shelf, action_buttons, current_view="grid", can_share=False, use
                 Span(f"🌍 {shelf.privacy.replace('-', ' ').title()}", cls="privacy-badge"),
                 Span("🤝 Open to contributions", cls="contribution-badge") if getattr(shelf, 'self_join', False) else None,
                 # Creator information
-                (Span(f"👤 Created by {creator.display_name or creator.handle}", cls="creator-badge") if creator else None),
+                (Span("👤 Created by ", A(creator.display_name or creator.handle, href=f"/user/{creator.handle}", cls="creator-name-link"), cls="creator-badge") if creator else None),
                 (Span(f"📅 {format_shelf_creation_date(shelf.created_at)}", cls="creation-date-badge") if shelf.created_at else None),
                 cls="shelf-badges"
             ),

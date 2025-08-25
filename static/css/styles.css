@@ -3723,17 +3723,19 @@ section + section {
 
 /* Mobile Responsive for Table */
 @media (max-width: 768px) {
-    .book-table {
-        font-size: 0.85rem;
+    .shelf-badges {
+        margin: 0.5rem 0 0 0;
+        gap: 0.25rem;
+        min-height: 26px;
     }
     
-    .book-table-header th {
-        padding: 0.75rem 0.5rem;
-        font-size: 0.8rem;
-    }
-    
-    .book-table-row td {
-        padding: 0.75rem 0.5rem;
+    .privacy-badge,
+    .contribution-badge,
+    .creator-badge,
+    .creation-date-badge {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.5rem;
+        height: 26px;
     }
     
     .description-cell {
@@ -4726,6 +4728,22 @@ section + section {
 .activity-user-link:hover {
     color: var(--brand-amber);
     text-decoration: underline;
+    transform: scale(1.02);
+}
+
+/* Creator Badge User Link - Enhanced visibility within badge */
+.creator-name-link {
+    color: rgba(255, 255, 255, 0.9); /* Slightly transparent white for visibility */
+    text-decoration: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    font-weight: inherit;
+}
+
+.creator-name-link:hover {
+    color: #fff;
+    text-decoration: underline;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
     transform: scale(1.02);
 }
 
