@@ -1,11 +1,11 @@
 name: Release Drafter
 
 on:
-  # Keep draft release in sync when a PR into main exists or when main updates
-  pull_request:
-    branches: [main]
   push:
-    branches: [main]
+    branches:
+      - main
+  pull_request:
+    types: [opened, reopened, synchronize]
 
 permissions:
   contents: write
