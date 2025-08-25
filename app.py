@@ -211,7 +211,6 @@ def admin_page(auth):
                     P(f"Heartbeat: ", Span(heartbeat_display, style=f"color: {heartbeat_color}; font-weight: bold;")),
                     process_info.error_message and P(f"Error: {process_info.error_message}", style="color: #dc3545; font-size: 0.85rem;") or "",
                 ),
-                A("View Details", href=f"/admin/processes/{name}/logs", cls="btn btn-sm btn-primary", style="margin-top: 0.5rem;"),
                 cls="admin-process-card",
                 style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem; background: #f8f9fa;"
             )
@@ -373,11 +372,6 @@ def admin_processes_page(auth):
                 P(f"Last Heartbeat: ", Span(heartbeat_display, style=f"color: {heartbeat_color}; font-weight: bold;")),
                 P(f"Restart Count: {process_info.restart_count}"),
                 process_info.error_message and P(f"Error: {process_info.error_message}", style="color: #dc3545;") or "",
-                Div(
-                    A("View Logs", href=f"/admin/processes/{name}/logs", cls="btn btn-sm btn-primary"),
-                    A("View Metrics", href=f"/admin/processes/{name}/metrics", cls="btn btn-sm btn-secondary"),
-                    style="margin-top: 1rem;"
-                ),
                 cls="card",
                 style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;"
             )
@@ -408,189 +402,6 @@ def admin_processes_page(auth):
         UniversalFooter()
     )
 
-@rt("/admin/processes/{process_name}/logs")
-def admin_process_logs(auth, process_name: str, hours: int = 24, level: str = ""):
-    """Admin page for process logs."""
-    if not is_admin(auth):
-        return RedirectResponse('/', status_code=303)
-    
-    from process_monitor import LogLevel
-    
-    monitor = get_process_monitor(db_tables)
-    
-    # Get log level filter
-    log_level_filter = None
-    if level:
-        try:
-            log_level_filter = LogLevel(level.upper())
-        except ValueError:
-            pass
-    
-    # Get recent logs
-    logs = monitor.get_recent_logs(process_name, hours=hours, log_level=log_level_filter)
-    
-    # Log level filter options
-    level_options = [
-        Option("All Levels", value="", selected=(not level)),
-        Option("DEBUG", value="debug", selected=(level.lower() == "debug")),
-        Option("INFO", value="info", selected=(level.lower() == "info")),
-        Option("WARNING", value="warning", selected=(level.lower() == "warning")),
-        Option("ERROR", value="error", selected=(level.lower() == "error")),
-        Option("CRITICAL", value="critical", selected=(level.lower() == "critical"))
-    ]
-    
-    # Time range options
-    time_options = [
-        Option("Last Hour", value="1", selected=(hours == 1)),
-        Option("Last 6 Hours", value="6", selected=(hours == 6)),
-        Option("Last 24 Hours", value="24", selected=(hours == 24)),
-        Option("Last 3 Days", value="72", selected=(hours == 72)),
-        Option("Last Week", value="168", selected=(hours == 168))
-    ]
-    
-    # Build log entries
-    log_entries = []
-    for log in logs:
-        level_color = {
-            "DEBUG": "#6c757d",
-            "INFO": "#007bff", 
-            "WARNING": "#ffc107",
-            "ERROR": "#dc3545",
-            "CRITICAL": "#dc3545"
-        }.get(log.log_level, "#6c757d")
-        
-        log_entries.append(
-            Tr(
-                Td(log.timestamp.strftime("%Y-%m-%d %H:%M:%S")),
-                Td(Span(log.log_level, style=f"color: {level_color}; font-weight: bold;")),
-                Td(log.event_type.title()),
-                Td(log.message),
-                Td(log.details or "")
-            )
-        )
-    
-    content = [
-        H1(f"Process Logs: {process_name.replace('_', ' ').title()}"),
-        
-        # Filters
-        Form(
-            Div(
-                Label("Time Range:", Select(*time_options, name="hours")),
-                Label("Log Level:", Select(*level_options, name="level")),
-                Button("Filter", type="submit", cls="btn btn-primary"),
-                style="display: flex; gap: 1rem; align-items: end; margin: 1rem 0;"
-            ),
-            action=f"/admin/processes/{process_name}/logs",
-            method="get"
-        ),
-        
-        # Logs table
-        Div(
-            Table(
-                Thead(
-                    Tr(
-                        Th("Timestamp"),
-                        Th("Level"), 
-                        Th("Event"),
-                        Th("Message"),
-                        Th("Details")
-                    )
-                ),
-                Tbody(*log_entries),
-                cls="table table-striped"
-            ) if log_entries else P("No logs found for the selected filters."),
-            style="margin-top: 2rem;"
-        ),
-        
-        Div(
-            A("← Back to Processes", href="/admin/processes", cls="btn btn-secondary"),
-            style="margin-top: 2rem;"
-        )
-    ]
-    
-    return (
-        Title(f"Logs: {process_name} - Admin - Bibliome"),
-        Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
-        NavBar(auth),
-        Container(*content),
-        UniversalFooter()
-    )
-
-@rt("/admin/processes/{process_name}/metrics")
-def admin_process_metrics(auth, process_name: str, hours: int = 24):
-    """Admin page for process metrics."""
-    if not is_admin(auth):
-        return RedirectResponse('/', status_code=303)
-    
-    monitor = get_process_monitor(db_tables)
-    
-    # Get metrics
-    metrics = monitor.get_process_metrics(process_name, hours=hours)
-    
-    # Group metrics by name
-    grouped_metrics = {}
-    for metric in metrics:
-        if metric.metric_name not in grouped_metrics:
-            grouped_metrics[metric.metric_name] = []
-        grouped_metrics[metric.metric_name].append(metric)
-    
-    # Time range options
-    time_options = [
-        Option("Last Hour", value="1", selected=(hours == 1)),
-        Option("Last 6 Hours", value="6", selected=(hours == 6)),
-        Option("Last 24 Hours", value="24", selected=(hours == 24)),
-        Option("Last 3 Days", value="72", selected=(hours == 72)),
-        Option("Last Week", value="168", selected=(hours == 168))
-    ]
-    
-    # Build metrics display
-    metric_sections = []
-    for metric_name, metric_list in grouped_metrics.items():
-        # Calculate totals and latest
-        total_value = sum(m.metric_value for m in metric_list)
-        latest_value = metric_list[-1].metric_value if metric_list else 0
-        latest_time = metric_list[-1].recorded_at.strftime("%Y-%m-%d %H:%M:%S") if metric_list else "N/A"
-        
-        metric_sections.append(
-            Div(
-                H3(f"{metric_name.replace('_', ' ').title()}"),
-                P(f"Total: {total_value}"),
-                P(f"Latest: {latest_value}"),
-                P(f"Last Recorded: {latest_time}"),
-                cls="metric-card",
-                style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;"
-            )
-        )
-    
-    # Time range filter
-    content = [
-        H1(f"Process Metrics: {process_name.replace('_', ' ').title()}"),
-        
-        Form(
-            Div(
-                Label("Time Range:", Select(*time_options, name="hours")),
-                Button("Filter", type="submit", cls="btn btn-primary"),
-                style="display: flex; gap: 1rem; align-items: end; margin: 1rem 0;"
-            ),
-            action=f"/admin/processes/{process_name}/metrics",
-            method="get"
-        ),
-        
-        Div(*metric_sections) if metric_sections else P("No metrics found for the selected time range."),
-        
-        Div(
-            A("← Back to Processes", href="/admin/processes", cls="btn btn-secondary"),
-            style="margin-top: 2rem;"
-        )
-    ]
-    
-    return (
-        Title(f"Metrics: {process_name} - Admin - Bibliome"),
-        Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
-        NavBar(auth),
-        Container(*content),
-        UniversalFooter()
-    )
 
 @rt("/admin/processes/refresh")
 def admin_processes_refresh(auth):
