@@ -60,6 +60,18 @@ class ProcessMonitor:
         # Load existing process status from database
         self._load_process_status()
     
+    def _parse_datetime_field(self, value: Any) -> Optional[datetime]:
+        """Parse a datetime field from database, handling both string and datetime inputs."""
+        if not value:
+            return None
+        
+        if isinstance(value, str):
+            # Handle ISO format strings with optional timezone info
+            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+        else:
+            # Already a datetime object
+            return value
+    
     def _load_process_status(self):
         """Load process status from database on startup."""
         if not self.db_tables:
@@ -94,14 +106,19 @@ class ProcessMonitor:
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass
                 
+                # Convert string datetime fields back to datetime objects using helper function
+                started_at = self._parse_datetime_field(process_row['started_at'])
+                last_heartbeat = self._parse_datetime_field(process_row['last_heartbeat'])
+                last_activity = self._parse_datetime_field(process_row['last_activity'])
+                
                 self._processes[process_row['process_name']] = ProcessInfo(
                     name=process_row['process_name'],
                     process_type=process_row['process_type'],
                     status=actual_status,
                     pid=process_row['pid'] if actual_status == ProcessStatus.RUNNING else None,
-                    started_at=process_row['started_at'],
-                    last_heartbeat=process_row['last_heartbeat'],
-                    last_activity=process_row['last_activity'],
+                    started_at=started_at,
+                    last_heartbeat=last_heartbeat,
+                    last_activity=last_activity,
                     restart_count=process_row['restart_count'] or 0,
                     error_message=process_row['error_message'],
                     config_data=config_data
