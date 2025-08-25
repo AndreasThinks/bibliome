@@ -494,11 +494,13 @@ def init_process_monitoring(db_tables):
 
 # Convenience functions for process monitoring
 def log_process_event(process_name: str, message: str, level: str = "INFO", 
-                     event_type: str = "activity", details: Dict[str, Any] = None):
+                     event_type: str = "activity", details: Dict[str, Any] = None, db_tables=None):
     """Convenience function to log process events from background processes."""
     try:
-        from models import setup_database
-        db_tables = setup_database()
+        if not db_tables:
+            from models import get_database
+            db_tables = get_database()
+        
         monitor = get_process_monitor(db_tables)
         
         log_level = LogLevel(level.upper())
@@ -511,11 +513,13 @@ def log_process_event(process_name: str, message: str, level: str = "INFO",
         logger = logging.getLogger(f"process.{process_name}")
         logger.log(getattr(logging, level.upper(), logging.INFO), message)
 
-def record_process_metric(process_name: str, metric_name: str, value: int, metric_type: str = "counter"):
+def record_process_metric(process_name: str, metric_name: str, value: int, metric_type: str = "counter", db_tables=None):
     """Convenience function to record process metrics from background processes."""
     try:
-        from models import setup_database
-        db_tables = setup_database()
+        if not db_tables:
+            from models import get_database
+            db_tables = get_database()
+        
         monitor = get_process_monitor(db_tables)
         monitor.record_metric(process_name, metric_name, value, metric_type)
         
@@ -523,11 +527,13 @@ def record_process_metric(process_name: str, metric_name: str, value: int, metri
         # Fail silently for metrics if database is unavailable
         pass
 
-def process_heartbeat(process_name: str, activity_info: Dict[str, Any] = None):
+def process_heartbeat(process_name: str, activity_info: Dict[str, Any] = None, db_tables=None):
     """Send a heartbeat for a process."""
     try:
-        from models import setup_database
-        db_tables = setup_database()
+        if not db_tables:
+            from models import get_database
+            db_tables = get_database()
+        
         monitor = get_process_monitor(db_tables)
         monitor.heartbeat(process_name, activity_info)
         
@@ -535,11 +541,13 @@ def process_heartbeat(process_name: str, activity_info: Dict[str, Any] = None):
         # Fail silently for heartbeats if database is unavailable
         pass
 
-def update_process_status(process_name: str, status: str, pid: int = None, error_message: str = None):
+def update_process_status(process_name: str, status: str, pid: int = None, error_message: str = None, db_tables=None):
     """Update the status of a process."""
     try:
-        from models import setup_database
-        db_tables = setup_database()
+        if not db_tables:
+            from models import get_database
+            db_tables = get_database()
+        
         monitor = get_process_monitor(db_tables)
         status_enum = ProcessStatus(status.lower())
         monitor.update_process_status(process_name, status_enum, pid, error_message)

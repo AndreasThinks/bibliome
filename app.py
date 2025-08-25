@@ -191,15 +191,26 @@ def admin_page(auth):
         heartbeat_display = "Never"
         heartbeat_color = "#dc3545"
         if process_info.last_heartbeat:
-            heartbeat_age = datetime.now() - process_info.last_heartbeat
-            if heartbeat_age.total_seconds() < 300:  # 5 minutes
-                heartbeat_display = "< 5m ago"
-                heartbeat_color = "#28a745"
-            elif heartbeat_age.total_seconds() < 1800:  # 30 minutes
-                heartbeat_display = f"{int(heartbeat_age.total_seconds() / 60)}m ago"
-                heartbeat_color = "#ffc107"
-            else:
-                heartbeat_display = f"{int(heartbeat_age.total_seconds() / 3600)}h ago"
+            try:
+                # Handle both datetime objects and string representations
+                if isinstance(process_info.last_heartbeat, str):
+                    last_heartbeat = datetime.fromisoformat(process_info.last_heartbeat.replace('Z', '+00:00'))
+                else:
+                    last_heartbeat = process_info.last_heartbeat
+                
+                heartbeat_age = datetime.now() - last_heartbeat
+                
+                if heartbeat_age.total_seconds() < 300:  # 5 minutes
+                    heartbeat_display = "< 5m ago"
+                    heartbeat_color = "#28a745"
+                elif heartbeat_age.total_seconds() < 1800:  # 30 minutes
+                    heartbeat_display = f"{int(heartbeat_age.total_seconds() / 60)}m ago"
+                    heartbeat_color = "#ffc107"
+                else:
+                    heartbeat_display = f"{int(heartbeat_age.total_seconds() / 3600)}h ago"
+                    heartbeat_color = "#dc3545"
+            except (ValueError, TypeError) as e:
+                heartbeat_display = "Invalid"
                 heartbeat_color = "#dc3545"
         
         process_summary_cards.append(
@@ -351,15 +362,26 @@ def admin_processes_page(auth):
         heartbeat_display = "Never"
         heartbeat_color = "#dc3545"
         if process_info.last_heartbeat:
-            heartbeat_age = datetime.now() - process_info.last_heartbeat
-            if heartbeat_age.total_seconds() < 300:  # 5 minutes
-                heartbeat_display = "< 5m ago"
-                heartbeat_color = "#28a745"
-            elif heartbeat_age.total_seconds() < 1800:  # 30 minutes
-                heartbeat_display = f"{int(heartbeat_age.total_seconds() / 60)}m ago"
-                heartbeat_color = "#ffc107"
-            else:
-                heartbeat_display = f"{int(heartbeat_age.total_seconds() / 3600)}h ago"
+            try:
+                # Handle both datetime objects and string representations
+                if isinstance(process_info.last_heartbeat, str):
+                    last_heartbeat = datetime.fromisoformat(process_info.last_heartbeat.replace('Z', '+00:00'))
+                else:
+                    last_heartbeat = process_info.last_heartbeat
+                
+                heartbeat_age = datetime.now() - last_heartbeat
+                
+                if heartbeat_age.total_seconds() < 300:  # 5 minutes
+                    heartbeat_display = "< 5m ago"
+                    heartbeat_color = "#28a745"
+                elif heartbeat_age.total_seconds() < 1800:  # 30 minutes
+                    heartbeat_display = f"{int(heartbeat_age.total_seconds() / 60)}m ago"
+                    heartbeat_color = "#ffc107"
+                else:
+                    heartbeat_display = f"{int(heartbeat_age.total_seconds() / 3600)}h ago"
+                    heartbeat_color = "#dc3545"
+            except (ValueError, TypeError) as e:
+                heartbeat_display = "Invalid"
                 heartbeat_color = "#dc3545"
         
         process_cards.append(

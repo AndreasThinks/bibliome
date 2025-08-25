@@ -154,6 +154,9 @@ class Activity:
     # JSON field for additional metadata
     metadata: str = ""  # JSON string for flexible data
 
+# Global database instance to prevent multiple connections
+_db_instance = None
+
 def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migrations'):
     """Initialize the database with fastmigrate and all tables."""
     import os
@@ -176,8 +179,14 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     version = get_db_version(db_path)
     print(f"Database initialized at version {version}")
     
-    # Create FastLite database connection
+    # Create FastLite database connection with WAL mode
     db = database(db_path)
+    
+    # Configure SQLite for better concurrency
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA synchronous=NORMAL") 
+    db.execute("PRAGMA wal_autocheckpoint=1000")
+    db.execute("PRAGMA busy_timeout=30000")  # 30 second timeout
     
     # Create table objects for FastLite operations
     # These will connect to existing tables created by migrations
@@ -189,6 +198,12 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     upvotes = db.create(Upvote, pk=['book_id', 'user_did'], transform=True)
     activities = db.create(Activity, transform=True)
     
+    # Add process monitoring tables
+    from fastlite import Table
+    process_status = Table(db, 'process_status')
+    process_logs = Table(db, 'process_logs')
+    process_metrics = Table(db, 'process_metrics')
+    
     return {
         'db': db,
         'users': users,
@@ -197,8 +212,18 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
         'permissions': permissions,
         'bookshelf_invites': bookshelf_invites,
         'upvotes': upvotes,
-        'activities': activities
+        'activities': activities,
+        'process_status': process_status,
+        'process_logs': process_logs,
+        'process_metrics': process_metrics
     }
+
+def get_database():
+    """Get the shared database instance. Creates it if it doesn't exist."""
+    global _db_instance
+    if _db_instance is None:
+        _db_instance = setup_database()
+    return _db_instance
 
 def generate_invite_code():
     """Generate a secure random invite code."""
