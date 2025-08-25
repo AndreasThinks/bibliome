@@ -7,7 +7,7 @@ from datetime import datetime
 from atproto_firehose import FirehoseSubscribeReposClient, parse_subscribe_repos_message
 from atproto_core.cid import CID
 from models import setup_database, log_activity
-from atproto import models
+from atproto import models, CAR
 from process_monitor import (
     log_process_event, record_process_metric, process_heartbeat, 
     update_process_status, get_process_monitor
@@ -149,7 +149,7 @@ bookshelf_count = 0
 book_count = 0
 error_count = 0
 
-async def on_message_handler(message):
+def on_message_handler(message):
     """Handle incoming firehose messages with error handling."""
     global message_count, bookshelf_count, book_count, error_count
     
@@ -163,11 +163,42 @@ async def on_message_handler(message):
         message_count += 1
         message_processed = False
 
+        # Decode the CAR format blocks first
+        try:
+            car = CAR.from_bytes(commit.blocks)
+        except Exception as car_error:
+            logger.warning(f"Failed to decode CAR blocks for {commit.repo}: {car_error}")
+            log_process_event(PROCESS_NAME, f"CAR decode error: {car_error}", "WARNING", "error")
+            return
+
         for op in commit.ops:
             try:
                 if op.action == 'create':
-                    record_cid = CID.decode(op.cid)
-                    record = commit.blocks.get(record_cid)
+                    # Handle CID decoding with proper error handling
+                    try:
+                        # Check if op.cid is already a CID object or needs decoding
+                        if isinstance(op.cid, CID):
+                            record_cid = op.cid
+                        elif hasattr(op.cid, 'encode'):
+                            # If it has an encode method, it might already be a CID
+                            record_cid = op.cid
+                        else:
+                            # Try to decode the CID
+                            record_cid = CID.decode(op.cid)
+                    except Exception as cid_error:
+                        logger.warning(f"Failed to decode CID for {commit.repo}/{op.path}: {cid_error} (CID type: {type(op.cid)}, value: {op.cid})")
+                        log_process_event(PROCESS_NAME, f"CID decode error: {cid_error}", "WARNING", "error")
+                        continue  # Skip this operation and continue with others
+                    
+                    # Get the record from the decoded CAR
+                    try:
+                        record = car.blocks.get(record_cid)
+                        if not record:
+                            logger.debug(f"No record found for CID {record_cid}")
+                            continue
+                    except Exception as record_error:
+                        logger.warning(f"Failed to get record for CID {record_cid}: {record_error}")
+                        continue
                     
                     if record and record.get('$type') == 'com.bibliome.bookshelf':
                         store_bookshelf_from_network(record, commit.repo, f"at://{commit.repo}/{op.path}")
