@@ -322,3 +322,21 @@ def require_auth(f):
 def get_current_user_did(auth) -> Optional[str]:
     """Extract user DID from auth data."""
     return auth.get('did') if auth else None
+
+def is_admin(auth) -> bool:
+    """Check if the current user is an admin."""
+    if not auth:
+        return False
+    
+    admin_usernames = os.getenv('ADMIN_USERNAMES', '').split(',')
+
+    return auth.get('handle') in admin_usernames
+
+def require_admin(f):
+    """Decorator to require admin privileges for a route."""
+    def wrapper(*args, **kwargs):
+        auth = kwargs.get('auth')
+        if not is_admin(auth):
+            return RedirectResponse('/', status_code=303)
+        return f(*args, **kwargs)
+    return wrapper

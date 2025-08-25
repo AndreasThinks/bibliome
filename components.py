@@ -5,8 +5,40 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 import os
 
+def AlphaBadge():
+    """Alpha status badge component with mobile-friendly click functionality."""
+    return Div(
+        Span(
+            "⚠️ Alpha",
+            cls="alpha-badge",
+            title="Bibliome is in very early, active development. Data may be reset and features may change as we improve the platform.",
+            onclick="showAlphaMessage(this)"
+        ),
+        Div(
+            "Bibliome is in very early, active development. Data may be reset and features may change as we improve the platform.",
+            cls="alpha-message",
+            id="alpha-message"
+        ),
+        Script("""
+            function showAlphaMessage(badge) {
+                const message = document.getElementById('alpha-message');
+                if (message) {
+                    // Show the message
+                    message.classList.add('show');
+                    
+                    // Hide after 2 seconds with fade
+                    setTimeout(() => {
+                        message.classList.remove('show');
+                    }, 2000);
+                }
+            }
+        """),
+        cls="alpha-badge-container"
+    )
+
 def NavBar(auth=None):
     """Main navigation bar with HTMX-powered mobile hamburger menu."""
+    from auth import is_admin
     # Define menu links based on auth status
     if auth:
         links = [
@@ -15,6 +47,8 @@ def NavBar(auth=None):
             A("Explore", href="/explore"),
             A("Create Shelf", href="/shelf/new"),
         ]
+        if is_admin(auth):
+            links.append(A("Admin", href="/admin"))
         
         # Create user profile card
         user_avatar = Img(
@@ -40,11 +74,16 @@ def NavBar(auth=None):
 
     return Nav(
         Div(
-            A(
-                Img(src="/static/bibliome_transparent_no_text.png", alt="Bibliome", cls="logo-img"),
-                "Bibliome",
-                href="/", 
-                cls="logo"
+            # Logo and alpha badge grouped together
+            Div(
+                A(
+                    Img(src="/static/bibliome_transparent_no_text.png", alt="Bibliome", cls="logo-img"),
+                    "Bibliome",
+                    href="/", 
+                    cls="logo"
+                ),
+                AlphaBadge(),
+                cls="logo-with-badge"
             ),
             # Desktop menu
             Div(
@@ -216,11 +255,14 @@ def CreateBookshelfForm():
                 maxlength=500
             )),
             Label("Privacy Level", Select(
-                Option("Public - Anyone can find and view", value="public", selected=True),
-                Option("Link Only - Only people with the link can view", value="link-only"),
-                Option("Private - Only invited people can view", value="private"),
+                Option("Public - Visible to everyone and appears in search results", value="public", selected=True),
+                Option("Link Only - Hidden from search, but viewable by anyone with the link", value="link-only"),
+                Option("Private - Coming soon (we're working on true privacy)", value="private", disabled=True),
                 name="privacy"
             )),
+            P("Note: All shelves are shared across the decentralized network. True private shelves are coming soon!", 
+              cls="privacy-explanation", 
+              style="font-size: 0.85rem; color: var(--brand-muted); margin-top: 0.5rem; font-style: italic;"),
             Label(
                 CheckboxX(
                     id="self_join",
@@ -233,6 +275,9 @@ def CreateBookshelfForm():
                 ),
                 cls="self-join-label"
             ),
+            P("⚠️ Alpha Version: Data may be reset during development.", 
+              cls="alpha-form-disclaimer", 
+              style="font-size: 0.8rem; color: var(--brand-warning); margin-top: 1rem; padding: 0.5rem; background: var(--brand-warning-bg); border-radius: 4px; border-left: 3px solid var(--brand-warning);"),
         ),
         Button("Create Bookshelf", type="submit", cls="primary")
     )
@@ -887,7 +932,7 @@ def PublicShelvesPreview(public_shelves):
         Container(
             H2("Discover Public Collections", cls="section-title"),
             P("See what the community is reading and sharing", cls="section-subtitle"),
-            Div(*[BookshelfCard(shelf) for shelf in public_shelves[:6]], cls="bookshelf-grid"),
+            Div(*[ShelfPreviewCard(shelf) for shelf in public_shelves[:6]], cls="bookshelf-grid"),
             Div(
                 A("Explore All Collections", href="/explore", cls="primary"),
                 cls="section-cta"
@@ -902,10 +947,38 @@ def UniversalFooter():
     return Footer(
         Container(
             Div(
-                # Left side: Text content
+                # Left side: Text content with alpha badge
                 Div(
                     P("A project by ", A("AndreasThinks", href="https://andreasthinks.me/", target="_blank", rel="noopener"), ", built with ❤️ using FastHTML, AT-Proto, and some ✨vibes✨", cls="footer-text"),
                     P("© 2025 Bibliome. Open source and decentralized.", cls="footer-copyright"),
+                    Div(
+                        Span(
+                            "⚠️ Alpha",
+                            cls="footer-alpha-badge",
+                            title="Bibliome is in very early active development. Data may be reset and features may change as we improve the platform.",
+                            onclick="showFooterAlphaMessage(this)"
+                        ),
+                        Div(
+                            "Bibliome is in very early, active development. Data may be reset and features may change as we improve the platform.",
+                            cls="footer-alpha-message",
+                            id="footer-alpha-message"
+                        ),
+                        Script("""
+                            function showFooterAlphaMessage(badge) {
+                                const message = document.getElementById('footer-alpha-message');
+                                if (message) {
+                                    // Show the message
+                                    message.classList.add('show');
+                                    
+                                    // Hide after 2 seconds with fade
+                                    setTimeout(() => {
+                                        message.classList.remove('show');
+                                    }, 2000);
+                                }
+                            }
+                        """),
+                        cls="footer-alpha-badge-container"
+                    ),
                     cls="footer-left"
                 ),
                 # Right side: Social icons
@@ -2487,4 +2560,69 @@ def SharePreview(shelf, share_type, base_url):
             cls="generate-link-btn enhanced-primary"
         ),
         cls="share-preview-card enhanced"
+    )
+
+def AdminDashboard(stats: Dict[str, Any]):
+    """Admin dashboard component."""
+    return Div(
+        H1("Admin Dashboard"),
+        Div(
+            AdminStatsCard("Total Users", stats.get("total_users", 0), "fa-users"),
+            AdminStatsCard("Total Bookshelves", stats.get("total_bookshelves", 0), "fa-book-bookmark"),
+            AdminStatsCard("Total Books", stats.get("total_books", 0), "fa-book"),
+            cls="admin-stats-grid"
+        ),
+        cls="admin-dashboard"
+    )
+
+def AdminStatsCard(title: str, value, icon: str):
+    """A card for displaying a single stat on the admin dashboard."""
+    return Div(
+        Div(
+            I(cls=f"fas {icon} fa-2x"),
+            cls="admin-stats-card-icon"
+        ),
+        Div(
+            H3(value, cls="admin-stats-card-value"),
+            P(title, cls="admin-stats-card-title"),
+            cls="admin-stats-card-info"
+        ),
+        cls="admin-stats-card"
+    )
+
+def AdminDatabaseSection():
+    """Section for database management in the admin dashboard."""
+    return Div(
+        H2("Database Management"),
+        Card(
+            DatabaseUploadForm(),
+            BackupHistoryCard(),
+            A("Download Backup", href="/admin/backup-database", cls="button primary"),
+            cls="admin-card"
+        ),
+        cls="admin-database-section"
+    )
+
+def DatabaseUploadForm():
+    """Form for uploading a new database file."""
+    return Form(
+        H3("Upload & Restore Database"),
+        P("Replace the current database with a backup file. The current database will be backed up before replacement."),
+        Input(type="file", name="db_file", id="db_file", required=True),
+        Button("Upload & Restore", type="submit", cls="primary"),
+        Div(id="upload-status"),
+        hx_post="/admin/upload-database",
+        hx_encoding="multipart/form-data",
+        hx_target="#upload-status",
+        hx_swap="innerHTML",
+        cls="database-upload-form"
+    )
+
+def BackupHistoryCard():
+    """Card to display database backup history."""
+    return Div(
+        H3("Backup History"),
+        Button("Refresh Backups", hx_get="/admin/list-backups", hx_target="#backup-list", hx_swap="innerHTML"),
+        Div(id="backup-list", hx_get="/admin/list-backups", hx_trigger="load", hx_swap="innerHTML"),
+        cls="backup-history-card"
     )

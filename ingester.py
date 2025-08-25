@@ -1,14 +1,24 @@
 import asyncio
 import logging
+import os
+import signal
+import sys
 from datetime import datetime
 from atproto_firehose import FirehoseSubscribeReposClient, parse_subscribe_repos_message
 from atproto_core.cid import CID
 from models import setup_database, log_activity
 from atproto import models
+from process_monitor import (
+    log_process_event, record_process_metric, process_heartbeat, 
+    update_process_status, get_process_monitor
+)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Process name for monitoring
+PROCESS_NAME = "firehose_ingester"
 
 db_tables = setup_database()
 
@@ -133,14 +143,25 @@ def store_book_from_network(record: dict, repo_did: str, record_uri: str):
     except Exception as e:
         logger.error(f"Error storing book from network: {e}", exc_info=True)
 
+# Global counters for monitoring
+message_count = 0
+bookshelf_count = 0
+book_count = 0
+error_count = 0
+
 async def on_message_handler(message):
     """Handle incoming firehose messages with error handling."""
+    global message_count, bookshelf_count, book_count, error_count
+    
     try:
         commit = parse_subscribe_repos_message(message)
         if not isinstance(commit, models.ComAtprotoSyncSubscribeRepos.Commit):
             return
         if not commit.blocks:
             return
+
+        message_count += 1
+        message_processed = False
 
         for op in commit.ops:
             try:
@@ -150,47 +171,116 @@ async def on_message_handler(message):
                     
                     if record and record.get('$type') == 'com.bibliome.bookshelf':
                         store_bookshelf_from_network(record, commit.repo, f"at://{commit.repo}/{op.path}")
+                        bookshelf_count += 1
+                        message_processed = True
+                        log_process_event(PROCESS_NAME, f"Processed bookshelf: {record.get('name')}", "INFO", "activity")
                     
                     elif record and record.get('$type') == 'com.bibliome.book':
                         store_book_from_network(record, commit.repo, f"at://{commit.repo}/{op.path}")
+                        book_count += 1
+                        message_processed = True
+                        log_process_event(PROCESS_NAME, f"Processed book: {record.get('title')}", "INFO", "activity")
                         
             except Exception as e:
+                error_count += 1
                 logger.error(f"Error processing operation {op.action} for {commit.repo}: {e}")
+                log_process_event(PROCESS_NAME, f"Error processing operation: {e}", "ERROR", "error")
                 continue  # Continue processing other operations
+        
+        # Send heartbeat every 100 messages or when we process relevant records
+        if message_count % 100 == 0 or message_processed:
+            activity_info = {
+                "messages_processed": message_count,
+                "bookshelves_found": bookshelf_count,
+                "books_found": book_count,
+                "errors_count": error_count
+            }
+            process_heartbeat(PROCESS_NAME, activity_info)
+            
+            if message_count % 100 == 0:
+                log_process_event(PROCESS_NAME, f"Processed {message_count} messages total", "INFO", "activity")
                 
     except Exception as e:
+        error_count += 1
         logger.error(f"Error handling firehose message: {e}", exc_info=True)
+        log_process_event(PROCESS_NAME, f"Critical error in message handler: {e}", "ERROR", "error")
+
+def setup_signal_handlers():
+    """Setup signal handlers for graceful shutdown."""
+    def signal_handler(signum, frame):
+        logger.info(f"Received signal {signum}, shutting down gracefully...")
+        update_process_status(PROCESS_NAME, "stopped")
+        log_process_event(PROCESS_NAME, "Process shutdown via signal", "INFO", "stop")
+        sys.exit(0)
+    
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
 
 async def main():
     """Main firehose monitoring loop with reconnection logic."""
+    global message_count, bookshelf_count, book_count, error_count
+    
+    # Setup signal handlers
+    setup_signal_handlers()
+    
+    # Update process status to starting
+    update_process_status(PROCESS_NAME, "starting", pid=os.getpid())
+    log_process_event(PROCESS_NAME, "Firehose ingester starting", "INFO", "start")
+    
     logger.info("Starting AT-Proto firehose monitoring for Bibliome records...")
     
     max_retries = 5
     retry_delay = 5  # seconds
     
+    # Update status to running
+    update_process_status(PROCESS_NAME, "running", pid=os.getpid())
+    
     for attempt in range(max_retries):
         try:
             logger.info(f"Connecting to firehose (attempt {attempt + 1}/{max_retries})...")
+            log_process_event(PROCESS_NAME, f"Connecting to firehose (attempt {attempt + 1}/{max_retries})", "INFO", "activity")
+            
             firehose = FirehoseSubscribeReposClient()
+            
+            # Reset counters on new connection
+            message_count = 0
+            bookshelf_count = 0
+            book_count = 0
+            error_count = 0
+            
+            log_process_event(PROCESS_NAME, "Connected to AT-Proto firehose", "INFO", "activity")
             await firehose.start(on_message_handler)
             
         except KeyboardInterrupt:
             logger.info("Firehose monitoring stopped by user")
+            update_process_status(PROCESS_NAME, "stopped")
+            log_process_event(PROCESS_NAME, "Process stopped by user", "INFO", "stop")
             break
             
         except Exception as e:
+            error_count += 1
             logger.error(f"Firehose connection failed (attempt {attempt + 1}): {e}")
+            log_process_event(PROCESS_NAME, f"Connection failed: {e}", "ERROR", "error")
             
             if attempt < max_retries - 1:
                 logger.info(f"Retrying in {retry_delay} seconds...")
+                log_process_event(PROCESS_NAME, f"Retrying in {retry_delay} seconds", "INFO", "activity")
                 await asyncio.sleep(retry_delay)
                 retry_delay *= 2  # Exponential backoff
             else:
                 logger.error("Max retries reached. Firehose monitoring stopped.")
+                log_process_event(PROCESS_NAME, "Max retries reached, stopping", "ERROR", "error")
+                update_process_status(PROCESS_NAME, "failed", error_message="Max retries reached")
                 break
+    
+    # Final status update
+    update_process_status(PROCESS_NAME, "stopped")
+    log_process_event(PROCESS_NAME, "Firehose monitoring terminated", "INFO", "stop")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Firehose monitoring terminated")
+        update_process_status(PROCESS_NAME, "stopped")
+        log_process_event(PROCESS_NAME, "Process terminated by interrupt", "INFO", "stop")
