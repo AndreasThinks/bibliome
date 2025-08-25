@@ -1463,6 +1463,26 @@ def format_shelf_creation_date(dt):
     except:
         return "Unknown"
 
+def format_shelf_creation_date(dt):
+    """Format shelf creation date for display in shelf header."""
+    if not dt:
+        return "Unknown"
+    
+    try:
+        if isinstance(dt, str):
+            # Handle ISO format strings
+            creation_date = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+        else:
+            creation_date = dt
+        
+        # Remove timezone info for consistent formatting
+        if creation_date.tzinfo is not None:
+            creation_date = creation_date.replace(tzinfo=None)
+        
+        return creation_date.strftime("%B %d, %Y")
+    except:
+        return "Unknown"
+
 def UnifiedExploreHero(auth=None):
     """Unified hero section that adapts based on authentication status."""
     if auth:
