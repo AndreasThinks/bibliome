@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 from auth import BlueskyAuth, get_current_user_did, auth_beforeware, is_admin, require_admin
 from bluesky_automation import trigger_automation
 from admin_operations import get_database_path, backup_database, upload_database
+from process_monitor import init_process_monitoring, get_process_monitor
 
 load_dotenv()
 
@@ -46,6 +47,9 @@ logging.getLogger('watchfiles.main').setLevel(logging.WARNING)
 
 # Initialize database with fastmigrate
 db_tables = setup_database()
+
+# Initialize process monitoring
+process_monitor = init_process_monitoring(db_tables)
 
 # Initialize external services
 bluesky_auth = BlueskyAuth()
@@ -169,11 +173,80 @@ def admin_page(auth):
         "total_books": total_books
     }
     
+    # Get process monitoring data
+    monitor = get_process_monitor(db_tables)
+    all_processes = monitor.get_all_processes()
+    
+    # Build process status summary
+    process_summary_cards = []
+    for name, process_info in all_processes.items():
+        status_color = {
+            "running": "#28a745",
+            "stopped": "#6c757d", 
+            "starting": "#ffc107",
+            "failed": "#dc3545"
+        }.get(process_info.status.value, "#6c757d")
+        
+        # Last heartbeat age
+        heartbeat_display = "Never"
+        heartbeat_color = "#dc3545"
+        if process_info.last_heartbeat:
+            try:
+                # Handle both datetime objects and string representations
+                if isinstance(process_info.last_heartbeat, str):
+                    last_heartbeat = datetime.fromisoformat(process_info.last_heartbeat.replace('Z', '+00:00'))
+                else:
+                    last_heartbeat = process_info.last_heartbeat
+                
+                heartbeat_age = datetime.now() - last_heartbeat
+                
+                if heartbeat_age.total_seconds() < 300:  # 5 minutes
+                    heartbeat_display = "< 5m ago"
+                    heartbeat_color = "#28a745"
+                elif heartbeat_age.total_seconds() < 1800:  # 30 minutes
+                    heartbeat_display = f"{int(heartbeat_age.total_seconds() / 60)}m ago"
+                    heartbeat_color = "#ffc107"
+                else:
+                    heartbeat_display = f"{int(heartbeat_age.total_seconds() / 3600)}h ago"
+                    heartbeat_color = "#dc3545"
+            except (ValueError, TypeError) as e:
+                heartbeat_display = "Invalid"
+                heartbeat_color = "#dc3545"
+        
+        process_summary_cards.append(
+            Div(
+                Div(
+                    H4(name.replace('_', ' ').title(), style="margin: 0 0 0.5rem 0;"),
+                    P(f"Status: ", Span(process_info.status.value.title(), style=f"color: {status_color}; font-weight: bold;")),
+                    P(f"PID: {process_info.pid or 'N/A'}"),
+                    P(f"Heartbeat: ", Span(heartbeat_display, style=f"color: {heartbeat_color}; font-weight: bold;")),
+                    process_info.error_message and P(f"Error: {process_info.error_message}", style="color: #dc3545; font-size: 0.85rem;") or "",
+                ),
+                cls="admin-process-card",
+                style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem; background: #f8f9fa;"
+            )
+        )
+    
+    # Process monitoring section
+    process_section = Section(
+        H2("Background Processes"),
+        P("Monitor the health of background services for firehose ingestion and Bluesky automation."),
+        Div(
+            *process_summary_cards,
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin: 1rem 0;"
+        ),
+        Div(
+            A("Full Process Monitor", href="/admin/processes", cls="btn btn-primary"),
+            style="text-align: center; margin-top: 1rem;"
+        ),
+        style="margin: 2rem 0; padding: 1.5rem; border: 1px solid #dee2e6; border-radius: 0.5rem; background: #ffffff;"
+    )
+    
     return (
         Title("Admin Dashboard - Bibliome"),
         Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
         NavBar(auth),
-        Container(AdminDashboard(stats), AdminDatabaseSection()),
+        Container(AdminDashboard(stats), process_section, AdminDatabaseSection()),
         UniversalFooter()
     )
 
@@ -246,6 +319,119 @@ def download_backup_file(auth, backup_file: str):
         return "File not found."
     
     return FileResponse(backup_path, media_type='application/octet-stream', filename=backup_file)
+
+# Process monitoring admin routes
+@rt("/admin/processes")
+def admin_processes_page(auth):
+    """Admin page for process monitoring."""
+    if not is_admin(auth):
+        return RedirectResponse('/', status_code=303)
+    
+    monitor = get_process_monitor(db_tables)
+    all_processes = monitor.get_all_processes()
+    
+    # Process status cards
+    process_cards = []
+    for name, process_info in all_processes.items():
+        status_color = {
+            "running": "#28a745",
+            "stopped": "#6c757d", 
+            "starting": "#ffc107",
+            "failed": "#dc3545"
+        }.get(process_info.status.value, "#6c757d")
+        
+        # Calculate uptime if running and started_at exists
+        uptime_display = "N/A"
+        if process_info.started_at is not None and process_info.status.value == "running":
+            try:
+                # Handle both datetime objects and string representations
+                if isinstance(process_info.started_at, str):
+                    from datetime import datetime
+                    started_at = datetime.fromisoformat(process_info.started_at.replace('Z', '+00:00'))
+                else:
+                    started_at = process_info.started_at
+                
+                uptime = datetime.now() - started_at
+                hours, remainder = divmod(int(uptime.total_seconds()), 3600)
+                minutes, _ = divmod(remainder, 60)
+                uptime_display = f"{hours}h {minutes}m"
+            except (ValueError, TypeError) as e:
+                uptime_display = "N/A"
+        
+        # Last heartbeat age
+        heartbeat_display = "Never"
+        heartbeat_color = "#dc3545"
+        if process_info.last_heartbeat:
+            try:
+                # Handle both datetime objects and string representations
+                if isinstance(process_info.last_heartbeat, str):
+                    last_heartbeat = datetime.fromisoformat(process_info.last_heartbeat.replace('Z', '+00:00'))
+                else:
+                    last_heartbeat = process_info.last_heartbeat
+                
+                heartbeat_age = datetime.now() - last_heartbeat
+                
+                if heartbeat_age.total_seconds() < 300:  # 5 minutes
+                    heartbeat_display = "< 5m ago"
+                    heartbeat_color = "#28a745"
+                elif heartbeat_age.total_seconds() < 1800:  # 30 minutes
+                    heartbeat_display = f"{int(heartbeat_age.total_seconds() / 60)}m ago"
+                    heartbeat_color = "#ffc107"
+                else:
+                    heartbeat_display = f"{int(heartbeat_age.total_seconds() / 3600)}h ago"
+                    heartbeat_color = "#dc3545"
+            except (ValueError, TypeError) as e:
+                heartbeat_display = "Invalid"
+                heartbeat_color = "#dc3545"
+        
+        process_cards.append(
+            Div(
+                H3(name.replace('_', ' ').title()),
+                P(f"Type: {process_info.process_type}"),
+                P(f"Status: ", Span(process_info.status.value.title(), style=f"color: {status_color}; font-weight: bold;")),
+                P(f"PID: {process_info.pid or 'N/A'}"),
+                P(f"Uptime: {uptime_display}"),
+                P(f"Last Heartbeat: ", Span(heartbeat_display, style=f"color: {heartbeat_color}; font-weight: bold;")),
+                P(f"Restart Count: {process_info.restart_count}"),
+                process_info.error_message and P(f"Error: {process_info.error_message}", style="color: #dc3545;") or "",
+                cls="card",
+                style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;"
+            )
+        )
+    
+    content = [
+        H1("Process Monitoring"),
+        P("Monitor the health and status of background processes."),
+        Div(*process_cards),
+        Div(
+            H2("Quick Actions"),
+            Div(
+                Button("Refresh Status", 
+                       hx_get="/admin/processes/refresh",
+                       hx_target="body",
+                       hx_swap="outerHTML",
+                       cls="btn btn-primary"),
+                style="margin: 1rem 0;"
+            )
+        )
+    ]
+    
+    return (
+        Title("Process Monitoring - Admin - Bibliome"),
+        Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
+        NavBar(auth),
+        Container(*content),
+        UniversalFooter()
+    )
+
+
+@rt("/admin/processes/refresh")
+def admin_processes_refresh(auth):
+    """HTMX endpoint to refresh process status."""
+    if not is_admin(auth):
+        return RedirectResponse('/', status_code=303)
+    
+    return RedirectResponse('/admin/processes', status_code=303)
 
 # Authentication routes
 @app.get("/auth/login")
@@ -2532,4 +2718,93 @@ Reply directly to this email to respond to {name} at {email}.""",
         logger.error(f"Error sending contact email via SMTP2GO: {e}", exc_info=True)
         return ContactFormError("There was an error sending your message. Please try again later.")
 
-serve()
+# Entry point integration for background services
+if __name__ == "__main__":
+    import os
+    import sys
+    import time
+    import signal
+    import threading
+    from service_manager import ServiceManager
+
+    # Global service manager instance
+    service_manager = None
+
+    def start_background_services():
+        """Start background services in a separate thread."""
+        global service_manager
+        
+        try:
+            logger.info("Starting background services...")
+            service_manager = ServiceManager(setup_signals=False)
+            
+            # Start services
+            service_manager.start_all_services()
+            
+            # Give services a moment to start
+            time.sleep(3)
+            
+            # Print initial status
+            service_manager.print_status()
+            
+            logger.info("Background services started successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to start background services: {e}")
+
+    def setup_signal_handlers():
+        """Setup signal handlers for graceful shutdown."""
+        def signal_handler(signum, frame):
+            logger.info(f"Received signal {signum}, shutting down...")
+            
+            if service_manager:
+                logger.info("Stopping background services...")
+                service_manager.stop_all_services()
+            
+            logger.info("Bibliome application shutdown complete")
+            sys.exit(0)
+        
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+    print("=" * 60)
+    print("Starting Bibliome Application Suite")
+    print("=" * 60)
+    
+    # Setup signal handlers for graceful shutdown
+    setup_signal_handlers()
+    
+    # Check if we should skip background services (useful for development)
+    skip_services = os.getenv('BIBLIOME_SKIP_SERVICES', 'false').lower() == 'true'
+    
+    if not skip_services:
+        print("🔄 Starting background services...")
+        # Start background services in a separate thread
+        services_thread = threading.Thread(target=start_background_services, daemon=True)
+        services_thread.start()
+        
+        # Give services time to start
+        time.sleep(5)
+    else:
+        print("⏭️ Skipping background services (BIBLIOME_SKIP_SERVICES=true)")
+    
+    print("🌐 Starting web application...")
+    print("📊 Admin dashboard: http://localhost:5001/admin")
+    print("🔍 Process monitoring: http://localhost:5001/admin/processes")
+    print("=" * 60)
+    
+    try:
+        serve()
+    except KeyboardInterrupt:
+        print("\n🛑 Application interrupted by user")
+        if service_manager:
+            print("🔄 Stopping background services...")
+            service_manager.stop_all_services()
+    except Exception as e:
+        logger.error(f"Application error: {e}")
+        if service_manager:
+            service_manager.stop_all_services()
+        raise
+else:
+    # When imported as a module, just call serve normally
+    serve()
