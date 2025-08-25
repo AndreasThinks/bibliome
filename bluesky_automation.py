@@ -3,15 +3,25 @@
 import os
 import random
 import time
+import asyncio
+import signal
+import sys
 from datetime import datetime, timedelta
 from atproto import Client as AtprotoClient
 import logging
 from dotenv import load_dotenv
+from process_monitor import (
+    log_process_event, record_process_metric, process_heartbeat, 
+    update_process_status, get_process_monitor
+)
 
 load_dotenv()
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+# Process name for monitoring
+PROCESS_NAME = "bluesky_automation"
 
 class BlueskyAutomator:
     """Handles automated posting to a dedicated Bluesky account."""
@@ -111,13 +121,16 @@ class BlueskyAutomator:
     def post_to_bluesky(self, event_type: str, context: dict):
         """Posts a message to Bluesky if not rate-limited."""
         if not self.is_enabled:
+            log_process_event(PROCESS_NAME, "Automation disabled - skipping post", "INFO", "activity")
             return
 
         if not self.client:
             if not self._login():
+                log_process_event(PROCESS_NAME, "Failed to login - cannot post", "ERROR", "error")
                 return
 
         if self._is_rate_limited():
+            log_process_event(PROCESS_NAME, f"Rate limited - {len(self._post_timestamps)} posts in last hour", "WARNING", "activity")
             return
 
         try:
@@ -133,14 +146,105 @@ class BlueskyAutomator:
             
             self._post_timestamps.append(datetime.now())
             logger.info(f"Successfully posted to Bluesky: {message}")
+            
+            # Log successful post and metrics
+            log_process_event(PROCESS_NAME, f"Posted to Bluesky: {event_type}", "INFO", "activity", {
+                "event_type": event_type,
+                "message_length": len(message),
+                "shelf_name": context.get('shelf_name', ''),
+                "book_count": context.get('book_count', 0)
+            })
+            record_process_metric(PROCESS_NAME, "posts_sent", 1)
+            
+            # Send heartbeat with activity info
+            process_heartbeat(PROCESS_NAME, {"posts_sent": len(self._post_timestamps)})
+            
         except Exception as e:
             logger.error(f"Failed to post to Bluesky: {e}", exc_info=True)
+            log_process_event(PROCESS_NAME, f"Failed to post to Bluesky: {e}", "ERROR", "error")
+            record_process_metric(PROCESS_NAME, "post_failures", 1)
 
-# Singleton instance
+class BlueskyService:
+    """Background service for Bluesky automation monitoring."""
+    
+    def __init__(self):
+        self.automator = BlueskyAutomator()
+        self.running = False
+        
+    def setup_signal_handlers(self):
+        """Setup signal handlers for graceful shutdown."""
+        def signal_handler(signum, frame):
+            logger.info(f"Received signal {signum}, shutting down Bluesky service...")
+            update_process_status(PROCESS_NAME, "stopped")
+            log_process_event(PROCESS_NAME, "Service shutdown via signal", "INFO", "stop")
+            self.running = False
+            sys.exit(0)
+        
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+    
+    async def run_service(self):
+        """Run the background service."""
+        self.setup_signal_handlers()
+        
+        # Update process status to starting
+        update_process_status(PROCESS_NAME, "starting", pid=os.getpid())
+        log_process_event(PROCESS_NAME, "Bluesky automation service starting", "INFO", "start")
+        
+        # Update status to running
+        update_process_status(PROCESS_NAME, "running", pid=os.getpid())
+        self.running = True
+        
+        heartbeat_interval = 300  # 5 minutes
+        last_heartbeat = datetime.now()
+        
+        try:
+            while self.running:
+                current_time = datetime.now()
+                
+                # Send periodic heartbeat
+                if (current_time - last_heartbeat).total_seconds() >= heartbeat_interval:
+                    activity_info = {
+                        "posts_sent_last_hour": len([ts for ts in self.automator._post_timestamps 
+                                                   if (current_time - ts).total_seconds() < 3600]),
+                        "total_posts_session": len(self.automator._post_timestamps),
+                        "automation_enabled": self.automator.is_enabled,
+                        "rate_limited": self.automator._is_rate_limited()
+                    }
+                    process_heartbeat(PROCESS_NAME, activity_info)
+                    log_process_event(PROCESS_NAME, "Periodic heartbeat", "DEBUG", "heartbeat")
+                    last_heartbeat = current_time
+                
+                # Sleep for 30 seconds before next check
+                await asyncio.sleep(30)
+                
+        except Exception as e:
+            logger.error(f"Error in Bluesky service loop: {e}", exc_info=True)
+            log_process_event(PROCESS_NAME, f"Service error: {e}", "ERROR", "error")
+            update_process_status(PROCESS_NAME, "failed", error_message=str(e))
+        finally:
+            update_process_status(PROCESS_NAME, "stopped")
+            log_process_event(PROCESS_NAME, "Bluesky service stopped", "INFO", "stop")
+
+# Singleton instances
 automator = BlueskyAutomator()
+service = BlueskyService()
 
 def trigger_automation(event_type: str, context: dict):
     """Entry point for triggering an automation event."""
     if automator.is_enabled:
         # In a more complex system, this could be a background task
         automator.post_to_bluesky(event_type, context)
+
+async def run_background_service():
+    """Run the Bluesky automation as a background service."""
+    await service.run_service()
+
+if __name__ == "__main__":
+    """Run as background service when executed directly."""
+    try:
+        asyncio.run(run_background_service())
+    except KeyboardInterrupt:
+        logger.info("Bluesky automation service terminated")
+        update_process_status(PROCESS_NAME, "stopped")
+        log_process_event(PROCESS_NAME, "Service terminated by interrupt", "INFO", "stop")

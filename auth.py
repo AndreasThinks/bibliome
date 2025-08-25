@@ -322,8 +322,6 @@ def is_admin(auth) -> bool:
     
     admin_usernames = os.getenv('ADMIN_USERNAMES', '').split(',')
 
-    print(f"Checking admin status for user: {auth.get('handle')}, Admins: {admin_usernames}")
-    print(auth.get('handle') in admin_usernames)
     return auth.get('handle') in admin_usernames
 
 def require_admin(f):
