@@ -94,14 +94,36 @@ class ProcessMonitor:
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass
                 
+                # Convert string datetime fields back to datetime objects
+                started_at = None
+                if process_row['started_at']:
+                    if isinstance(process_row['started_at'], str):
+                        started_at = datetime.fromisoformat(process_row['started_at'].replace('Z', '+00:00'))
+                    else:
+                        started_at = process_row['started_at']
+                
+                last_heartbeat = None
+                if process_row['last_heartbeat']:
+                    if isinstance(process_row['last_heartbeat'], str):
+                        last_heartbeat = datetime.fromisoformat(process_row['last_heartbeat'].replace('Z', '+00:00'))
+                    else:
+                        last_heartbeat = process_row['last_heartbeat']
+                
+                last_activity = None
+                if process_row['last_activity']:
+                    if isinstance(process_row['last_activity'], str):
+                        last_activity = datetime.fromisoformat(process_row['last_activity'].replace('Z', '+00:00'))
+                    else:
+                        last_activity = process_row['last_activity']
+                
                 self._processes[process_row['process_name']] = ProcessInfo(
                     name=process_row['process_name'],
                     process_type=process_row['process_type'],
                     status=actual_status,
                     pid=process_row['pid'] if actual_status == ProcessStatus.RUNNING else None,
-                    started_at=process_row['started_at'],
-                    last_heartbeat=process_row['last_heartbeat'],
-                    last_activity=process_row['last_activity'],
+                    started_at=started_at,
+                    last_heartbeat=last_heartbeat,
+                    last_activity=last_activity,
                     restart_count=process_row['restart_count'] or 0,
                     error_message=process_row['error_message'],
                     config_data=config_data
