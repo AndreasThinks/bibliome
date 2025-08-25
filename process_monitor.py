@@ -60,6 +60,18 @@ class ProcessMonitor:
         # Load existing process status from database
         self._load_process_status()
     
+    def _parse_datetime_field(self, value: Any) -> Optional[datetime]:
+        """Parse a datetime field from database, handling both string and datetime inputs."""
+        if not value:
+            return None
+        
+        if isinstance(value, str):
+            # Handle ISO format strings with optional timezone info
+            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+        else:
+            # Already a datetime object
+            return value
+    
     def _load_process_status(self):
         """Load process status from database on startup."""
         if not self.db_tables:
@@ -94,27 +106,10 @@ class ProcessMonitor:
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass
                 
-                # Convert string datetime fields back to datetime objects
-                started_at = None
-                if process_row['started_at']:
-                    if isinstance(process_row['started_at'], str):
-                        started_at = datetime.fromisoformat(process_row['started_at'].replace('Z', '+00:00'))
-                    else:
-                        started_at = process_row['started_at']
-                
-                last_heartbeat = None
-                if process_row['last_heartbeat']:
-                    if isinstance(process_row['last_heartbeat'], str):
-                        last_heartbeat = datetime.fromisoformat(process_row['last_heartbeat'].replace('Z', '+00:00'))
-                    else:
-                        last_heartbeat = process_row['last_heartbeat']
-                
-                last_activity = None
-                if process_row['last_activity']:
-                    if isinstance(process_row['last_activity'], str):
-                        last_activity = datetime.fromisoformat(process_row['last_activity'].replace('Z', '+00:00'))
-                    else:
-                        last_activity = process_row['last_activity']
+                # Convert string datetime fields back to datetime objects using helper function
+                started_at = self._parse_datetime_field(process_row['started_at'])
+                last_heartbeat = self._parse_datetime_field(process_row['last_heartbeat'])
+                last_activity = self._parse_datetime_field(process_row['last_activity'])
                 
                 self._processes[process_row['process_name']] = ProcessInfo(
                     name=process_row['process_name'],
