@@ -5,6 +5,7 @@ from typing import Optional, List, Dict, Any
 import os
 import logging
 from dotenv import load_dotenv
+from fastcore.xtras import flexicache, time_policy
 
 load_dotenv()
 
@@ -19,8 +20,11 @@ class BookAPIClient:
         self.open_library_url = "https://openlibrary.org/api/books"
         self.google_api_key = os.getenv('GOOGLE_BOOKS_API_KEY')
     
+    @flexicache(time_policy(3600), maxsize=200)  # 1 hour cache, 200 unique searches
     async def search_books(self, query: str, max_results: int = 10) -> List[Dict[str, Any]]:
-        """Search for books using Google Books API with Open Library fallback."""
+        """Search for books using Google Books API with Open Library fallback. Results cached for 1 hour."""
+        logger.debug(f"Cache miss for book search: '{query}' (max_results: {max_results})")
+        
         # Try Google Books first
         google_results = await self._search_google_books(query, max_results)
         if google_results:
@@ -186,8 +190,10 @@ class BookAPIClient:
         
         return ''
     
+    @flexicache(time_policy(7200), maxsize=500)  # 2 hour cache, 500 ISBN lookups
     async def get_book_details(self, isbn: str) -> Optional[Dict[str, Any]]:
-        """Get detailed book information by ISBN."""
+        """Get detailed book information by ISBN. Results cached for 2 hours."""
+        logger.debug(f"Cache miss for ISBN lookup: {isbn}")
         if not isbn:
             return None
         

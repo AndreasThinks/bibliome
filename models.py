@@ -7,6 +7,7 @@ import secrets
 import string
 from fasthtml.common import *
 from fastcore.all import patch
+from fastcore.xtras import flexicache, time_policy
 from atproto import Client, models as at_models
 
 def create_bookshelf_record(client: Client, name: str, description: str, privacy: str) -> str:
@@ -464,8 +465,13 @@ def log_activity(user_did: str, activity_type: str, db_tables, bookshelf_id: int
     except Exception as e:
         print(f"Error logging activity: {e}")
 
+@flexicache(time_policy(600), maxsize=100)  # 10 minute cache, 100 different filter combinations
 def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 20, offset: int = 0, activity_type: str = "all", date_filter: str = "all"):
-    """Get recent activity from users in the current user's network with filtering, pagination, and data source tracking."""
+    """Get recent activity from users in the current user's network with filtering, pagination, and data source tracking. Results cached for 10 minutes."""
+    import logging
+    logger = logging.getLogger(__name__)
+    cache_key = f"{auth_data.get('did')}:{limit}:{offset}:{activity_type}:{date_filter}"
+    logger.debug(f"Cache miss for network activity: {cache_key}")
     try:
         # Get list of users the current user follows
         following_dids = bluesky_auth.get_following_list(auth_data, limit=100)
@@ -846,8 +852,12 @@ def get_recent_community_books(db_tables, limit: int = 15):
         print(f"Error fetching recent community books: {e}")
         return []
 
+@flexicache(time_policy(900), maxsize=200)  # 15 minute cache, 200 different shelves
 def calculate_shelf_activity_score(shelf_id: int, db_tables) -> float:
-    """Calculate an activity score for a bookshelf based on various metrics."""
+    """Calculate an activity score for a bookshelf based on various metrics. Results cached for 15 minutes."""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Cache miss for shelf activity score: {shelf_id}")
     try:
         from datetime import datetime, timedelta
         

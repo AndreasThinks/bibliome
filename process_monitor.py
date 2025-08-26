@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
+from fastcore.xtras import flexicache, time_policy
 
 class ProcessStatus(Enum):
     STOPPED = "stopped"
@@ -316,25 +317,16 @@ class ProcessMonitor:
         with self._lock:
             return self._processes.get(name)
     
+    @flexicache(time_policy(45), maxsize=1)  # 45 second cache, single instance
     def get_all_processes(self) -> Dict[str, ProcessInfo]:
-        """Get status of all monitored processes with caching for performance."""
-        current_time = datetime.now()
+        """Get status of all monitored processes with caching for performance. Results cached for 45 seconds."""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug("Cache miss for process monitor data")
         
-        # Check if we have valid cached data
-        if (self._cached_processes is not None and 
-            self._cache_timestamp is not None and 
-            (current_time - self._cache_timestamp) < self._cache_ttl):
-            return self._cached_processes.copy()
-        
-        # Cache miss - generate fresh data
+        # Generate fresh data
         with self._lock:
-            fresh_processes = self._processes.copy()
-            
-            # Update cache
-            self._cached_processes = fresh_processes
-            self._cache_timestamp = current_time
-            
-            return fresh_processes.copy()
+            return self._processes.copy()
     
     def is_process_healthy(self, name: str, max_heartbeat_age: timedelta = timedelta(minutes=5)) -> bool:
         """Check if a process is considered healthy based on recent heartbeat."""
