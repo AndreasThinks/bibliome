@@ -50,29 +50,49 @@ def save_cursor(seq: int):
 
 def ensure_user_exists(repo_did: str):
     """Ensure user exists in database, create placeholder if needed."""
+    from models import ensure_user_exists as model_ensure_user_exists
+    return model_ensure_user_exists(repo_did, db_tables, data_source='network')
+
+def add_to_profile_tracking(repo_did: str):
+    """Add discovered profile to tracking system for historical scanning."""
     try:
-        existing_user = db_tables['users'].get(repo_did)
-        if existing_user:
-            return existing_user
-    except:
-        pass
-    
-    # Create placeholder user - will be updated when they log in
-    try:
-        user_data = {
-            'did': repo_did,
-            'handle': f"user-{repo_did[-8:]}", # Use last 8 chars of DID as temp handle
-            'display_name': f"User {repo_did[-8:]}",
-            'avatar_url': '',
-            'created_at': datetime.now(),
-            'last_login': datetime.now()
-        }
-        db_tables['users'].insert(user_data)
-        logger.info(f"Created placeholder user for DID: {repo_did}")
-        return user_data
+        # Check if already tracked
+        existing = list(db_tables['tracked_profiles'](f"did='{repo_did}'"))
+        if existing:
+            return
+        
+        # Add to tracking with network discovery source
+        from models import TrackedProfile
+        profile = TrackedProfile(
+            did=repo_did,
+            handle="",  # Will be populated when we scan
+            display_name="",
+            discovered_at=datetime.now(),
+            discovery_source="firehose",
+            last_scanned_at=None,
+            scan_priority=2,  # medium priority for firehose discoveries
+            is_active=True
+        )
+        
+        db_tables['tracked_profiles'].insert(profile)
+        
+        # Add to scan queue for historical discovery
+        from models import HistoricalScanQueue
+        scan_job = HistoricalScanQueue(
+            profile_did=repo_did,
+            collection_type="both",  # Scan both bookshelves and books
+            priority=2,  # medium priority
+            status="pending",
+            created_at=datetime.now(),
+            retry_count=0
+        )
+        
+        db_tables['historical_scan_queue'].insert(scan_job)
+        
+        logger.info(f"Added profile {repo_did} to historical tracking")
+        
     except Exception as e:
-        logger.error(f"Error creating placeholder user for {repo_did}: {e}")
-        return None
+        logger.debug(f"Could not add profile {repo_did} to tracking: {e}")
 
 def store_bookshelf_from_network(record: dict, repo_did: str, record_uri: str):
     """Stores a bookshelf discovered on the network."""
@@ -96,7 +116,8 @@ def store_bookshelf_from_network(record: dict, repo_did: str, record_uri: str):
             'atproto_uri': record_uri,
             'slug': f"net-{record_uri.split('/')[-1]}", # Create a unique slug
             'created_at': datetime.fromisoformat(record.get('createdAt', datetime.now().isoformat()).replace('Z', '+00:00')),
-            'updated_at': datetime.fromisoformat(record.get('createdAt', datetime.now().isoformat()).replace('Z', '+00:00'))
+            'updated_at': datetime.fromisoformat(record.get('createdAt', datetime.now().isoformat()).replace('Z', '+00:00')),
+            'data_source': 'network'
         }
         
         result = db_tables['bookshelves'].insert(shelf_data)
@@ -148,7 +169,8 @@ def store_book_from_network(record: dict, repo_did: str, record_uri: str):
             'isbn': record.get('isbn', ''),
             'added_by_did': repo_did,
             'atproto_uri': record_uri,
-            'added_at': datetime.fromisoformat(record.get('addedAt', datetime.now().isoformat()).replace('Z', '+00:00'))
+            'added_at': datetime.fromisoformat(record.get('addedAt', datetime.now().isoformat()).replace('Z', '+00:00')),
+            'data_source': 'network'
         }
         
         result = db_tables['books'].insert(book_data)
@@ -234,12 +256,14 @@ def on_message_handler(message):
 
                 if path_collection == "com.bibliome.bookshelf":
                     store_bookshelf_from_network(record, evt.repo, record_uri)
+                    add_to_profile_tracking(evt.repo)  # Track profile for historical scanning
                     bookshelf_count += 1
                     message_processed = True
                     log_process_event(PROCESS_NAME, f"Processed bookshelf: {record.get('name')}", "INFO", "activity", db_tables=db_tables)
 
                 elif path_collection == "com.bibliome.book":
                     store_book_from_network(record, evt.repo, record_uri)
+                    add_to_profile_tracking(evt.repo)  # Track profile for historical scanning
                     book_count += 1
                     message_processed = True
                     log_process_event(PROCESS_NAME, f"Processed book: {record.get('title')}", "INFO", "activity", db_tables=db_tables)

@@ -348,7 +348,8 @@ h1, h2, h3, h4, h5, h6 {
 .privacy-badge,
 .contribution-badge,
 .creator-badge,
-.creation-date-badge {
+.creation-date-badge,
+.data-source-badge {
     display: inline-flex;
     align-items: center;
     padding: 0.375rem 0.75rem;
@@ -360,6 +361,7 @@ h1, h2, h3, h4, h5, h6 {
     box-sizing: border-box;
     white-space: nowrap;
     transition: all 0.2s ease;
+    gap: 0.375rem;
 }
 
 .privacy-badge {
@@ -410,6 +412,97 @@ h1, h2, h3, h4, h5, h6 {
     background: linear-gradient(135deg, #117a8b 0%, #0f6674 100%);
     transform: translateY(-1px);
     box-shadow: 0 2px 6px rgba(23, 162, 184, 0.3);
+}
+
+/* Data Source Badge Variants */
+.data-source-badge.local {
+    background: linear-gradient(135deg, #e8f5e8 0%, #f0f8ff 100%);
+    color: #2d5016;
+    border: 1px solid #28a745;
+}
+
+.data-source-badge.local:hover {
+    background: linear-gradient(135deg, #d4edda 0%, #e8f5e8 100%);
+    border-color: #20c997;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(40, 167, 69, 0.2);
+}
+
+.data-source-badge.network {
+    background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+    color: #1565c0;
+    border: 1px solid #2196f3;
+}
+
+.data-source-badge.network:hover {
+    background: linear-gradient(135deg, #bbdefb 0%, #e1bee7 100%);
+    border-color: #1976d2;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(33, 150, 243, 0.2);
+}
+
+.data-source-badge.historical {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    color: #856404;
+    border: 1px solid #ffc107;
+}
+
+.data-source-badge.historical:hover {
+    background: linear-gradient(135deg, #ffeaa7 0%, #ffdd57 100%);
+    border-color: #e0a800;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(255, 193, 7, 0.2);
+}
+
+/* Data Source Badge Size Variants */
+.data-source-badge.small {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+    height: 24px;
+    gap: 0.25rem;
+}
+
+.data-source-badge.mini {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.65rem;
+    height: 20px;
+    gap: 0.2rem;
+}
+
+.data-source-badge .badge-text {
+    font-weight: 600;
+}
+
+/* Hide badge text on very small badges when space is limited */
+.data-source-badge.mini .badge-text {
+    display: none;
+}
+
+/* Title row layouts for data source badges */
+.book-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.book-title-row .book-title {
+    flex: 1;
+    margin: 0;
+}
+
+.shelf-preview-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.shelf-preview-title-row h3 {
+    flex: 1;
+    margin: 0;
 }
 
 /* Creator badge avatar */

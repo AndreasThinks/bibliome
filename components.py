@@ -5,6 +5,70 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 import os
 
+def DataSourceBadge(data_source: str, size: str = "normal"):
+    """Create a data source badge to indicate where data comes from."""
+    if not data_source:
+        data_source = 'local'
+    
+    badge_config = {
+        'local': {
+            'icon': '🏠',
+            'label': 'Local',
+            'tooltip': 'Created locally in Bibliome',
+            'class': 'data-source-badge local'
+        },
+        'network': {
+            'icon': '🌐', 
+            'label': 'Network',
+            'tooltip': 'Discovered via AT Protocol network activity',
+            'class': 'data-source-badge network'
+        },
+        'historical': {
+            'icon': '📜',
+            'label': 'Historical',
+            'tooltip': 'Retrieved from historical AT Protocol data',
+            'class': 'data-source-badge historical'
+        }
+    }
+    
+    config = badge_config.get(data_source, badge_config['local'])
+    
+    # Adjust classes based on size
+    classes = config['class']
+    if size == "small":
+        classes += ' small'
+    elif size == "mini":
+        classes += ' mini'
+    
+    return Span(
+        config['icon'],
+        Span(config['label'], cls="badge-text") if size != "mini" else None,
+        title=config['tooltip'],
+        cls=classes
+    )
+
+def ActivityDataSourceBadge(activity: Dict):
+    """Create a data source badge specifically for activity items."""
+    overall_source = activity.get('data_source', 'local')
+    activity_source = activity.get('activity_source', 'local')
+    bookshelf_source = activity.get('bookshelf_data_source', 'local')
+    book_source = activity.get('book_data_source', 'local')
+    
+    # Create a more detailed tooltip for activities
+    tooltip_parts = [f"Activity: {activity_source}"]
+    if activity.get('bookshelf_name'):
+        tooltip_parts.append(f"Bookshelf: {bookshelf_source}")
+    if activity.get('book_title'):
+        tooltip_parts.append(f"Book: {book_source}")
+    
+    detailed_tooltip = f"Data sources - {', '.join(tooltip_parts)}"
+    
+    badge = DataSourceBadge(overall_source, size="small")
+    # Override the tooltip with more detailed information
+    badge.attrs['title'] = detailed_tooltip
+    
+    return badge
+
 def AlphaBadge():
     """Alpha status badge component with mobile-friendly click functionality."""
     return Div(
@@ -123,6 +187,10 @@ def BookshelfCard(bookshelf, is_owner=False, can_edit=False):
     # Add "open to contributions" badge if applicable
     if getattr(bookshelf, 'self_join', False):
         badges.append(P("🤝 Open to contributions", cls="contribution-badge"))
+    
+    # Add data source badge
+    data_source = getattr(bookshelf, 'data_source', 'local')
+    badges.append(DataSourceBadge(data_source, size="small"))
     
     return A(
         href=f"/shelf/{bookshelf.slug}",
@@ -1264,6 +1332,8 @@ def CompactActivityCard(activity: Dict):
                     A(Strong(user_profile['display_name']), href=f"/user/{user_profile['handle']}", cls="compact-activity-user-link"),
                     " ",
                     content,
+                    " ",
+                    ActivityDataSourceBadge(activity),
                     cls="compact-activity-content"
                 ),
                 Span(time_ago, cls="compact-activity-time"),
@@ -1549,13 +1619,21 @@ def ShelfPreviewCard(shelf):
     if getattr(shelf, 'self_join', False):
         contribution_badge = Div("🤝 Open to contributions", cls="shelf-preview-contribution-badge")
 
+    # Add data source badge
+    data_source = getattr(shelf, 'data_source', 'local')
+    data_source_badge = DataSourceBadge(data_source, size="mini")
+
     return A(
         href=f"/shelf/{shelf.slug}",
         cls="shelf-preview-card"
     )(
         Card(
             cover_previews,
-            H3(shelf.name),
+            Div(
+                H3(shelf.name),
+                data_source_badge,
+                cls="shelf-preview-title-row"
+            ),
             P(shelf.description, cls="shelf-description") if shelf.description else None,
             footer=Div(
                 Div(

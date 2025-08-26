@@ -80,6 +80,7 @@ class User:
     avatar_url: str = ""
     created_at: datetime = None
     last_login: datetime = None
+    data_source: str = "local"  # 'local', 'network', 'historical'
 
 class Bookshelf:
     """Bookshelf model for organizing books."""
@@ -93,6 +94,7 @@ class Bookshelf:
     atproto_uri: str = "" # AT-Proto URI of the record
     created_at: datetime = None
     updated_at: datetime = None
+    data_source: str = "local"  # 'local', 'network', 'historical'
 
 class Book:
     """Book model with metadata from external APIs."""
@@ -109,6 +111,7 @@ class Book:
     page_count: int = 0
     atproto_uri: str = "" # AT-Proto URI of the record
     added_at: datetime = None
+    data_source: str = "local"  # 'local', 'network', 'historical'
 
 class Permission:
     """Permission model for role-based access to bookshelves."""
@@ -154,6 +157,31 @@ class Activity:
     # JSON field for additional metadata
     metadata: str = ""  # JSON string for flexible data
 
+class TrackedProfile:
+    """Track profiles discovered for historical scanning."""
+    did: str  # Primary key - AT Protocol DID
+    handle: str = ""
+    display_name: str = ""
+    discovered_at: datetime = None
+    discovery_source: str = ""  # 'user', 'follows', 'network'
+    last_scanned_at: datetime = None
+    scan_priority: int = 1  # 1=high, 2=medium, 3=low
+    is_active: bool = True
+    notes: str = ""
+
+class HistoricalScanQueue:
+    """Queue for historical scanning jobs."""
+    id: int = None  # Auto-incrementing primary key
+    profile_did: str
+    collection_type: str  # 'bookshelf', 'book', 'both'
+    priority: int = 1
+    status: str = "pending"  # 'pending', 'processing', 'completed', 'failed'
+    created_at: datetime = None
+    started_at: datetime = None
+    completed_at: datetime = None
+    error_message: str = ""
+    retry_count: int = 0
+
 # Global database instance to prevent multiple connections
 _db_instance = None
 
@@ -198,6 +226,10 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     upvotes = db.create(Upvote, pk=['book_id', 'user_did'], transform=True)
     activities = db.create(Activity, transform=True)
     
+    # Create historical tracking tables
+    tracked_profiles = db.create(TrackedProfile, pk='did', transform=True)
+    historical_scan_queue = db.create(HistoricalScanQueue, transform=True)
+    
     # Add process monitoring tables
     from fastlite import Table
     process_status = Table(db, 'process_status')
@@ -213,6 +245,8 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
         'bookshelf_invites': bookshelf_invites,
         'upvotes': upvotes,
         'activities': activities,
+        'tracked_profiles': tracked_profiles,
+        'historical_scan_queue': historical_scan_queue,
         'process_status': process_status,
         'process_logs': process_logs,
         'process_metrics': process_metrics
@@ -431,7 +465,7 @@ def log_activity(user_did: str, activity_type: str, db_tables, bookshelf_id: int
         print(f"Error logging activity: {e}")
 
 def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 20, offset: int = 0, activity_type: str = "all", date_filter: str = "all"):
-    """Get recent activity from users in the current user's network with filtering and pagination."""
+    """Get recent activity from users in the current user's network with filtering, pagination, and data source tracking."""
     try:
         # Get list of users the current user follows
         following_dids = bluesky_auth.get_following_list(auth_data, limit=100)
@@ -441,11 +475,13 @@ def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 
         
         current_user_did = auth_data.get('did')
         
-        # Build query to get activities from followed users with permission-aware privacy filtering
+        # Enhanced query to include data source information from bookshelves and books
         placeholders = ','.join(['?' for _ in following_dids])
         query = f"""
             SELECT a.*, b.name as bookshelf_name, b.slug as bookshelf_slug, b.privacy,
-                   bk.title as book_title, bk.author as book_author, bk.cover_url as book_cover_url
+                   b.data_source as bookshelf_data_source,
+                   bk.title as book_title, bk.author as book_author, bk.cover_url as book_cover_url,
+                   bk.data_source as book_data_source
             FROM activity a
             LEFT JOIN bookshelf b ON a.bookshelf_id = b.id
             LEFT JOIN book bk ON a.book_id = bk.id
@@ -486,9 +522,35 @@ def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 
         activity_user_dids = list(set([row[1] for row in raw_activities]))
         profiles = bluesky_auth.get_profiles_batch(activity_user_dids, auth_data)
         
-        # Format activities with user profiles
+        # Format activities with user profiles and enhanced data source information
         activities = []
         for row in raw_activities:
+            # Parse metadata to determine activity source
+            import json
+            activity_source = 'local'  # default
+            metadata_str = row[6] or '{}'
+            try:
+                metadata = json.loads(metadata_str)
+                if 'source' in metadata:
+                    if metadata['source'] == 'network_firehose':
+                        activity_source = 'network'
+                    elif metadata['source'] == 'historical_scanner':
+                        activity_source = 'historical'
+            except (json.JSONDecodeError, TypeError):
+                pass
+            
+            # Determine overall data source based on activity source and related records
+            bookshelf_data_source = row[10] if len(row) > 10 else 'local'
+            book_data_source = row[14] if len(row) > 14 else 'local'
+            
+            # Priority: historical > network > local
+            overall_data_source = activity_source
+            if bookshelf_data_source == 'historical' or book_data_source == 'historical':
+                overall_data_source = 'historical'
+            elif bookshelf_data_source == 'network' or book_data_source == 'network':
+                if overall_data_source != 'historical':
+                    overall_data_source = 'network'
+            
             activity_data = {
                 'id': row[0],
                 'user_did': row[1],
@@ -500,9 +562,13 @@ def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 
                 'bookshelf_name': row[7],
                 'bookshelf_slug': row[8],
                 'bookshelf_privacy': row[9],
-                'book_title': row[10],
-                'book_author': row[11],
-                'book_cover_url': row[12],
+                'bookshelf_data_source': bookshelf_data_source,
+                'book_title': row[11] if len(row) > 11 else None,
+                'book_author': row[12] if len(row) > 12 else None,
+                'book_cover_url': row[13] if len(row) > 13 else None,
+                'book_data_source': book_data_source,
+                'activity_source': activity_source,
+                'data_source': overall_data_source,
                 'user_profile': profiles.get(row[1], {
                     'handle': 'unknown',
                     'display_name': 'Unknown User',
@@ -1266,7 +1332,12 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
     
     # Book info section
     book_info_children = [
-        H4(self.title, cls="book-title"),
+        Div(
+            H4(self.title, cls="book-title"),
+            # Import and add data source badge
+            eval("DataSourceBadge(getattr(self, 'data_source', 'local'), size='mini')") if hasattr(__import__('components'), 'DataSourceBadge') else None,
+            cls="book-title-row"
+        ),
     ]
     
     if self.author:
@@ -1477,3 +1548,142 @@ def __ft__(self: User):
         Strong(self.display_name or self.handle),
         cls="user-profile"
     )
+
+def ensure_user_exists(repo_did: str, db_tables, data_source: str = 'network'):
+    """Ensure user exists in database, create placeholder if needed."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        existing_user = db_tables['users'].get(repo_did)
+        if existing_user:
+            return existing_user
+    except:
+        pass
+    
+    # Create placeholder user - will be updated when they log in
+    try:
+        user_data = {
+            'did': repo_did,
+            'handle': f"user-{repo_did[-8:]}", # Use last 8 chars of DID as temp handle
+            'display_name': f"User {repo_did[-8:]}",
+            'avatar_url': '',
+            'created_at': datetime.now(),
+            'last_login': datetime.now(),
+            'data_source': data_source
+        }
+        db_tables['users'].insert(user_data)
+        logger.info(f"Created placeholder user for DID: {repo_did}")
+        return user_data
+    except Exception as e:
+        logger.error(f"Error creating placeholder user for {repo_did}: {e}")
+        return None
+
+def store_bookshelf_from_network(record: dict, repo_did: str, record_uri: str, data_source: str = 'network'):
+    """Stores a bookshelf discovered on the network with data source tracking."""
+    import logging
+    import json
+    logger = logging.getLogger(__name__)
+    
+    try:
+        db_tables = get_database()
+        logger.info(f"Discovered new bookshelf from {repo_did}: {record.get('name')} (source: {data_source})")
+        
+        # Avoid duplicates by atproto_uri
+        existing = list(db_tables['bookshelves'](f"atproto_uri='{record_uri}'"))
+        if existing:
+            logger.debug(f"Bookshelf already exists: {record_uri}")
+            return
+
+        # Ensure user exists
+        ensure_user_exists(repo_did, db_tables, data_source=data_source)
+
+        shelf_data = {
+            'name': record.get('name', 'Untitled Bookshelf'),
+            'description': record.get('description', ''),
+            'privacy': record.get('privacy', 'public'),
+            'owner_did': repo_did,
+            'atproto_uri': record_uri,
+            'slug': f"net-{record_uri.split('/')[-1]}",  # Create a unique slug
+            'data_source': data_source,  # Track the source
+            'created_at': datetime.fromisoformat(record.get('createdAt', datetime.now().isoformat()).replace('Z', '+00:00')),
+            'updated_at': datetime.fromisoformat(record.get('createdAt', datetime.now().isoformat()).replace('Z', '+00:00'))
+        }
+        
+        created_shelf = db_tables['bookshelves'].insert(Bookshelf(**shelf_data))
+        bookshelf_id = created_shelf.id if hasattr(created_shelf, 'id') else created_shelf
+        
+        # Log activity for network discovery
+        metadata = json.dumps({"source": data_source})
+        log_activity(
+            user_did=repo_did,
+            activity_type='bookshelf_created',
+            db_tables=db_tables,
+            bookshelf_id=bookshelf_id,
+            metadata=metadata
+        )
+        
+        logger.info(f"Successfully stored {data_source} bookshelf: {record.get('name')} (ID: {bookshelf_id})")
+        
+    except Exception as e:
+        logger.error(f"Error storing bookshelf from {data_source}: {e}", exc_info=True)
+
+def store_book_from_network(record: dict, repo_did: str, record_uri: str, data_source: str = 'network'):
+    """Stores a book discovered on the network with data source tracking."""
+    import logging
+    import json
+    logger = logging.getLogger(__name__)
+    
+    try:
+        db_tables = get_database()
+        logger.info(f"Discovered new book from {repo_did}: {record.get('title')} (source: {data_source})")
+        
+        # Avoid duplicates by atproto_uri
+        existing = list(db_tables['books'](f"atproto_uri='{record_uri}'"))
+        if existing:
+            logger.debug(f"Book already exists: {record_uri}")
+            return
+
+        # Ensure user exists
+        ensure_user_exists(repo_did, db_tables, data_source=data_source)
+
+        # Find the bookshelf in the local DB
+        bookshelf_ref = record.get('bookshelfRef')
+        if not bookshelf_ref:
+            logger.warning(f"Book {record.get('title')} has no bookshelf reference")
+            return
+
+        bookshelf = list(db_tables['bookshelves'](f"atproto_uri='{bookshelf_ref}'"))
+        if not bookshelf:
+            logger.warning(f"Bookshelf not found for book {record.get('title')}: {bookshelf_ref}")
+            return
+
+        book_data = {
+            'bookshelf_id': bookshelf[0].id,
+            'title': record.get('title', 'Untitled Book'),
+            'author': record.get('author', ''),
+            'isbn': record.get('isbn', ''),
+            'added_by_did': repo_did,
+            'atproto_uri': record_uri,
+            'data_source': data_source,  # Track the source
+            'added_at': datetime.fromisoformat(record.get('addedAt', datetime.now().isoformat()).replace('Z', '+00:00'))
+        }
+        
+        created_book = db_tables['books'].insert(Book(**book_data))
+        book_id = created_book.id if hasattr(created_book, 'id') else created_book
+        
+        # Log activity for network discovery
+        metadata = json.dumps({"source": data_source})
+        log_activity(
+            user_did=repo_did,
+            activity_type='book_added',
+            db_tables=db_tables,
+            bookshelf_id=bookshelf[0].id,
+            book_id=book_id,
+            metadata=metadata
+        )
+        
+        logger.info(f"Successfully stored {data_source} book: {record.get('title')} (ID: {book_id})")
+        
+    except Exception as e:
+        logger.error(f"Error storing book from {data_source}: {e}", exc_info=True)

@@ -39,6 +39,13 @@ class ServiceManager:
                 'enabled': True,
                 'description': 'AT-Proto firehose monitor'
             },
+            'historical_scanner': {
+                'script': 'historical_scanner.py',
+                'process': None,
+                'restart_count': 0,
+                'enabled': os.getenv('HISTORICAL_SCANNER_ENABLED', 'true').lower() == 'true',
+                'description': 'Historical profile scanner'
+            },
             'bluesky_automation': {
                 'script': 'bluesky_automation.py',
                 'process': None,
