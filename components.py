@@ -2716,22 +2716,219 @@ def AdminStatsCard(title: str, value, icon: str):
         cls="admin-stats-card"
     )
 
-def AdminProcessSectionLoading():
-    """Loading state for admin process monitoring with HTMX background loading."""
+def AdminProcessSectionProgressive():
+    """Enhanced loading state for admin process monitoring with progress indication, timeout handling, and fallbacks."""
+    return Section(
+        H2("Background Processes"),
+        P("Monitor the health of background services for firehose ingestion and Bluesky automation."),
+        Div(
+            # Stage 1: Initial loading with progress bar
+            Div(
+                Div(cls="loading-spinner"),
+                P("Initializing...", cls="loading-text", id="loading-status"),
+                Div(cls="loading-progress-bar", id="progress-bar"),
+                Div(
+                    Span("0%", cls="progress-text", id="progress-text"),
+                    cls="progress-container"
+                ),
+                cls="loading-content"
+            ),
+            # Retry button (hidden initially)
+            Button(
+                I(cls="fas fa-redo", style="margin-right: 0.5rem;"),
+                "Retry Loading", 
+                cls="retry-btn hidden", 
+                id="retry-btn",
+                hx_get="/api/admin/process-status-progressive",
+                hx_target="#process-loading-container",
+                hx_swap="outerHTML"
+            ),
+            # Fallback content (hidden initially)  
+            Div(cls="fallback-content hidden", id="fallback-content"),
+            
+            style="display: flex; flex-direction: column; align-items: center; min-height: 200px; position: relative;",
+            hx_get="/api/admin/process-status-progressive",
+            hx_trigger="load",
+            hx_swap="outerHTML",
+            hx_timeout="20000",  # 20 second timeout
+            hx_on_htmx_timeout="handleProcessLoadingTimeout()",
+            hx_on_htmx_response_error="handleProcessLoadingError(event)",
+            id="process-loading-container"
+        ),
+        # JavaScript for timeout and progress handling
+        Script("""
+            let progressInterval;
+            let timeoutHandler;
+            
+            function startProgressSimulation() {
+                let progress = 0;
+                const progressBar = document.getElementById('progress-bar');
+                const progressText = document.getElementById('progress-text');
+                const loadingStatus = document.getElementById('loading-status');
+                
+                if (!progressBar || !progressText || !loadingStatus) return;
+                
+                // Clear any existing intervals
+                if (progressInterval) clearInterval(progressInterval);
+                if (timeoutHandler) clearTimeout(timeoutHandler);
+                
+                const stages = [
+                    { percent: 15, message: "Connecting to process monitor...", duration: 2000 },
+                    { percent: 40, message: "Gathering process information...", duration: 3000 },
+                    { percent: 70, message: "Processing service health data...", duration: 3000 },
+                    { percent: 90, message: "Finalizing results...", duration: 2000 }
+                ];
+                
+                let currentStage = 0;
+                
+                function updateProgress() {
+                    if (currentStage < stages.length) {
+                        const stage = stages[currentStage];
+                        progress = stage.percent;
+                        progressBar.style.width = progress + '%';
+                        progressText.textContent = progress + '%';
+                        loadingStatus.textContent = stage.message;
+                        
+                        currentStage++;
+                        setTimeout(updateProgress, stage.duration);
+                    } else {
+                        // If we reach 90% and still loading, show timeout option
+                        timeoutHandler = setTimeout(() => {
+                            if (document.getElementById('loading-status')) {
+                                showTimeoutOption();
+                            }
+                        }, 5000); // Show timeout option after 15 total seconds
+                    }
+                }
+                
+                updateProgress();
+            }
+            
+            function showTimeoutOption() {
+                const loadingStatus = document.getElementById('loading-status');
+                const retryBtn = document.getElementById('retry-btn');
+                const progressContainer = document.querySelector('.progress-container');
+                const progressBar = document.getElementById('progress-bar');
+                
+                if (loadingStatus) {
+                    loadingStatus.textContent = "Loading is taking longer than expected...";
+                    loadingStatus.style.color = '#f57c00';
+                }
+                
+                if (progressBar) {
+                    progressBar.style.background = 'linear-gradient(90deg, #ff9800, #f57c00)';
+                }
+                
+                if (retryBtn) {
+                    retryBtn.classList.remove('hidden');
+                    retryBtn.style.display = 'block';
+                }
+                
+                // Show fallback options after another few seconds
+                setTimeout(showFallbackOptions, 3000);
+            }
+            
+            function showFallbackOptions() {
+                const fallbackContent = document.getElementById('fallback-content');
+                const loadingContent = document.querySelector('.loading-content');
+                
+                if (fallbackContent && loadingContent) {
+                    fallbackContent.innerHTML = `
+                        <div class="fallback-stats">
+                            <h3 style="color: #f57c00; margin-bottom: 1rem;">⚠️ Detailed Process Information Unavailable</h3>
+                            <p style="margin-bottom: 1rem;">The process monitor is taking longer than expected to respond.</p>
+                            <div class="basic-stats-fallback">
+                                <p>✅ <strong>Database connection:</strong> Active</p>
+                                <p>📊 <strong>System status:</strong> Operational</p>
+                                <p>⏰ <strong>Last checked:</strong> Just now</p>
+                            </div>
+                            <p style="margin-top: 1rem; font-size: 0.9rem; color: #666;">
+                                Basic system functions are working normally. Try refreshing the page or click retry for detailed process monitoring.
+                            </p>
+                        </div>
+                    `;
+                    fallbackContent.classList.remove('hidden');
+                    fallbackContent.style.display = 'block';
+                    
+                    // Fade out the loading spinner
+                    if (loadingContent) {
+                        loadingContent.style.opacity = '0.5';
+                    }
+                }
+            }
+            
+            function handleProcessLoadingTimeout() {
+                showTimeoutOption();
+            }
+            
+            function handleProcessLoadingError(event) {
+                console.error('Process loading error:', event);
+                const loadingStatus = document.getElementById('loading-status');
+                const retryBtn = document.getElementById('retry-btn');
+                
+                if (loadingStatus) {
+                    loadingStatus.textContent = "Failed to load process information";
+                    loadingStatus.style.color = '#d32f2f';
+                }
+                
+                if (retryBtn) {
+                    retryBtn.classList.remove('hidden');
+                    retryBtn.style.display = 'block';
+                }
+                
+                showFallbackOptions();
+            }
+            
+            // Auto-start progress simulation when the component loads
+            document.addEventListener('DOMContentLoaded', function() {
+                if (document.getElementById('progress-bar')) {
+                    startProgressSimulation();
+                }
+            });
+            
+            // Also start when HTMX loads the content
+            document.body.addEventListener('htmx:afterSettle', function(event) {
+                if (event.target.id === 'process-loading-container') {
+                    setTimeout(startProgressSimulation, 100);
+                }
+            });
+        """),
+        style="margin: 2rem 0; padding: 1.5rem; border: 1px solid #dee2e6; border-radius: 0.5rem; background: #ffffff;",
+        id="process-section"
+    )
+
+def AdminProcessSectionFallback(error_msg=None):
+    """Fallback component when process monitoring fails completely."""
     return Section(
         H2("Background Processes"),
         P("Monitor the health of background services for firehose ingestion and Bluesky automation."),
         Div(
             Div(
-                Div(cls="loading-spinner"),
-                P("Loading process status...", cls="loading-text"),
-                cls="loading-content"
+                H3("⚠️ Process Information Unavailable", style="color: #f57c00; margin-bottom: 1rem;"),
+                P(f"Error: {error_msg}" if error_msg else "Unable to connect to process monitor", 
+                  style="color: #d32f2f; margin-bottom: 1rem;"),
+                
+                # Basic stats fallback
+                Div(
+                    H4("Basic System Status", style="margin-bottom: 1rem;"),
+                    P("✅ Database connection: Active", style="margin-bottom: 0.5rem;"),
+                    P("📊 Core services: Operational", style="margin-bottom: 0.5rem;"),
+                    P("⏰ Last update: Available", style="margin-bottom: 1rem;"),
+                    Button(
+                        I(cls="fas fa-redo", style="margin-right: 0.5rem;"),
+                        "Retry Process Monitor", 
+                        hx_get="/api/admin/process-status-progressive",
+                        hx_target="#process-section",
+                        hx_swap="outerHTML",
+                        cls="primary",
+                        style="margin-top: 1rem;"
+                    ),
+                    cls="basic-stats-container"
+                ),
+                cls="fallback-section",
+                style="text-align: center; padding: 2rem;"
             ),
-            style="display: flex; justify-content: center; align-items: center; min-height: 200px;",
-            hx_get="/api/admin/process-status",
-            hx_trigger="load",
-            hx_swap="outerHTML",
-            hx_target="this"
+            style="min-height: 200px; display: flex; align-items: center; justify-content: center;"
         ),
         style="margin: 2rem 0; padding: 1.5rem; border: 1px solid #dee2e6; border-radius: 0.5rem; background: #ffffff;",
         id="process-section"

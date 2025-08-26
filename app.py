@@ -156,11 +156,11 @@ def index(auth, req):
 # Admin route
 @rt("/admin")
 def admin_page(auth):
-    """Admin dashboard page with optimized loading."""
+    """Admin dashboard page with enhanced progressive loading."""
     if not is_admin(auth):
         return RedirectResponse('/', status_code=303)
     
-    from components import AdminDashboard, AdminDatabaseSection, AdminProcessSectionLoading
+    from components import AdminDashboard, AdminDatabaseSection, AdminProcessSectionProgressive
     
     # Fast stats calculation using efficient COUNT queries
     try:
@@ -179,8 +179,8 @@ def admin_page(auth):
         "total_books": total_books
     }
     
-    # Process monitoring section with async loading
-    process_section = AdminProcessSectionLoading()
+    # Process monitoring section with enhanced progressive loading
+    process_section = AdminProcessSectionProgressive()
     
     return (
         Title("Admin Dashboard - Bibliome"),
@@ -456,6 +456,108 @@ def admin_process_status_api(auth):
             ),
             style="display: flex; flex-direction: column; align-items: center; padding: 2rem;"
         )
+
+@rt("/api/admin/process-status-progressive")
+def admin_process_status_progressive_api(auth):
+    """Enhanced HTMX endpoint for progressive loading of process status with improved error handling."""
+    if not is_admin(auth):
+        return ""
+    
+    try:
+        # Get process monitoring data with enhanced error handling
+        monitor = get_process_monitor(db_tables)
+        all_processes = monitor.get_all_processes()
+        
+        # Build optimized process status cards with enhanced formatting
+        process_summary_cards = []
+        current_time = datetime.now()
+        
+        for name, process_info in all_processes.items():
+            status_color = {
+                "running": "#28a745",
+                "stopped": "#6c757d", 
+                "starting": "#ffc107",
+                "failed": "#dc3545"
+            }.get(process_info.status.value, "#6c757d")
+            
+            # Enhanced heartbeat age calculation with better error handling
+            heartbeat_display = "Never"
+            heartbeat_color = "#dc3545"
+            if process_info.last_heartbeat:
+                try:
+                    # Handle both datetime objects and string representations
+                    if isinstance(process_info.last_heartbeat, str):
+                        last_heartbeat = datetime.fromisoformat(process_info.last_heartbeat.replace('Z', '+00:00'))
+                    else:
+                        last_heartbeat = process_info.last_heartbeat
+                    
+                    # Remove timezone for consistent comparison
+                    if last_heartbeat.tzinfo is not None:
+                        last_heartbeat = last_heartbeat.replace(tzinfo=None)
+                    
+                    heartbeat_age = current_time - last_heartbeat
+                    age_seconds = heartbeat_age.total_seconds()
+                    
+                    if age_seconds < 300:  # 5 minutes
+                        heartbeat_display = "< 5m ago"
+                        heartbeat_color = "#28a745"
+                    elif age_seconds < 1800:  # 30 minutes
+                        heartbeat_display = f"{int(age_seconds / 60)}m ago"
+                        heartbeat_color = "#ffc107"
+                    else:
+                        heartbeat_display = f"{int(age_seconds / 3600)}h ago"
+                        heartbeat_color = "#dc3545"
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error parsing heartbeat time for {name}: {e}")
+                    heartbeat_display = "Parse Error"
+                    heartbeat_color = "#dc3545"
+            
+            # Enhanced status display with more information
+            process_summary_cards.append(
+                Div(
+                    Div(
+                        H4(name.replace('_', ' ').title(), style="margin: 0 0 0.5rem 0;"),
+                        P(f"Status: ", Span(process_info.status.value.title(), style=f"color: {status_color}; font-weight: bold;")),
+                        P(f"PID: {process_info.pid or 'N/A'}"),
+                        P(f"Type: {process_info.process_type}"),
+                        P(f"Heartbeat: ", Span(heartbeat_display, style=f"color: {heartbeat_color}; font-weight: bold;")),
+                        P(f"Restarts: {process_info.restart_count}"),
+                        process_info.error_message and P(f"Error: {process_info.error_message}", style="color: #dc3545; font-size: 0.85rem; margin-top: 0.5rem;") or "",
+                    ),
+                    cls="admin-process-card",
+                    style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem; background: #f8f9fa;"
+                )
+            )
+        
+        # Return enhanced process monitoring section with additional controls
+        return Section(
+            H2("Background Processes"),
+            P("Monitor the health of background services and system processes..."),
+            Div(
+                *process_summary_cards,
+                style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin: 1rem 0;"
+            ),
+            Div(
+                A("Full Process Monitor", href="/admin/processes", cls="btn btn-primary"),
+                Button(
+                    "Refresh",
+                    hx_get="/api/admin/process-status-progressive",
+                    hx_target="#process-loading-container",
+                    hx_swap="outerHTML",
+                    cls="btn secondary",
+                    style="margin-left: 0.5rem;"
+                ),
+                style="text-align: center; margin-top: 1rem; display: flex; justify-content: center; gap: 0.5rem;"
+            ),
+            style="margin: 2rem 0;"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error loading progressive admin process status: {e}", exc_info=True)
+        
+        # Enhanced fallback content for the progressive loading system
+        from components import AdminProcessSectionFallback
+        return AdminProcessSectionFallback()
 
 @rt("/admin/processes/refresh")
 def admin_processes_refresh(auth):
