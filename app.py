@@ -165,9 +165,9 @@ def admin_page(auth):
     # Fast stats calculation using efficient COUNT queries
     try:
         # Use SQL COUNT queries instead of loading all records
-        total_users = db_tables.db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-        total_bookshelves = db_tables.db.execute("SELECT COUNT(*) FROM bookshelves").fetchone()[0]
-        total_books = db_tables.db.execute("SELECT COUNT(*) FROM books").fetchone()[0]
+        total_users = db_tables['db'].execute("SELECT COUNT(*) FROM user").fetchone()[0]
+        total_bookshelves = db_tables['db'].execute("SELECT COUNT(*) FROM bookshelf").fetchone()[0]
+        total_books = db_tables['db'].execute("SELECT COUNT(*) FROM book").fetchone()[0]
     except Exception as e:
         logger.error(f"Error getting admin stats: {e}")
         # Fallback to 0 if queries fail

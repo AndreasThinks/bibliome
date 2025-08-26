@@ -30,17 +30,17 @@ CREATE TABLE IF NOT EXISTS historical_scan_queue (
 );
 
 -- Add source tracking to existing tables
-ALTER TABLE bookshelves ADD COLUMN data_source TEXT DEFAULT 'local'; -- 'local', 'network', 'historical'
-ALTER TABLE books ADD COLUMN data_source TEXT DEFAULT 'local';
-ALTER TABLE users ADD COLUMN data_source TEXT DEFAULT 'local';
+ALTER TABLE bookshelf ADD COLUMN data_source TEXT DEFAULT 'local'; -- 'local', 'network', 'historical'
+ALTER TABLE book ADD COLUMN data_source TEXT DEFAULT 'local';
+ALTER TABLE user ADD COLUMN data_source TEXT DEFAULT 'local';
 
 -- Performance indexes
 CREATE INDEX IF NOT EXISTS idx_tracked_profiles_priority ON tracked_profiles (scan_priority, last_scanned_at);
 CREATE INDEX IF NOT EXISTS idx_scan_queue_status ON historical_scan_queue (status, priority);
-CREATE INDEX IF NOT EXISTS idx_bookshelves_source ON bookshelves (data_source);
-CREATE INDEX IF NOT EXISTS idx_books_source ON books (data_source);
+CREATE INDEX IF NOT EXISTS idx_bookshelf_source ON bookshelf (data_source);
+CREATE INDEX IF NOT EXISTS idx_book_source ON book (data_source);
 
 -- Update existing records to have 'local' data source by default
-UPDATE bookshelves SET data_source = 'local' WHERE data_source IS NULL;
-UPDATE books SET data_source = 'local' WHERE data_source IS NULL;
-UPDATE users SET data_source = 'local' WHERE data_source IS NULL;
+UPDATE bookshelf SET data_source = 'local' WHERE data_source IS NULL;
+UPDATE book SET data_source = 'local' WHERE data_source IS NULL;
+UPDATE user SET data_source = 'local' WHERE data_source IS NULL;
