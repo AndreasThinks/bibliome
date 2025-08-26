@@ -57,6 +57,11 @@ class ProcessMonitor:
         self._running = False
         self._monitor_thread = None
         
+        # Simple cache for optimizing frequent admin page loads
+        self._cached_processes: Optional[Dict[str, ProcessInfo]] = None
+        self._cache_timestamp: Optional[datetime] = None
+        self._cache_ttl = timedelta(seconds=45)  # 45 second cache TTL
+        
         # Load existing process status from database
         self._load_process_status()
     
@@ -312,9 +317,24 @@ class ProcessMonitor:
             return self._processes.get(name)
     
     def get_all_processes(self) -> Dict[str, ProcessInfo]:
-        """Get status of all monitored processes."""
+        """Get status of all monitored processes with caching for performance."""
+        current_time = datetime.now()
+        
+        # Check if we have valid cached data
+        if (self._cached_processes is not None and 
+            self._cache_timestamp is not None and 
+            (current_time - self._cache_timestamp) < self._cache_ttl):
+            return self._cached_processes.copy()
+        
+        # Cache miss - generate fresh data
         with self._lock:
-            return self._processes.copy()
+            fresh_processes = self._processes.copy()
+            
+            # Update cache
+            self._cached_processes = fresh_processes
+            self._cache_timestamp = current_time
+            
+            return fresh_processes.copy()
     
     def is_process_healthy(self, name: str, max_heartbeat_age: timedelta = timedelta(minutes=5)) -> bool:
         """Check if a process is considered healthy based on recent heartbeat."""

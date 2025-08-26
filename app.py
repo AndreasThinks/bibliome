@@ -156,16 +156,22 @@ def index(auth, req):
 # Admin route
 @rt("/admin")
 def admin_page(auth):
-    """Admin dashboard page."""
+    """Admin dashboard page with optimized loading."""
     if not is_admin(auth):
         return RedirectResponse('/', status_code=303)
     
-    from components import AdminDashboard, AdminDatabaseSection
+    from components import AdminDashboard, AdminDatabaseSection, AdminProcessSectionLoading
     
-    # Fetch stats for the dashboard
-    total_users = len(db_tables['users']())
-    total_bookshelves = len(db_tables['bookshelves']())
-    total_books = len(db_tables['books']())
+    # Fast stats calculation using efficient COUNT queries
+    try:
+        # Use SQL COUNT queries instead of loading all records
+        total_users = db_tables.db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        total_bookshelves = db_tables.db.execute("SELECT COUNT(*) FROM bookshelves").fetchone()[0]
+        total_books = db_tables.db.execute("SELECT COUNT(*) FROM books").fetchone()[0]
+    except Exception as e:
+        logger.error(f"Error getting admin stats: {e}")
+        # Fallback to 0 if queries fail
+        total_users = total_bookshelves = total_books = 0
     
     stats = {
         "total_users": total_users,
@@ -173,74 +179,8 @@ def admin_page(auth):
         "total_books": total_books
     }
     
-    # Get process monitoring data
-    monitor = get_process_monitor(db_tables)
-    all_processes = monitor.get_all_processes()
-    
-    # Build process status summary
-    process_summary_cards = []
-    for name, process_info in all_processes.items():
-        status_color = {
-            "running": "#28a745",
-            "stopped": "#6c757d", 
-            "starting": "#ffc107",
-            "failed": "#dc3545"
-        }.get(process_info.status.value, "#6c757d")
-        
-        # Last heartbeat age
-        heartbeat_display = "Never"
-        heartbeat_color = "#dc3545"
-        if process_info.last_heartbeat:
-            try:
-                # Handle both datetime objects and string representations
-                if isinstance(process_info.last_heartbeat, str):
-                    last_heartbeat = datetime.fromisoformat(process_info.last_heartbeat.replace('Z', '+00:00'))
-                else:
-                    last_heartbeat = process_info.last_heartbeat
-                
-                heartbeat_age = datetime.now() - last_heartbeat
-                
-                if heartbeat_age.total_seconds() < 300:  # 5 minutes
-                    heartbeat_display = "< 5m ago"
-                    heartbeat_color = "#28a745"
-                elif heartbeat_age.total_seconds() < 1800:  # 30 minutes
-                    heartbeat_display = f"{int(heartbeat_age.total_seconds() / 60)}m ago"
-                    heartbeat_color = "#ffc107"
-                else:
-                    heartbeat_display = f"{int(heartbeat_age.total_seconds() / 3600)}h ago"
-                    heartbeat_color = "#dc3545"
-            except (ValueError, TypeError) as e:
-                heartbeat_display = "Invalid"
-                heartbeat_color = "#dc3545"
-        
-        process_summary_cards.append(
-            Div(
-                Div(
-                    H4(name.replace('_', ' ').title(), style="margin: 0 0 0.5rem 0;"),
-                    P(f"Status: ", Span(process_info.status.value.title(), style=f"color: {status_color}; font-weight: bold;")),
-                    P(f"PID: {process_info.pid or 'N/A'}"),
-                    P(f"Heartbeat: ", Span(heartbeat_display, style=f"color: {heartbeat_color}; font-weight: bold;")),
-                    process_info.error_message and P(f"Error: {process_info.error_message}", style="color: #dc3545; font-size: 0.85rem;") or "",
-                ),
-                cls="admin-process-card",
-                style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem; background: #f8f9fa;"
-            )
-        )
-    
-    # Process monitoring section
-    process_section = Section(
-        H2("Background Processes"),
-        P("Monitor the health of background services for firehose ingestion and Bluesky automation."),
-        Div(
-            *process_summary_cards,
-            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin: 1rem 0;"
-        ),
-        Div(
-            A("Full Process Monitor", href="/admin/processes", cls="btn btn-primary"),
-            style="text-align: center; margin-top: 1rem;"
-        ),
-        style="margin: 2rem 0; padding: 1.5rem; border: 1px solid #dee2e6; border-radius: 0.5rem; background: #ffffff;"
-    )
+    # Process monitoring section with async loading
+    process_section = AdminProcessSectionLoading()
     
     return (
         Title("Admin Dashboard - Bibliome"),
@@ -424,6 +364,98 @@ def admin_processes_page(auth):
         UniversalFooter()
     )
 
+
+@rt("/api/admin/process-status")
+def admin_process_status_api(auth):
+    """HTMX endpoint to load process status asynchronously with optimized performance."""
+    if not is_admin(auth):
+        return ""
+    
+    try:
+        # Get process monitoring data
+        monitor = get_process_monitor(db_tables)
+        all_processes = monitor.get_all_processes()
+        
+        # Build optimized process status cards
+        process_summary_cards = []
+        current_time = datetime.now()
+        
+        for name, process_info in all_processes.items():
+            status_color = {
+                "running": "#28a745",
+                "stopped": "#6c757d", 
+                "starting": "#ffc107",
+                "failed": "#dc3545"
+            }.get(process_info.status.value, "#6c757d")
+            
+            # Optimized heartbeat age calculation
+            heartbeat_display = "Never"
+            heartbeat_color = "#dc3545"
+            if process_info.last_heartbeat:
+                try:
+                    # Handle both datetime objects and string representations
+                    if isinstance(process_info.last_heartbeat, str):
+                        last_heartbeat = datetime.fromisoformat(process_info.last_heartbeat.replace('Z', '+00:00'))
+                    else:
+                        last_heartbeat = process_info.last_heartbeat
+                    
+                    # Remove timezone for consistent comparison
+                    if last_heartbeat.tzinfo is not None:
+                        last_heartbeat = last_heartbeat.replace(tzinfo=None)
+                    
+                    heartbeat_age = current_time - last_heartbeat
+                    age_seconds = heartbeat_age.total_seconds()
+                    
+                    if age_seconds < 300:  # 5 minutes
+                        heartbeat_display = "< 5m ago"
+                        heartbeat_color = "#28a745"
+                    elif age_seconds < 1800:  # 30 minutes
+                        heartbeat_display = f"{int(age_seconds / 60)}m ago"
+                        heartbeat_color = "#ffc107"
+                    else:
+                        heartbeat_display = f"{int(age_seconds / 3600)}h ago"
+                        heartbeat_color = "#dc3545"
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error parsing heartbeat time for {name}: {e}")
+                    heartbeat_display = "Invalid"
+                    heartbeat_color = "#dc3545"
+            
+            process_summary_cards.append(
+                Div(
+                    Div(
+                        H4(name.replace('_', ' ').title(), style="margin: 0 0 0.5rem 0;"),
+                        P(f"Status: ", Span(process_info.status.value.title(), style=f"color: {status_color}; font-weight: bold;")),
+                        P(f"PID: {process_info.pid or 'N/A'}"),
+                        P(f"Heartbeat: ", Span(heartbeat_display, style=f"color: {heartbeat_color}; font-weight: bold;")),
+                        process_info.error_message and P(f"Error: {process_info.error_message}", style="color: #dc3545; font-size: 0.85rem;") or "",
+                    ),
+                    cls="admin-process-card",
+                    style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem; background: #f8f9fa;"
+                )
+            )
+        
+        # Return the complete process monitoring section
+        return Div(
+            *process_summary_cards,
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin: 1rem 0;"
+        ), Div(
+            A("Full Process Monitor", href="/admin/processes", cls="btn btn-primary"),
+            style="text-align: center; margin-top: 1rem;"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error loading admin process status: {e}", exc_info=True)
+        return Div(
+            P("Error loading process status. Please refresh the page.", cls="error-text"),
+            Button(
+                "Retry",
+                hx_get="/api/admin/process-status",
+                hx_target="#process-section",
+                hx_swap="innerHTML",
+                cls="retry-btn secondary"
+            ),
+            style="display: flex; flex-direction: column; align-items: center; padding: 2rem;"
+        )
 
 @rt("/admin/processes/refresh")
 def admin_processes_refresh(auth):

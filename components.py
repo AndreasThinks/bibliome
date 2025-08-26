@@ -2716,6 +2716,27 @@ def AdminStatsCard(title: str, value, icon: str):
         cls="admin-stats-card"
     )
 
+def AdminProcessSectionLoading():
+    """Loading state for admin process monitoring with HTMX background loading."""
+    return Section(
+        H2("Background Processes"),
+        P("Monitor the health of background services for firehose ingestion and Bluesky automation."),
+        Div(
+            Div(
+                Div(cls="loading-spinner"),
+                P("Loading process status...", cls="loading-text"),
+                cls="loading-content"
+            ),
+            style="display: flex; justify-content: center; align-items: center; min-height: 200px;",
+            hx_get="/api/admin/process-status",
+            hx_trigger="load",
+            hx_swap="outerHTML",
+            hx_target="this"
+        ),
+        style="margin: 2rem 0; padding: 1.5rem; border: 1px solid #dee2e6; border-radius: 0.5rem; background: #ffffff;",
+        id="process-section"
+    )
+
 def AdminDatabaseSection():
     """Section for database management in the admin dashboard."""
     return Div(
