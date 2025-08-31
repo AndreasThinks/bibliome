@@ -18,8 +18,21 @@ from circuit_breaker import CircuitBreaker
 
 load_dotenv()
 
-# Set up logging
-logger = logging.getLogger(__name__)
+# Configure logging with service name prefix
+log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
+level = getattr(logging, log_level_str, logging.INFO)
+# Create a custom formatter
+formatter = logging.Formatter('[bluesky_automation] %(asctime)s - %(levelname)s - %(message)s')
+# Get the root logger
+logger = logging.getLogger()
+logger.setLevel(level)
+# Remove existing handlers
+for handler in logger.handlers[:]:
+    logger.removeHandler(handler)
+# Create a new handler with the custom formatter
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 # Process name for monitoring
 PROCESS_NAME = "bluesky_automation"

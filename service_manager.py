@@ -95,13 +95,12 @@ class ServiceManager:
                 logger.error(f"Service script not found: {script_path}")
                 return False
             
-            # Start the service process
+            # Start the service process, inheriting stdout/stderr
             service['process'] = subprocess.Popen(
                 [sys.executable, str(script_path)],
                 cwd=Path(__file__).parent,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                bufsize=0  # Unbuffered
+                stdout=sys.stdout,
+                stderr=sys.stderr
             )
             
             # Give it a moment to start
@@ -299,15 +298,6 @@ class ServiceManager:
                     self.print_status()
                     last_status_print = current_time
                 
-                # Read and print logs from services
-                for service_name, service in self.services.items():
-                    if service['process'] and service['process'].poll() is None:
-                        # Non-blocking read from stdout and stderr
-                        for line in iter(service['process'].stdout.readline, b''):
-                            print(f"[{service_name}] {line.decode().strip()}")
-                        for line in iter(service['process'].stderr.readline, b''):
-                            print(f"[{service_name}-error] {line.decode().strip()}", file=sys.stderr)
-
                 await asyncio.sleep(check_interval)
                 
             except Exception as e:
