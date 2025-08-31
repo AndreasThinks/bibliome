@@ -14,6 +14,7 @@ from process_monitor import (
     log_process_event, record_process_metric, process_heartbeat, 
     update_process_status, get_process_monitor
 )
+from circuit_breaker import CircuitBreaker
 
 load_dotenv()
 
@@ -27,6 +28,7 @@ class BlueskyAutomator:
     """Handles automated posting to a dedicated Bluesky account."""
 
     def __init__(self):
+        self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
         self.is_enabled = os.getenv('BLUESKY_AUTOMATION_ENABLED', 'false').lower() == 'true'
         self.handle = os.getenv('BLUESKY_AUTOMATION_HANDLE')
         self.password = os.getenv('BLUESKY_AUTOMATION_PASSWORD')
@@ -39,6 +41,10 @@ class BlueskyAutomator:
         
         self.client = None
         self._post_timestamps = []
+        
+        # Apply circuit breaker to methods
+        self._login = self.circuit_breaker(self._login)
+        self.post_to_bluesky = self.circuit_breaker(self.post_to_bluesky)
 
     def _login(self):
         """Logs into the dedicated Bluesky account."""

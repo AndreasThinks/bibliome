@@ -13,6 +13,7 @@ from process_monitor import (
     log_process_event, record_process_metric, process_heartbeat, 
     update_process_status, get_process_monitor
 )
+from circuit_breaker import CircuitBreaker
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -190,6 +191,8 @@ bookshelf_count = 0
 book_count = 0
 error_count = 0
 
+circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
+
 def on_message_handler(message):
     """Handle incoming firehose messages with optimized filtering and error handling."""
     global message_count, bookshelf_count, book_count, error_count
@@ -228,6 +231,7 @@ def on_message_handler(message):
         except Exception as car_error:
             logger.warning(f"CAR decode error for {evt.repo}: {car_error}")
             log_process_event(PROCESS_NAME, f"CAR decode error: {car_error}", "WARNING", "error", db_tables=db_tables)
+            error_count += 1
             return
 
         for op in wanted_ops:
@@ -263,7 +267,7 @@ def on_message_handler(message):
                 error_count += 1
                 logger.error(f"Error processing op for {evt.repo}: {e}", exc_info=True)
                 log_process_event(PROCESS_NAME, f"Error processing operation: {e}", "ERROR", "error", db_tables=db_tables)
-                continue
+                
 
         # Heartbeat on activity or every 100 messages
         if message_count % 100 == 0 or message_processed:
@@ -337,7 +341,7 @@ async def main():
                 params = models.ComAtprotoSyncSubscribeRepos.Params()
             
             log_process_event(PROCESS_NAME, "Connected to AT-Proto firehose", "INFO", "activity", db_tables=db_tables)
-            await firehose.start(on_message_handler, params)
+            await firehose.start(circuit_breaker(on_message_handler), params)
             
         except KeyboardInterrupt:
             logger.info("Firehose monitoring stopped by user")

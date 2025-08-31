@@ -14,6 +14,7 @@ from atproto import Client
 from apswutils.db import NotFoundError
 from models import get_database, SyncLog, User, Bookshelf, Book, generate_slug
 from scanner_client import BiblioMeATProtoClient
+from circuit_breaker import CircuitBreaker
 
 # Configure logging
 log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -28,6 +29,7 @@ class BiblioMeScanner:
     """Scans the AT-Proto network for Bibliome records and imports them locally."""
     
     def __init__(self):
+        self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
         self.client = BiblioMeATProtoClient()
         self.db_tables = get_database()
         self.scan_interval_hours = int(os.getenv('BIBLIOME_SCAN_INTERVAL_HOURS', '6'))
@@ -35,6 +37,11 @@ class BiblioMeScanner:
         self.import_public_only = os.getenv('BIBLIOME_IMPORT_PUBLIC_ONLY', 'true').lower() == 'true'
         self.user_batch_size = int(os.getenv('BIBLIOME_USER_BATCH_SIZE', '50'))
         self.running = True
+
+        # Apply circuit breaker to methods
+        self.run_scan_cycle = self.circuit_breaker(self.run_scan_cycle)
+        self.sync_user_profile = self.circuit_breaker(self.sync_user_profile)
+        self.sync_user_content = self.circuit_breaker(self.sync_user_content)
 
     async def run(self):
         """Main loop for the scanner service."""
