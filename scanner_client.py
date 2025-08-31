@@ -4,6 +4,7 @@ from typing import List, Dict, Optional, Any
 from datetime import datetime
 import logging
 from atproto import Client, models
+from fastcore.xtras import flexicache, time_policy
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ class BiblioMeATProtoClient:
         self.nsid_book = "com.bibliome.book"
         self.client = client or Client()
 
+    @flexicache(time_policy(1800))  # Cache for 30 minutes
     async def discover_bibliome_users(self, batch_size: int = 1000) -> List[str]:
         """Discover DIDs that have published Bibliome records, paginating through all users."""
         last_err = None
@@ -70,6 +72,7 @@ class BiblioMeATProtoClient:
         logger.info(f"Total unique Bibliome users discovered across all relays: {len(all_dids)}")
         return list(all_dids)
 
+    @flexicache(time_policy(7200))  # Cache for 2 hours
     async def get_user_profile(self, did: str) -> Optional[Dict[str, Any]]:
         """Get a user's profile information from their DID."""
         try:
@@ -85,6 +88,7 @@ class BiblioMeATProtoClient:
             logger.error(f"Failed to get profile for DID {did}: {e}")
         return None
 
+    @flexicache(time_policy(900))  # Cache for 15 minutes
     async def get_all_records(self, did: str, collection_nsid: str) -> List[Dict[str, Any]]:
         """Get all records of a specific type from a user's repo."""
         records = []

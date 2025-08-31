@@ -172,6 +172,10 @@ class BiblioMeScanner:
         """Sync a single bookshelf record."""
         uri = shelf_data['uri']
         value = shelf_data['value']
+
+        if value is None:
+            self.log_sync_activity('bookshelf', uri, 'skipped', 'Record value is None')
+            return
         
         # TODO reintroduce once private shelves fixed.
         #if self.import_public_only and value.get('privacy', 'public') != 'public':
@@ -213,8 +217,17 @@ class BiblioMeScanner:
 
     async def sync_book(self, did: str, book_data: Dict):
         """Sync a single book record."""
+        if book_data is None:
+            self.log_sync_activity('book', 'unknown', 'skipped', 'Record data is None')
+            return
+
         uri = book_data['uri']
         value = book_data['value']
+
+        if value is None:
+            self.log_sync_activity('book', uri, 'skipped', 'Record value is None')
+            return
+
         bookshelf_ref_uri = value.get('bookshelfRef')
 
         if not bookshelf_ref_uri:
