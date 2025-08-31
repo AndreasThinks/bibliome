@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
+from alerting import send_alert
 
 class ProcessStatus(Enum):
     STOPPED = "stopped"
@@ -437,6 +438,9 @@ class ProcessMonitor:
         if process.status != ProcessStatus.RUNNING:
             return
         
+        # Check dependencies
+        self.check_dependencies(name)
+        
         # Check if PID is still valid
         if process.pid:
             try:
@@ -444,6 +448,7 @@ class ProcessMonitor:
                     self.logger.warning(f"Process {name} (PID {process.pid}) no longer exists")
                     self.update_process_status(name, ProcessStatus.FAILED, 
                                              error_message="Process terminated unexpectedly")
+                    send_alert(f"Process {name} terminated unexpectedly", "CRITICAL")
                     return
                 
                 proc = psutil.Process(process.pid)
@@ -451,12 +456,14 @@ class ProcessMonitor:
                     self.logger.warning(f"Process {name} (PID {process.pid}) is not running")
                     self.update_process_status(name, ProcessStatus.FAILED,
                                              error_message="Process in non-running state")
+                    send_alert(f"Process {name} is in a non-running state", "CRITICAL")
                     return
                     
             except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
                 self.logger.warning(f"Cannot access process {name} (PID {process.pid}): {e}")
                 self.update_process_status(name, ProcessStatus.FAILED,
                                          error_message=f"Process access error: {e}")
+                send_alert(f"Cannot access process {name}: {e}", "CRITICAL")
                 return
         
         # Check heartbeat age
@@ -473,6 +480,24 @@ class ProcessMonitor:
                 if heartbeat_age > timedelta(minutes=30):
                     self.update_process_status(name, ProcessStatus.FAILED,
                                              error_message=f"No heartbeat for {heartbeat_age}")
+                    send_alert(f"Process {name} has not sent a heartbeat for {heartbeat_age}", "CRITICAL")
+
+    def check_dependencies(self, process_name: str):
+        """Check the health of external dependencies."""
+        # Check database connection
+        try:
+            self.db_tables['db'].execute("SELECT 1")
+        except Exception as e:
+            self.log_event(process_name, LogLevel.ERROR, EventType.ERROR, f"Database connection failed: {e}")
+            self.update_process_status(process_name, ProcessStatus.FAILED, error_message="Database connection failed")
+
+        # Check Bluesky API connection
+        try:
+            import httpx
+            httpx.get("https://bsky.social")
+        except Exception as e:
+            self.log_event(process_name, LogLevel.ERROR, EventType.ERROR, f"Bluesky API connection failed: {e}")
+            self.update_process_status(process_name, ProcessStatus.FAILED, error_message="Bluesky API connection failed")
 
 # Global process monitor instance
 _process_monitor: Optional[ProcessMonitor] = None

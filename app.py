@@ -24,6 +24,7 @@ from auth import BlueskyAuth, get_current_user_did, auth_beforeware, is_admin, r
 from bluesky_automation import trigger_automation
 from admin_operations import get_database_path, backup_database, upload_database
 from process_monitor import init_process_monitoring, get_process_monitor
+from dependency_graph import get_dependencies
 
 load_dotenv()
 
@@ -401,8 +402,30 @@ def admin_processes_page(auth):
                 P(f"Last Heartbeat: ", Span(heartbeat_display, style=f"color: {heartbeat_color}; font-weight: bold;")),
                 P(f"Restart Count: {process_info.restart_count}"),
                 process_info.error_message and P(f"Error: {process_info.error_message}", style="color: #dc3545;") or "",
+                # Action buttons
+                Div(
+                    Button("Start", 
+                           hx_post=f"/admin/processes/{name}/start",
+                           hx_target=f"closest .card",
+                           hx_swap="outerHTML",
+                           cls="btn btn-success btn-sm",
+                           disabled=process_info.status.value == "running"),
+                    Button("Stop",
+                           hx_post=f"/admin/processes/{name}/stop",
+                           hx_target=f"closest .card",
+                           hx_swap="outerHTML",
+                           cls="btn btn-danger btn-sm",
+                           disabled=process_info.status.value != "running"),
+                    Button("Restart",
+                           hx_post=f"/admin/processes/{name}/restart",
+                           hx_target=f"closest .card",
+                           hx_swap="outerHTML",
+                           cls="btn btn-warning btn-sm"),
+                    cls="process-actions"
+                ),
                 cls="card",
-                style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;"
+                style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;",
+                id=f"process-card-{name}"
             )
         )
     
@@ -423,6 +446,21 @@ def admin_processes_page(auth):
         )
     ]
     
+    # Add dependency graph section
+    dependencies = get_dependencies()
+    dependency_section = Section(
+        H2("Service Dependencies"),
+        Div(
+            *[
+                P(f"{name.replace('_', ' ').title()} -> {', '.join(deps)}")
+                for name, deps in dependencies.items() if deps
+            ],
+            cls="dependency-graph"
+        ),
+        style="margin: 2rem 0; padding: 1.5rem; border: 1px solid #dee2e6; border-radius: 0.5rem; background: #ffffff;"
+    )
+    content.append(dependency_section)
+    
     return (
         Title("Process Monitoring - Admin - Bibliome"),
         Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
@@ -431,6 +469,12 @@ def admin_processes_page(auth):
         UniversalFooter()
     )
 
+@rt("/admin/dependencies")
+def admin_dependencies(auth):
+    """Return service dependencies as JSON."""
+    if not is_admin(auth):
+        return "Unauthorized"
+    return JSONResponse(get_dependencies())
 
 @rt("/admin/processes/refresh")
 def admin_processes_refresh(auth):
@@ -439,6 +483,82 @@ def admin_processes_refresh(auth):
         return RedirectResponse('/', status_code=303)
     
     return RedirectResponse('/admin/processes', status_code=303)
+
+# Process control routes
+@rt("/admin/processes/{service_name}/start", methods=["POST"])
+def start_process(service_name: str, auth):
+    if not is_admin(auth): return "Unauthorized"
+    if service_manager:
+        service_manager.start_service(service_name)
+    return get_process_card(service_name, auth)
+
+@rt("/admin/processes/{service_name}/stop", methods=["POST"])
+def stop_process(service_name: str, auth):
+    if not is_admin(auth): return "Unauthorized"
+    if service_manager:
+        service_manager.stop_service(service_name)
+    return get_process_card(service_name, auth)
+
+@rt("/admin/processes/{service_name}/restart", methods=["POST"])
+def restart_process(service_name: str, auth):
+    if not is_admin(auth): return "Unauthorized"
+    if service_manager:
+        service_manager.restart_service(service_name)
+    return get_process_card(service_name, auth)
+
+def get_process_card(service_name: str, auth):
+    """Helper to get the updated HTML for a single process card."""
+    if not is_admin(auth): return ""
+    
+    monitor = get_process_monitor(db_tables)
+    process_info = monitor.get_process_status(service_name)
+    if not process_info: return ""
+
+    status_color = {
+        "running": "#28a745", "stopped": "#6c757d", 
+        "starting": "#ffc107", "failed": "#dc3545"
+    }.get(process_info.status.value, "#6c757d")
+
+    uptime_display = "N/A"
+    if process_info.started_at and process_info.status.value == "running":
+        uptime = datetime.now() - process_info.started_at
+        hours, rem = divmod(int(uptime.total_seconds()), 3600)
+        mins, _ = divmod(rem, 60)
+        uptime_display = f"{hours}h {mins}m"
+
+    heartbeat_display = "Never"
+    heartbeat_color = "#dc3545"
+    if process_info.last_heartbeat:
+        heartbeat_age = datetime.now() - process_info.last_heartbeat
+        if heartbeat_age.total_seconds() < 300:
+            heartbeat_display = "< 5m ago"
+            heartbeat_color = "#28a745"
+        elif heartbeat_age.total_seconds() < 1800:
+            heartbeat_display = f"{int(heartbeat_age.total_seconds() / 60)}m ago"
+            heartbeat_color = "#ffc107"
+        else:
+            heartbeat_display = f"{int(heartbeat_age.total_seconds() / 3600)}h ago"
+            heartbeat_color = "#dc3545"
+
+    return Div(
+        H3(service_name.replace('_', ' ').title()),
+        P(f"Type: {process_info.process_type}"),
+        P(f"Status: ", Span(process_info.status.value.title(), style=f"color: {status_color}; font-weight: bold;")),
+        P(f"PID: {process_info.pid or 'N/A'}"),
+        P(f"Uptime: {uptime_display}"),
+        P(f"Last Heartbeat: ", Span(heartbeat_display, style=f"color: {heartbeat_color}; font-weight: bold;")),
+        P(f"Restart Count: {process_info.restart_count}"),
+        process_info.error_message and P(f"Error: {process_info.error_message}", style="color: #dc3545;") or "",
+        Div(
+            Button("Start", hx_post=f"/admin/processes/{service_name}/start", hx_target="closest .card", hx_swap="outerHTML", cls="btn btn-success btn-sm", disabled=process_info.status.value == "running"),
+            Button("Stop", hx_post=f"/admin/processes/{service_name}/stop", hx_target="closest .card", hx_swap="outerHTML", cls="btn btn-danger btn-sm", disabled=process_info.status.value != "running"),
+            Button("Restart", hx_post=f"/admin/processes/{service_name}/restart", hx_target="closest .card", hx_swap="outerHTML", cls="btn btn-warning btn-sm"),
+            cls="process-actions"
+        ),
+        cls="card",
+        style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;",
+        id=f"process-card-{service_name}"
+    )
 
 # Authentication routes
 @app.get("/auth/login")
@@ -2768,6 +2888,12 @@ Reply directly to this email to respond to {name} at {email}.""",
         logger.error(f"Error sending contact email via SMTP2GO: {e}", exc_info=True)
         return ContactFormError("There was an error sending your message. Please try again later.")
 
+# Global service manager instance, initialized here
+service_manager = None
+if __name__ == "__main__":
+    from service_manager import ServiceManager
+    service_manager = ServiceManager(setup_signals=False)
+
 # Entry point integration for background services
 if __name__ == "__main__":
     import os
@@ -2775,21 +2901,18 @@ if __name__ == "__main__":
     import time
     import signal
     import threading
-    from service_manager import ServiceManager
-
-    # Global service manager instance
-    service_manager = None
-
+    
     def start_background_services():
         """Start background services in a separate thread."""
         global service_manager
         
         try:
             logger.info("Starting background services...")
-            service_manager = ServiceManager(setup_signals=False)
-            
-            # Start services
-            service_manager.start_all_services()
+            if service_manager:
+                # Start services
+                service_manager.start_all_services()
+            else:
+                logger.error("Service manager not initialized")
             
             # Give services a moment to start
             time.sleep(3)
