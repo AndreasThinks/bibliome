@@ -173,9 +173,10 @@ class BiblioMeScanner:
         uri = shelf_data['uri']
         value = shelf_data['value']
         
-        if self.import_public_only and value.get('privacy', 'public') != 'public':
-            self.log_sync_activity('bookshelf', uri, 'skipped', 'Not a public shelf')
-            return
+        # TODO reintroduce once private shelves fixed.
+        #if self.import_public_only and value.get('privacy', 'public') != 'public':
+        #    self.log_sync_activity('bookshelf', uri, 'skipped', 'Not a public shelf')
+        #    return
 
         try:
             # Deduplication check
