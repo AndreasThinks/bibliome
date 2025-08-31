@@ -91,12 +91,14 @@ class BiblioMeATProtoClient:
         try:
             cursor = None
             while True:
-                response = self.client.com.atproto.repo.list_records(
+                params = models.ComAtprotoRepoListRecords.Params(
                     repo=did,
                     collection=collection_nsid,
                     limit=100,
                     cursor=cursor
                 )
+                response = self.client.com.atproto.repo.list_records(params)
+
                 if not response or not response.records:
                     break
                 
