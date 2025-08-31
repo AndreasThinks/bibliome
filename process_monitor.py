@@ -503,6 +503,12 @@ def init_process_monitoring(db_tables):
         "expected_activity_interval": 3600,  # 1 hour
         "restart_policy": "on_failure"
     })
+
+    monitor.register_process("bibliome_scanner", "bibliome_scanner", {
+        "description": "Bibliome network scanner",
+        "expected_activity_interval": 3600 * 6,  # 6 hours
+        "restart_policy": "on_failure"
+    })
     
     # Start monitoring
     monitor.start_monitoring()

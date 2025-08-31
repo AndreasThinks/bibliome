@@ -13,8 +13,7 @@ class BiblioMeATProtoClient:
     
     def __init__(self, client: Client = None):
         self.relays = [
-            "https://bsky.social",
-            "https://relay.bsky.social",
+            "https://relay1.us-west.bsky.network",
             "https://bsky.network",
         ]
         self.nsid_bookshelf = "com.bibliome.bookshelf"
@@ -34,7 +33,7 @@ class BiblioMeATProtoClient:
                     if cursor:
                         params["cursor"] = cursor
                     
-                    url = f"{base}/xrpc/com.atproto.sync.listRepos"
+                    url = f"{base}/xrpc/com.atproto.sync.listReposByCollection"
                     async with httpx.AsyncClient(timeout=30) as http_client:
                         r = await http_client.get(url, params=params)
                     
@@ -50,12 +49,12 @@ class BiblioMeATProtoClient:
                     if not cursor:
                         return list(all_dids)
             except Exception as e:
-                logger.warning(f"Relay {base} failed for listRepos: {e}")
+                logger.warning(f"Relay {base} failed for listReposByCollection: {e}")
                 last_err = e
                 continue
         
         if not all_dids and last_err:
-            raise RuntimeError("No relays with listRepos available") from last_err
+            raise RuntimeError("No relays with listReposByCollection available") from last_err
             
         return list(all_dids)
 
