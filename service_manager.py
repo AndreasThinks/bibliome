@@ -15,6 +15,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional
 import psutil
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Setup logging
 logging.basicConfig(
@@ -45,6 +49,13 @@ class ServiceManager:
                 'restart_count': 0,
                 'enabled': os.getenv('BLUESKY_AUTOMATION_ENABLED', 'false').lower() == 'true',
                 'description': 'Bluesky automation service'
+            },
+            'bibliome_scanner': {
+                'script': 'bibliome_scanner.py',
+                'process': None,
+                'restart_count': 0,
+                'enabled': os.getenv('BIBLIOME_SCANNER_ENABLED', 'false').lower() == 'true',
+                'description': 'Bibliome network scanner'
             }
         }
         self.running = True

@@ -164,13 +164,21 @@ def admin_page(auth):
     
     # Fetch stats for the dashboard
     total_users = len(db_tables['users']())
+    local_users = len(db_tables['users']('is_remote=0'))
+    remote_users = total_users - local_users
+
     total_bookshelves = len(db_tables['bookshelves']())
+    local_bookshelves = len(db_tables['bookshelves']('is_remote=0'))
+    remote_bookshelves = total_bookshelves - local_bookshelves
+
     total_books = len(db_tables['books']())
-    
+    local_books = len(db_tables['books']('is_remote=0'))
+    remote_books = total_books - local_books
+
     stats = {
-        "total_users": total_users,
-        "total_bookshelves": total_bookshelves,
-        "total_books": total_books
+        "total_users": f"{total_users} ({local_users} local, {remote_users} remote)",
+        "total_bookshelves": f"{total_bookshelves} ({local_bookshelves} local, {remote_bookshelves} remote)",
+        "total_books": f"{total_books} ({local_books} local, {remote_books} remote)"
     }
     
     # Get process monitoring data
@@ -346,7 +354,6 @@ def admin_processes_page(auth):
             try:
                 # Handle both datetime objects and string representations
                 if isinstance(process_info.started_at, str):
-                    from datetime import datetime
                     started_at = datetime.fromisoformat(process_info.started_at.replace('Z', '+00:00'))
                 else:
                     started_at = process_info.started_at
