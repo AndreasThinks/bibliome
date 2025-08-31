@@ -53,22 +53,28 @@ def ensure_user_exists(repo_did: str):
     try:
         existing_user = db_tables['users'].get(repo_did)
         if existing_user:
+            # If user exists but is not marked as remote, update them
+            if not getattr(existing_user, 'is_remote', False):
+                existing_user.is_remote = True
+                db_tables['users'].update(existing_user)
             return existing_user
     except:
         pass
     
-    # Create placeholder user - will be updated when they log in
+    # Create placeholder user, marked as remote
     try:
         user_data = {
             'did': repo_did,
-            'handle': f"user-{repo_did[-8:]}", # Use last 8 chars of DID as temp handle
+            'handle': f"user-{repo_did[-8:]}",
             'display_name': f"User {repo_did[-8:]}",
             'avatar_url': '',
-            'created_at': datetime.now(),
-            'last_login': datetime.now()
+            'is_remote': True,
+            'discovered_at': datetime.now(),
+            'last_seen_remote': datetime.now(),
+            'remote_sync_status': 'discovered'
         }
         db_tables['users'].insert(user_data)
-        logger.info(f"Created placeholder user for DID: {repo_did}")
+        logger.info(f"Created remote placeholder user for DID: {repo_did}")
         return user_data
     except Exception as e:
         logger.error(f"Error creating placeholder user for {repo_did}: {e}")
@@ -79,8 +85,8 @@ def store_bookshelf_from_network(record: dict, repo_did: str, record_uri: str):
     try:
         logger.info(f"Discovered new bookshelf from {repo_did}: {record.get('name')}")
         
-        # Avoid duplicates
-        existing = db_tables['bookshelves'](where="atproto_uri=?", params=(record_uri,))
+        # Avoid duplicates using the correct field
+        existing = db_tables['bookshelves'](where="original_atproto_uri=?", params=(record_uri,))
         if existing:
             logger.debug(f"Bookshelf already exists: {record_uri}")
             return
@@ -93,8 +99,13 @@ def store_bookshelf_from_network(record: dict, repo_did: str, record_uri: str):
             'description': record.get('description', ''),
             'privacy': record.get('privacy', 'public'),
             'owner_did': repo_did,
-            'atproto_uri': record_uri,
-            'slug': f"net-{record_uri.split('/')[-1]}", # Create a unique slug
+            'is_remote': True,
+            'remote_owner_did': repo_did,
+            'original_atproto_uri': record_uri,
+            'slug': f"net-{record_uri.split('/')[-1]}",
+            'discovered_at': datetime.now(),
+            'last_synced': datetime.now(),
+            'remote_sync_status': 'discovered',
             'created_at': datetime.fromisoformat(record.get('createdAt', datetime.now().isoformat()).replace('Z', '+00:00')),
             'updated_at': datetime.fromisoformat(record.get('createdAt', datetime.now().isoformat()).replace('Z', '+00:00'))
         }
@@ -121,8 +132,8 @@ def store_book_from_network(record: dict, repo_did: str, record_uri: str):
     try:
         logger.info(f"Discovered new book from {repo_did}: {record.get('title')}")
         
-        # Avoid duplicates
-        existing = db_tables['books'](where="atproto_uri=?", params=(record_uri,))
+        # Avoid duplicates using the correct field
+        existing = db_tables['books'](where="original_atproto_uri=?", params=(record_uri,))
         if existing:
             logger.debug(f"Book already exists: {record_uri}")
             return
@@ -136,7 +147,7 @@ def store_book_from_network(record: dict, repo_did: str, record_uri: str):
             logger.warning(f"Book {record.get('title')} has no bookshelf reference")
             return
             
-        bookshelf = db_tables['bookshelves'](where="atproto_uri=?", params=(bookshelf_ref,))
+        bookshelf = db_tables['bookshelves'](where="original_atproto_uri=?", params=(bookshelf_ref,))
         if not bookshelf:
             logger.warning(f"Bookshelf not found for book {record.get('title')}: {bookshelf_ref}")
             return
@@ -147,7 +158,11 @@ def store_book_from_network(record: dict, repo_did: str, record_uri: str):
             'author': record.get('author', ''),
             'isbn': record.get('isbn', ''),
             'added_by_did': repo_did,
-            'atproto_uri': record_uri,
+            'is_remote': True,
+            'remote_added_by_did': repo_did,
+            'original_atproto_uri': record_uri,
+            'discovered_at': datetime.now(),
+            'remote_sync_status': 'discovered',
             'added_at': datetime.fromisoformat(record.get('addedAt', datetime.now().isoformat()).replace('Z', '+00:00'))
         }
         

@@ -31,9 +31,9 @@ class BiblioMeScanner:
         self.client = BiblioMeATProtoClient()
         self.db_tables = get_database()
         self.scan_interval_hours = int(os.getenv('BIBLIOME_SCAN_INTERVAL_HOURS', '6'))
-        self.rate_limit_per_minute = int(os.getenv('BIBLIOME_RATE_LIMIT_PER_MINUTE', '30'))
+        self.rate_limit_per_minute = int(os.getenv('BIBLIOME_RATE_LIMIT_PER_MINUTE', '60'))
         self.import_public_only = os.getenv('BIBLIOME_IMPORT_PUBLIC_ONLY', 'true').lower() == 'true'
-        self.max_users_per_scan = int(os.getenv('BIBLIOME_MAX_USERS_PER_SCAN', '100'))
+        self.user_batch_size = int(os.getenv('BIBLIOME_USER_BATCH_SIZE', '50'))
         self.running = True
 
     async def run(self):
@@ -75,20 +75,28 @@ class BiblioMeScanner:
                 return # Stop if authentication fails
         
         # 1. Discover users with Bibliome records
-        discovered_dids = await self.client.discover_bibliome_users(limit=self.max_users_per_scan)
-        logger.info(f"Discovered {len(discovered_dids)} potential Bibliome users.")
+        discovered_dids = await self.client.discover_bibliome_users()
+        logger.info(f"Discovered a total of {len(discovered_dids)} Bibliome users.")
         
-        # 2. Sync profiles for each discovered user
-        for did in discovered_dids:
-            await self.sync_user_profile(did)
-            await asyncio.sleep(60 / self.rate_limit_per_minute) # Rate limit
+        # 2. Sync profiles for each discovered user in batches
+        for i in range(0, len(discovered_dids), self.user_batch_size):
+            batch = discovered_dids[i:i + self.user_batch_size]
+            logger.info(f"Processing user profile batch {i//self.user_batch_size + 1}/{(len(discovered_dids) + self.user_batch_size - 1)//self.user_batch_size}...")
+            for did in batch:
+                await self.sync_user_profile(did)
+                await asyncio.sleep(60 / self.rate_limit_per_minute)
+            logger.info(f"Completed profile sync for batch of {len(batch)} users.")
 
-        # 3. Sync bookshelves and books for all remote users
+        # 3. Sync bookshelves and books for all remote users in batches
         remote_users = self.db_tables['users']("is_remote=1")
-        logger.info(f"Found {len(remote_users)} remote users to sync.")
-        for user in remote_users:
-            await self.sync_user_content(user.did)
-            await asyncio.sleep(60 / self.rate_limit_per_minute) # Rate limit
+        logger.info(f"Found {len(remote_users)} remote users to sync content for.")
+        for i in range(0, len(remote_users), self.user_batch_size):
+            batch = remote_users[i:i + self.user_batch_size]
+            logger.info(f"Processing user content batch {i//self.user_batch_size + 1}/{(len(remote_users) + self.user_batch_size - 1)//self.user_batch_size}...")
+            for user in batch:
+                await self.sync_user_content(user.did)
+                await asyncio.sleep(60 / self.rate_limit_per_minute)
+            logger.info(f"Completed content sync for batch of {len(batch)} users.")
 
     async def sync_user_profile(self, did: str):
         """Sync a single user's profile."""
@@ -153,10 +161,11 @@ class BiblioMeScanner:
             return
 
         try:
-            existing_shelf = self.db_tables['bookshelves']("original_atproto_uri=?", (uri,))
-            if existing_shelf:
+            # Deduplication check
+            existing_shelf_list = self.db_tables['bookshelves']("original_atproto_uri=?", (uri,))
+            if existing_shelf_list:
                 # Update existing shelf
-                shelf = existing_shelf[0]
+                shelf = existing_shelf_list[0]
                 shelf.name = value.get('name', shelf.name)
                 shelf.description = value.get('description', shelf.description)
                 shelf.privacy = value.get('privacy', shelf.privacy)
@@ -202,10 +211,11 @@ class BiblioMeScanner:
                 return
             parent_shelf_id = parent_shelf_list[0].id
 
-            existing_book = self.db_tables['books']("original_atproto_uri=?", (uri,))
-            if existing_book:
+            # Deduplication check
+            existing_book_list = self.db_tables['books']("original_atproto_uri=?", (uri,))
+            if existing_book_list:
                 # Update existing book
-                book = existing_book[0]
+                book = existing_book_list[0]
                 book.title = value.get('title', book.title)
                 book.author = value.get('author', book.author)
                 book.isbn = value.get('isbn', book.isbn)
