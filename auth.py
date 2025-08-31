@@ -7,6 +7,8 @@ from typing import Optional, Dict, Any
 from components import Alert, NavBar
 import logging
 from dotenv import load_dotenv
+from auth_diagnostics import log_auth_flow
+from auth_retry import retry_on_network_error
 
 load_dotenv()
 
@@ -92,30 +94,57 @@ class BlueskyAuth:
             )
         )
     
+    @log_auth_flow
+    @retry_on_network_error(max_attempts=3, backoff_seconds=1)
     async def authenticate_user(self, handle: str, password: str) -> Optional[Dict[str, Any]]:
         """Authenticate user with Bluesky and return user info."""
         try:
-            logger.info(f"Starting authentication for handle: {handle}")
-            
-            # Ensure handle has proper format
+            # Step 1: Format handle
+            original_handle = handle
             if not handle.endswith('.bsky.social') and '.' not in handle:
                 handle = f"{handle}.bsky.social"
-                logger.debug(f"Formatted handle: {handle}")
+                logger.debug(f"Formatted handle '{original_handle}' to '{handle}'")
             
-            # Login to Bluesky - this returns a profile object
-            logger.info("Attempting Bluesky login...")
-            if not (service := self.get_service_from_handle(handle)).endswith(".bsky.network"):
-                self.client = AtprotoClient(service)
+            # Step 2: Resolve service endpoint
+            service = None
+            try:
+                service = self.get_service_from_handle(handle)
+                logger.info(f"Resolved service endpoint for '{handle}': {service}")
+            except Exception as e:
+                logger.error(f"Failed to resolve service endpoint for '{handle}': {e}", exc_info=True)
+                # Fallback for custom domains that might fail resolution
+                if not handle.endswith('.bsky.social'):
+                    logger.warning(f"Falling back to default Bluesky service for '{handle}'")
+                    service = "https://bsky.social"
+                else:
+                    raise  # Re-raise if it's a bsky.social handle that fails
+
+            # Step 3: Initialize client with the resolved service
+            try:
+                if service and not service.endswith("bsky.network"):
+                    self.client = AtprotoClient(service)
+                    logger.debug(f"Initialized AtprotoClient with custom service: {service}")
+                else:
+                    # Use default client if service is bsky.network or resolution failed
+                    self.client = AtprotoClient()
+                    logger.debug("Initialized AtprotoClient with default service.")
+            except Exception as e:
+                logger.error(f"Failed to initialize AtprotoClient: {e}", exc_info=True)
+                raise
+
+            # Step 4: Attempt login
+            logger.info(f"Attempting Bluesky login for '{handle}' on service '{service}'...")
             profile = self.client.login(handle, password)
-            logger.debug(f"Login successful, profile: {profile is not None}")
+            logger.debug(f"Login successful, profile returned: {profile is not None}")
             
-            # The client.me contains the session info after login
+            # Step 5: Verify session
             if not self.client.me:
-                logger.error("No client.me after login")
+                logger.error(f"Login appeared successful but client.me is missing for handle '{handle}'")
                 return None
             
-            logger.debug(f"Client.me found: {self.client.me.handle}")
+            logger.debug(f"Session verified, client.me.handle: {self.client.me.handle}")
             
+            # Step 6: Prepare user data
             user_data = {
                 'did': self.client.me.did,
                 'handle': self.client.me.handle,
@@ -127,17 +156,15 @@ class BlueskyAuth:
             }
             logger.info(f"Authentication successful for user: {user_data['handle']}")
             return user_data
+            
         except Exception as e:
-            # Import the specific exception type
             from atproto_client.exceptions import UnauthorizedError
             
             if isinstance(e, UnauthorizedError):
-                # This is expected for wrong credentials - log as warning, not error
-                logger.warning(f"Authentication failed for handle {handle}: Invalid credentials")
+                logger.warning(f"Authentication failed for handle '{handle}': Invalid credentials. Error: {e}")
                 return None
             else:
-                # Unexpected error (network, service down, etc.) - log as error with traceback
-                logger.error(f"Authentication system error for handle {handle}: {e}", exc_info=True)
+                logger.error(f"An unexpected error occurred during authentication for handle '{handle}': {e}", exc_info=True)
                 return None
 
     def get_service_from_handle(self, handle: str) -> str:

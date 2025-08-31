@@ -490,7 +490,17 @@ async def login_handler(handle: str, password: str, sess):
             return RedirectResponse('/', status_code=303)
     else:
         logger.warning(f"Authentication failed for handle: {handle}")
-        sess['error'] = "Invalid handle or app password. Please check your credentials and try again."
+        
+        # Provide more specific error messages
+        error_message = "Invalid handle or app password. Please check your credentials and try again."
+        
+        # Check for common issues
+        if not password.startswith("xxxx-xxxx-xxxx-xxxx"):
+            error_message += " Ensure you are using a Bluesky app password, not your main password."
+        if '@' in handle:
+            error_message += " Your handle should not include the '@' symbol."
+            
+        sess['error'] = error_message
         return RedirectResponse('/auth/login', status_code=303)
 
 @rt("/auth/logout")
@@ -2624,6 +2634,39 @@ def get_contact_modal():
 def close_contact_modal():
     """HTMX endpoint to close the contact modal."""
     return ""  # Return empty content to clear the modal
+
+@rt("/api/auth/health")
+async def auth_health_check():
+    """Authentication health check endpoint."""
+    try:
+        # Use a known public handle to test service resolution and basic API access
+        test_handle = "bsky.app"
+        
+        # Create a temporary client to avoid interfering with the main one
+        temp_client = AtprotoClient()
+        
+        # 1. Test DNS and service resolution
+        did_response = temp_client.com.atproto.identity.resolve_handle({"handle": test_handle})
+        if not did_response or not did_response.did:
+            return JSONResponse({"status": "unhealthy", "reason": "DNS or DID resolution failed"}, status_code=503)
+        
+        # 2. Test PLC directory access
+        did_doc_url = f"https://plc.directory/{did_response.did}"
+        response = httpx.get(did_doc_url)
+        if response.status_code != 200:
+            return JSONResponse({"status": "unhealthy", "reason": f"PLC directory access failed with status {response.status_code}"}, status_code=503)
+        
+        # 3. Check for essential service endpoint
+        did_doc = response.json()
+        service = did_doc.get('service', [{}])[0].get('serviceEndpoint')
+        if not service:
+            return JSONResponse({"status": "unhealthy", "reason": "Service endpoint not found in DID document"}, status_code=503)
+            
+        return JSONResponse({"status": "healthy", "details": "Successfully resolved handle and accessed PLC directory."})
+        
+    except Exception as e:
+        logger.error(f"Auth health check failed: {e}", exc_info=True)
+        return JSONResponse({"status": "unhealthy", "reason": str(e)}, status_code=503)
 
 @rt("/api/contact", methods=["POST"])
 async def send_contact_email(name: str, email: str, subject: str, message: str):
