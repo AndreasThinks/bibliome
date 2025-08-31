@@ -80,6 +80,11 @@ class User:
     avatar_url: str = ""
     created_at: datetime = None
     last_login: datetime = None
+    # Remote origin tracking
+    is_remote: bool = False
+    discovered_at: datetime = None
+    last_seen_remote: datetime = None
+    remote_sync_status: str = "local"
 
 class Bookshelf:
     """Bookshelf model for organizing books."""
@@ -93,6 +98,13 @@ class Bookshelf:
     atproto_uri: str = "" # AT-Proto URI of the record
     created_at: datetime = None
     updated_at: datetime = None
+    # Remote origin tracking
+    is_remote: bool = False
+    remote_owner_did: str = ""
+    discovered_at: datetime = None
+    last_synced: datetime = None
+    remote_sync_status: str = "local"
+    original_atproto_uri: str = ""
 
 class Book:
     """Book model with metadata from external APIs."""
@@ -109,6 +121,12 @@ class Book:
     page_count: int = 0
     atproto_uri: str = "" # AT-Proto URI of the record
     added_at: datetime = None
+    # Remote origin tracking
+    is_remote: bool = False
+    remote_added_by_did: str = ""
+    discovered_at: datetime = None
+    original_atproto_uri: str = ""
+    remote_sync_status: str = "local"
 
 class Permission:
     """Permission model for role-based access to bookshelves."""
@@ -154,6 +172,15 @@ class Activity:
     # JSON field for additional metadata
     metadata: str = ""  # JSON string for flexible data
 
+class SyncLog:
+    """Log synchronization activities."""
+    id: int = None
+    sync_type: str  # 'user', 'bookshelf', 'book'
+    target_id: str  # The ID/DID of the synced record
+    action: str     # 'discovered', 'imported', 'updated', 'failed'
+    details: str = ""  # JSON with additional info
+    timestamp: datetime = None
+
 # Global database instance to prevent multiple connections
 _db_instance = None
 
@@ -197,6 +224,7 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     bookshelf_invites = db.create(BookshelfInvite, transform=True)
     upvotes = db.create(Upvote, pk=['book_id', 'user_did'], transform=True)
     activities = db.create(Activity, transform=True)
+    sync_logs = db.create(SyncLog, transform=True)
     
     # Add process monitoring tables
     from fastlite import Table
@@ -213,6 +241,7 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
         'bookshelf_invites': bookshelf_invites,
         'upvotes': upvotes,
         'activities': activities,
+        'sync_logs': sync_logs,
         'process_status': process_status,
         'process_logs': process_logs,
         'process_metrics': process_metrics
