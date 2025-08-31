@@ -89,6 +89,11 @@ class BiblioMeATProtoClient:
         """Get all records of a specific type from a user's repo."""
         records = []
         try:
+            # We don't need to resolve the PDS, the client should handle it.
+            # The key is to use a client that is NOT authenticated with our own credentials
+            # when looking at other people's data.
+            client = Client()
+
             cursor = None
             while True:
                 params = models.ComAtprotoRepoListRecords.Params(
@@ -97,7 +102,7 @@ class BiblioMeATProtoClient:
                     limit=100,
                     cursor=cursor
                 )
-                response = self.client.com.atproto.repo.list_records(params)
+                response = client.com.atproto.repo.list_records(params)
 
                 if not response or not response.records:
                     break
