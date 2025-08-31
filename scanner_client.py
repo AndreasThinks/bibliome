@@ -90,42 +90,70 @@ class BiblioMeATProtoClient:
 
     @flexicache(time_policy(900))  # Cache for 15 minutes
     async def get_all_records(self, did: str, collection_nsid: str) -> List[Dict[str, Any]]:
-        """Get all records of a specific type from a user's repo."""
+        """Get all records of a specific type from a user's repo with robust cursor handling."""
         records = []
+        max_retries = 3
+        retry_count = 0
+        
         try:
-            # We don't need to resolve the PDS, the client should handle it.
-            # The key is to use a client that is NOT authenticated with our own credentials
-            # when looking at other people's data.
             client = Client()
-
             cursor = None
-            while True:
-                params = models.ComAtprotoRepoListRecords.Params(
-                    repo=did,
-                    collection=collection_nsid,
-                    limit=100,
-                    cursor=cursor
-                )
-                response = client.com.atproto.repo.list_records(params)
+            consecutive_empty_responses = 0
+            max_empty_responses = 2
+            
+            while retry_count <= max_retries:
+                try:
+                    params = models.ComAtprotoRepoListRecords.Params(
+                        repo=did,
+                        collection=collection_nsid,
+                        limit=100,
+                        cursor=cursor
+                    )
+                    response = client.com.atproto.repo.list_records(params)
 
-                if not response or not response.records:
-                    break
-                
-                for record in response.records:
-                    records.append({
-                        "uri": record.uri,
-                        "cid": str(record.cid),
-                        "value": record.value,
-                        "rkey": record.uri.split('/')[-1]
-                    })
-                
-                cursor = response.cursor
-                if not cursor:
-                    break
+                    if not response or not response.records:
+                        consecutive_empty_responses += 1
+                        
+                        if cursor and consecutive_empty_responses >= max_empty_responses:
+                            logger.warning(f"Stale cursor detected for {did}/{collection_nsid}, restarting without cursor")
+                            cursor = None
+                            consecutive_empty_responses = 0
+                            retry_count += 1
+                            continue
+                        else:
+                            break
+                    else:
+                        consecutive_empty_responses = 0
+                    
+                    for record in response.records:
+                        records.append({
+                            "uri": record.uri,
+                            "cid": str(record.cid),
+                            "value": record.value,
+                            "rkey": record.uri.split('/')[-1]
+                        })
+                    
+                    new_cursor = response.cursor
+                    if not new_cursor or new_cursor == cursor:
+                        break
+                        
+                    cursor = new_cursor
+                    
+                except Exception as e:
+                    if 'cursor' in str(e).lower() or 'invalid' in str(e).lower():
+                        logger.warning(f"Cursor error for {did}/{collection_nsid}: {e}, retrying without cursor")
+                        cursor = None
+                        retry_count += 1
+                        continue
+                    else:
+                        if 'Bad Request' not in str(e):
+                            logger.error(f"Error listing records for {did} in {collection_nsid}: {e}")
+                        break
+                        
         except Exception as e:
-            # A 400 error often means the collection doesn't exist for this user, which is normal.
-            if 'Bad Request' not in str(e):
-                logger.error(f"Error listing records for {did} in {collection_nsid}: {e}")
+            logger.error(f"Fatal error in get_all_records for {did}/{collection_nsid}: {e}")
+        
+        logger.info(f"Retrieved {len(records)} records for {did}/{collection_nsid}")
         return records
 
     async def get_user_bookshelves(self, did: str) -> List[Dict[str, Any]]:
