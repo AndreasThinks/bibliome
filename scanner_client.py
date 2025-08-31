@@ -35,32 +35,62 @@ class BiblioMeATProtoClient:
             logger.info(f"Discovering users from relay: {base}")
             try:
                 cursor = None
-                while True:
-                    params = {"collection": self.nsid_bookshelf, "limit": str(batch_size)}
-                    if cursor:
-                        params["cursor"] = cursor
-                    
-                    url = f"{base}/xrpc/com.atproto.sync.listReposByCollection"
-                    async with httpx.AsyncClient(timeout=60) as http_client:
-                        r = await http_client.get(url, params=params)
-                    
-                    if r.status_code == 404:
-                        logger.warning(f"Relay {base} does not support listReposByCollection.")
-                        break 
-                    r.raise_for_status()
-                    
-                    data = r.json()
-                    discovered_count = len(data.get("repos", []))
-                    logger.info(f"Found {discovered_count} users in this batch from {base}.")
-                    
-                    for entry in data.get("repos", []):
-                        all_dids.add(entry["did"])
-                    
-                    cursor = data.get("cursor")
-                    if not cursor or discovered_count == 0:
-                        logger.info(f"Finished scanning relay {base}.")
-                        processed_relays.add(base)
-                        break # Move to the next relay
+                consecutive_empty_responses = 0
+                max_empty_responses = 2
+                max_retries = 3
+                retry_count = 0
+
+                while retry_count <= max_retries:
+                    try:
+                        params = {"collection": self.nsid_bookshelf, "limit": str(batch_size)}
+                        if cursor:
+                            params["cursor"] = cursor
+                        
+                        url = f"{base}/xrpc/com.atproto.sync.listReposByCollection"
+                        async with httpx.AsyncClient(timeout=60) as http_client:
+                            r = await http_client.get(url, params=params)
+                        
+                        if r.status_code == 404:
+                            logger.warning(f"Relay {base} does not support listReposByCollection.")
+                            break 
+                        r.raise_for_status()
+                        
+                        data = r.json()
+                        discovered_count = len(data.get("repos", []))
+                        logger.info(f"Found {discovered_count} users in this batch from {base}.")
+                        
+                        if discovered_count == 0:
+                            consecutive_empty_responses += 1
+                            if cursor and consecutive_empty_responses >= max_empty_responses:
+                                logger.warning(f"Stale cursor detected for user discovery on {base}, restarting without cursor")
+                                cursor = None
+                                consecutive_empty_responses = 0
+                                retry_count += 1
+                                continue
+                            else:
+                                break
+                        else:
+                            consecutive_empty_responses = 0
+
+                        for entry in data.get("repos", []):
+                            all_dids.add(entry["did"])
+                        
+                        new_cursor = data.get("cursor")
+                        if not new_cursor or new_cursor == cursor:
+                            logger.info(f"Finished scanning relay {base}.")
+                            processed_relays.add(base)
+                            break
+                        
+                        cursor = new_cursor
+
+                    except Exception as e:
+                        if 'cursor' in str(e).lower() or 'invalid' in str(e).lower():
+                            logger.warning(f"Cursor error during user discovery on {base}: {e}, retrying without cursor")
+                            cursor = None
+                            retry_count += 1
+                            continue
+                        else:
+                            raise
             except Exception as e:
                 logger.error(f"Relay {base} failed during discovery: {e}", exc_info=True)
                 last_err = e
