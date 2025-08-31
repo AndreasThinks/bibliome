@@ -228,7 +228,7 @@ class BiblioMeScanner:
             self.log_sync_activity('book', uri, 'skipped', 'Record value is None')
             return
 
-        bookshelf_ref_uri = value.get('bookshelfRef')
+        bookshelf_ref_uri = value.get('bookshelfRef') if isinstance(value, dict) else None
 
         if not bookshelf_ref_uri:
             self.log_sync_activity('book', uri, 'skipped', 'No bookshelf reference')
