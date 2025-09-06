@@ -50,7 +50,7 @@ logging.getLogger('watchfiles.main').setLevel(logging.WARNING)
 db_tables = None
 
 # Initialize process monitoring
-process_monitor = init_process_monitoring(db_tables)
+process_monitor = None
 
 # Initialize external services
 bluesky_auth = BlueskyAuth()
@@ -187,7 +187,7 @@ def admin_page(auth):
     }
     
     # Get process monitoring data
-    monitor = get_process_monitor(db_tables)
+    monitor = get_process_monitor()
     all_processes = monitor.get_all_processes()
     
     # Build process status summary
@@ -340,7 +340,7 @@ def admin_processes_page(auth):
     if not is_admin(auth):
         return RedirectResponse('/', status_code=303)
     
-    monitor = get_process_monitor(db_tables)
+    monitor = get_process_monitor()
     all_processes = monitor.get_all_processes()
     
     # Process status cards
@@ -514,7 +514,7 @@ def get_process_card(service_name: str, auth):
     """Helper to get the updated HTML for a single process card."""
     if not is_admin(auth): return ""
     
-    monitor = get_process_monitor(db_tables)
+    monitor = get_process_monitor()
     process_info = monitor.get_process_status(service_name)
     if not process_info: return ""
 
@@ -2892,11 +2892,8 @@ Reply directly to this email to respond to {name} at {email}.""",
         logger.error(f"Error sending contact email via SMTP2GO: {e}", exc_info=True)
         return ContactFormError("There was an error sending your message. Please try again later.")
 
-# Global service manager instance, initialized here
+# Global service manager instance
 service_manager = None
-if __name__ == "__main__":
-    from service_manager import ServiceManager
-    service_manager = ServiceManager(setup_signals=False)
 
 # Entry point integration for background services
 if __name__ == "__main__":
@@ -2905,6 +2902,26 @@ if __name__ == "__main__":
     import time
     import signal
     import threading
+    import asyncio
+    from database_manager import db_manager
+    from service_manager import ServiceManager
+
+    async def startup():
+        """Initialize database, process monitor, and service manager."""
+        global db_tables, process_monitor, service_manager
+        
+        # 1. Initialize database
+        from database_manager import db_manager
+        db_tables = await db_manager.get_connection()
+        
+        # 2. Initialize process monitoring
+        process_monitor = init_process_monitoring(db_tables)
+        
+        # 3. Initialize service manager
+        service_manager = ServiceManager(setup_signals=False)
+
+    # Run startup
+    asyncio.run(startup())
     
     def start_background_services():
         """Start background services in a separate thread."""
