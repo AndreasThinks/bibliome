@@ -108,18 +108,18 @@ class BiblioMeScanner:
                 # User exists, update if needed
                 user.is_remote = True
                 user.last_seen_remote = datetime.now(timezone.utc)
-                user.display_name = getattr(profile_data, 'displayName', None)
-                avatar = getattr(profile_data, 'avatar', None)
+                user.display_name = profile_data.get('displayName')
+                avatar = profile_data.get('avatar')
                 user.avatar_url = str(avatar) if avatar else None
                 self.db_tables['users'].update(user)
                 self.log_sync_activity('user', did, 'updated', 'Profile updated')
             except NotFoundError:
                 # New user, insert into DB
-                avatar = getattr(profile_data, 'avatar', None)
+                avatar = profile_data.get('avatar')
                 new_user = User(
                     did=did,
                     handle=f"{did}", # Placeholder, will be updated
-                    display_name=getattr(profile_data, 'displayName', None),
+                    display_name=profile_data.get('displayName'),
                     avatar_url=str(avatar) if avatar else None,
                     is_remote=True,
                     discovered_at=datetime.now(timezone.utc),
@@ -175,20 +175,20 @@ class BiblioMeScanner:
             if existing_shelf_list:
                 # Update existing shelf
                 shelf = existing_shelf_list[0]
-                shelf.name = getattr(value, 'name', shelf.name)
-                shelf.description = getattr(value, 'description', shelf.description)
-                shelf.privacy = getattr(value, 'privacy', shelf.privacy)
+                shelf.name = value.get('name', shelf.name)
+                shelf.description = value.get('description', shelf.description)
+                shelf.privacy = value.get('privacy', shelf.privacy)
                 shelf.last_synced = datetime.now(timezone.utc)
                 self.db_tables['bookshelves'].update(shelf)
                 self.log_sync_activity('bookshelf', uri, 'updated')
             else:
                 # Create new shelf
                 new_shelf = Bookshelf(
-                    name=getattr(value, 'name', 'Untitled Shelf'),
+                    name=value.get('name', 'Untitled Shelf'),
                     owner_did=did, # Local owner is the same as remote for now
                     slug=generate_slug(),
-                    description=getattr(value, 'description', ''),
-                    privacy=getattr(value, 'privacy', 'public'),
+                    description=value.get('description', ''),
+                    privacy=value.get('privacy', 'public'),
                     is_remote=True,
                     remote_owner_did=did,
                     discovered_at=datetime.now(timezone.utc),
@@ -215,7 +215,7 @@ class BiblioMeScanner:
             self.log_sync_activity('book', uri, 'skipped', 'Record value is None')
             return
 
-        bookshelf_ref_uri = getattr(value, 'bookshelfRef', None)
+        bookshelf_ref_uri = value.get('bookshelfRef')
 
         if not bookshelf_ref_uri:
             self.log_sync_activity('book', uri, 'skipped', 'No bookshelf reference')
@@ -234,25 +234,25 @@ class BiblioMeScanner:
             if existing_book_list:
                 # Update existing book
                 book = existing_book_list[0]
-                book.title = getattr(value, 'title', book.title)
-                book.author = getattr(value, 'author', book.author)
-                book.isbn = getattr(value, 'isbn', book.isbn)
+                book.title = value.get('title', book.title)
+                book.author = value.get('author', book.author)
+                book.isbn = value.get('isbn', book.isbn)
                 self.db_tables['books'].update(book)
                 self.log_sync_activity('book', uri, 'updated')
             else:
                 # Create new book
                 new_book = Book(
                     bookshelf_id=parent_shelf_id,
-                    title=getattr(value, 'title', 'Untitled Book'),
+                    title=value.get('title', 'Untitled Book'),
                     added_by_did=did,
-                    isbn=getattr(value, 'isbn', ''),
-                    author=getattr(value, 'author', ''),
+                    isbn=value.get('isbn', ''),
+                    author=value.get('author', ''),
                     is_remote=True,
                     remote_added_by_did=did,
                     discovered_at=datetime.now(timezone.utc),
                     original_atproto_uri=uri,
                     remote_sync_status='synced',
-                    added_at=getattr(value, 'addedAt', None)
+                    added_at=value.get('addedAt')
                 )
                 self.db_tables['books'].insert(new_book)
                 self.log_sync_activity('book', uri, 'imported')

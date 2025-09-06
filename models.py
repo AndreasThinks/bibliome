@@ -181,31 +181,68 @@ class SyncLog:
     details: str = ""  # JSON with additional info
     timestamp: datetime = None
 
-def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migrations'):
+class ProcessStatus:
+    """Process status model."""
+    process_name: str
+    process_type: str
+    status: str
+    pid: int = None
+    started_at: datetime = None
+    last_heartbeat: datetime = None
+    last_activity: datetime = None
+    restart_count: int = 0
+    error_message: str = ""
+    config_data: str = ""
+    created_at: datetime = None
+    updated_at: datetime = None
+
+class ProcessLog:
+    """Process log model."""
+    id: int = None
+    process_name: str
+    log_level: str
+    event_type: str
+    message: str
+    details: str = ""
+    timestamp: datetime = None
+
+class ProcessMetric:
+    """Process metric model."""
+    id: int = None
+    process_name: str
+    metric_name: str
+    metric_value: int
+    metric_type: str = "counter"
+    recorded_at: datetime = None
+
+def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migrations', memory: bool = False):
     """Initialize the database with fastmigrate and all tables."""
     import os
-    from fastmigrate.core import create_db, run_migrations, get_db_version
-    
-    # Ensure the data directory exists, unless it's an in-memory database
-    if db_path != ':memory:':
+
+    if memory:
+        db_path = ':memory:'
+        print("Setting up in-memory database for testing.")
+        db = database(db_path)
+    else:
+        from fastmigrate.core import create_db, run_migrations, get_db_version
+        
+        # Ensure the data directory exists
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    
-    # Initialize fastmigrate managed database
-    # If no db exists, it's created and set to version 0
-    # If a db exists, nothing happens
-    create_db(db_path)
-    
-    # Apply any pending migrations from migrations_dir
-    success = run_migrations(db_path, migrations_dir)
-    if not success:
-        raise RuntimeError("Database migration failed! Application cannot continue.")
-    
-    # Get current database version for logging
-    version = get_db_version(db_path)
-    print(f"Database initialized at version {version}")
-    
-    # Create FastLite database connection with WAL mode
-    db = database(db_path)
+        
+        # Initialize fastmigrate managed database
+        create_db(db_path)
+        
+        # Apply any pending migrations from migrations_dir
+        success = run_migrations(db_path, migrations_dir)
+        if not success:
+            raise RuntimeError("Database migration failed! Application cannot continue.")
+        
+        # Get current database version for logging
+        version = get_db_version(db_path)
+        print(f"Database initialized at version {version}")
+        
+        # Create FastLite database connection
+        db = database(db_path)
     
     # Configure SQLite for better concurrency
     db.execute("PRAGMA journal_mode=WAL")
@@ -228,10 +265,9 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     sync_logs = db.create(SyncLog, transform=True)
     
     # Add process monitoring tables
-    from fastlite import Table
-    process_status = Table(db, 'process_status')
-    process_logs = Table(db, 'process_logs')
-    process_metrics = Table(db, 'process_metrics')
+    process_status = db.create(ProcessStatus, pk='process_name', transform=True)
+    process_logs = db.create(ProcessLog, transform=True)
+    process_metrics = db.create(ProcessMetric, transform=True)
     
     return {
         'db': db,

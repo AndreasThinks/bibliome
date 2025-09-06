@@ -7,11 +7,11 @@ from datetime import datetime
 from pathlib import Path
 from atproto_firehose import FirehoseSubscribeReposClient, parse_subscribe_repos_message
 from atproto_core.cid import CID
-from models import get_database, log_activity
+from models import log_activity
 from atproto import models, CAR
 from process_monitor import (
     log_process_event, record_process_metric, process_heartbeat, 
-    update_process_status, get_process_monitor
+    update_process_status
 )
 from circuit_breaker import CircuitBreaker
 
@@ -31,11 +31,13 @@ handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+from database_manager import db_manager
+
 # Process name for monitoring
 PROCESS_NAME = "firehose_ingester"
 
-# Use shared database instance
-db_tables = get_database()
+# Database instance will be managed asynchronously
+db_tables = None
 
 # Cursor file for resume functionality
 CURSOR_FILE = Path("firehose.cursor")
@@ -205,7 +207,7 @@ error_count = 0
 
 circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
 
-def on_message_handler(message):
+def on_message_handler(message, db_tables):
     """Handle incoming firehose messages with optimized filtering and error handling."""
     global message_count, bookshelf_count, book_count, error_count
     
@@ -298,12 +300,12 @@ def on_message_handler(message):
         logger.error(f"Error handling firehose message: {e}", exc_info=True)
         log_process_event(PROCESS_NAME, f"Critical error in message handler: {e}", "ERROR", "error", db_tables=db_tables)
 
-def setup_signal_handlers():
+def setup_signal_handlers(db_tables):
     """Setup signal handlers for graceful shutdown."""
     def signal_handler(signum, frame):
         logger.info(f"Received signal {signum}, shutting down gracefully...")
-        update_process_status(PROCESS_NAME, "stopped", db_tables=db_tables)
-        log_process_event(PROCESS_NAME, "Process shutdown via signal", "INFO", "stop", db_tables=db_tables)
+        # Note: This is a synchronous context, so we can't use async db calls here.
+        # The main loop will handle the final status update.
         sys.exit(0)
     
     signal.signal(signal.SIGTERM, signal_handler)
@@ -311,10 +313,12 @@ def setup_signal_handlers():
 
 async def main():
     """Main firehose monitoring loop with reconnection logic."""
-    global message_count, bookshelf_count, book_count, error_count
+    global message_count, bookshelf_count, book_count, error_count, db_tables
+    
+    db_tables = await db_manager.get_connection()
     
     # Setup signal handlers
-    setup_signal_handlers()
+    setup_signal_handlers(db_tables)
     
     # Update process status to starting
     update_process_status(PROCESS_NAME, "starting", pid=os.getpid(), db_tables=db_tables)
@@ -353,7 +357,11 @@ async def main():
                 params = models.ComAtprotoSyncSubscribeRepos.Params()
             
             log_process_event(PROCESS_NAME, "Connected to AT-Proto firehose", "INFO", "activity", db_tables=db_tables)
-            await firehose.start(circuit_breaker(on_message_handler), params)
+            
+            # Create a partial function to pass db_tables to the handler
+            handler_with_db = lambda msg: on_message_handler(msg, db_tables)
+            
+            await firehose.start(circuit_breaker(handler_with_db), params)
             
         except KeyboardInterrupt:
             logger.info("Firehose monitoring stopped by user")
