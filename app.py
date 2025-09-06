@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 logging.getLogger('watchfiles.main').setLevel(logging.WARNING)
 
 # Initialize database with fastmigrate
-db_tables = setup_database()
+db_tables = None
 
 # Initialize process monitoring
 process_monitor = init_process_monitoring(db_tables)
@@ -58,7 +58,11 @@ book_api = BookAPIClient()
 
 
 # Beforeware function that includes database tables
-def before_handler(req, sess):
+async def before_handler(req, sess):
+    global db_tables
+    if db_tables is None:
+        from database_manager import db_manager
+        db_tables = await db_manager.get_connection()
     return auth_beforeware(req, sess, db_tables)
 
 # Initialize FastHTML app with persistent sessions

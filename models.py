@@ -181,9 +181,6 @@ class SyncLog:
     details: str = ""  # JSON with additional info
     timestamp: datetime = None
 
-# Global database instance to prevent multiple connections
-_db_instance = None
-
 def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migrations'):
     """Initialize the database with fastmigrate and all tables."""
     import os
@@ -214,6 +211,9 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     db.execute("PRAGMA synchronous=NORMAL") 
     db.execute("PRAGMA wal_autocheckpoint=1000")
     db.execute("PRAGMA busy_timeout=30000")  # 30 second timeout
+    db.execute("PRAGMA cache_size=10000")
+    db.execute("PRAGMA temp_store=memory")
+    db.execute("PRAGMA mmap_size=268435456")
     
     # Create table objects for FastLite operations
     # These will connect to existing tables created by migrations
@@ -248,11 +248,8 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     }
 
 def get_database():
-    """Get the shared database instance. Creates it if it doesn't exist."""
-    global _db_instance
-    if _db_instance is None:
-        _db_instance = setup_database()
-    return _db_instance
+    """This function is deprecated. Use database_manager.db_manager instead."""
+    raise DeprecationWarning("get_database() is deprecated. Use database_manager.db_manager instead.")
 
 def generate_invite_code():
     """Generate a secure random invite code."""

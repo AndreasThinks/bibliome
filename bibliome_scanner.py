@@ -11,7 +11,8 @@ from typing import Dict, List, Optional
 from dotenv import load_dotenv
 
 from apswutils.db import NotFoundError
-from models import get_database, SyncLog, User, Bookshelf, Book, generate_slug
+from models import SyncLog, User, Bookshelf, Book, generate_slug
+from database_manager import db_manager
 from direct_pds_client import DirectPDSClient
 from hybrid_discovery import HybridDiscoveryService
 from circuit_breaker import CircuitBreaker
@@ -47,7 +48,7 @@ class BiblioMeScanner:
         )
         self.pds_client = DirectPDSClient(rate_limiter)
         self.discovery = HybridDiscoveryService(self.pds_client)
-        self.db_tables = get_database()
+        self.db_tables = None
         self.scan_interval_hours = int(os.getenv('BIBLIOME_SCAN_INTERVAL_HOURS', '6'))
         self.import_public_only = os.getenv('BIBLIOME_IMPORT_PUBLIC_ONLY', 'true').lower() == 'true'
         self.user_batch_size = int(os.getenv('BIBLIOME_USER_BATCH_SIZE', '50'))
@@ -79,6 +80,7 @@ class BiblioMeScanner:
     async def run_scan_cycle(self):
         """Runs a complete scan and import cycle."""
         logger.info("Starting new scan cycle...")
+        self.db_tables = await db_manager.get_connection()
         
         # 1. Discover users with Bibliome records
         discovered_dids = await self.discovery.discover_users()
@@ -90,8 +92,9 @@ class BiblioMeScanner:
         for i in range(0, len(remote_users), self.user_batch_size):
             batch = remote_users[i:i + self.user_batch_size]
             logger.info(f"Processing user content batch {i//self.user_batch_size + 1}/{(len(remote_users) + self.user_batch_size - 1)//self.user_batch_size}...")
-            for user in batch:
-                await self.sync_user_content(user.did)
+            with self.db_tables['db'].transaction():
+                for user in batch:
+                    await self.sync_user_content(user.did)
             logger.info(f"Completed content sync for batch of {len(batch)} users.")
 
     async def sync_user_profile(self, did: str, profile_data: Dict):
