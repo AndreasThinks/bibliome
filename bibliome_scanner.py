@@ -96,7 +96,12 @@ class BiblioMeScanner:
                 await self.sync_user_content(user.did)
             logger.info(f"Completed content sync for batch of {len(batch)} users.")
 
-    async def sync_user_profile(self, did: str, profile_data: any):
+    def _construct_blob_url(self, did: str, cid: str, pds_endpoint: str) -> str:
+        """Constructs a proper blob URL from a PDS endpoint, DID, and CID."""
+        base_url = pds_endpoint.rstrip('/xrpc')
+        return f"{base_url}/xrpc/com.atproto.sync.getBlob?did={did}&cid={cid}"
+
+    async def sync_user_profile(self, did: str, profile_data: any, pds_endpoint: str):
         """Sync a single user's profile."""
         try:
             if not profile_data:
@@ -105,7 +110,7 @@ class BiblioMeScanner:
 
             display_name = getattr(profile_data, 'displayName', None)
             avatar = getattr(profile_data, 'avatar', None)
-            avatar_url = str(avatar.ref) if avatar and hasattr(avatar, 'ref') else None
+            avatar_url = self._construct_blob_url(did, str(avatar.ref.link), pds_endpoint) if avatar and hasattr(avatar, 'ref') and hasattr(avatar.ref, 'link') else None
 
             try:
                 user = self.db_tables['users'][did]
@@ -140,11 +145,12 @@ class BiblioMeScanner:
         logger.info(f"Syncing content for user {did}...")
         try:
             data = await self.pds_client.get_repo_records(did, ["com.bibliome.book", "com.bibliome.bookshelf", "app.bsky.actor.profile"])
+            pds_endpoint = data.get("pds")
             
             # Sync profile
             profile_data = data.get("collections", {}).get("app.bsky.actor.profile", [])
-            if profile_data:
-                await self.sync_user_profile(did, profile_data[0]['value'])
+            if profile_data and pds_endpoint:
+                await self.sync_user_profile(did, profile_data[0]['value'], pds_endpoint)
 
             # Sync bookshelves
             for shelf_data in data.get("collections", {}).get("com.bibliome.bookshelf", []):
