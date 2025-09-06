@@ -10,11 +10,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
 
-from atproto import Client
 from apswutils.db import NotFoundError
 from models import get_database, SyncLog, User, Bookshelf, Book, generate_slug
-from scanner_client import BiblioMeATProtoClient
+from direct_pds_client import DirectPDSClient
+from hybrid_discovery import HybridDiscoveryService
 from circuit_breaker import CircuitBreaker
+from rate_limiter import RateLimiter
 
 # Configure logging with service name prefix
 log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -40,10 +41,14 @@ class BiblioMeScanner:
     
     def __init__(self):
         self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
-        self.client = BiblioMeATProtoClient()
+        rate_limiter = RateLimiter(
+            tokens_per_second=int(os.getenv('BIBLIOME_RATE_LIMIT_PER_MINUTE', '60')) / 60,
+            max_tokens=int(os.getenv('BIBLIOME_RATE_LIMIT_PER_MINUTE', '60'))
+        )
+        self.pds_client = DirectPDSClient(rate_limiter)
+        self.discovery = HybridDiscoveryService(self.pds_client)
         self.db_tables = get_database()
         self.scan_interval_hours = int(os.getenv('BIBLIOME_SCAN_INTERVAL_HOURS', '6'))
-        self.rate_limit_per_minute = int(os.getenv('BIBLIOME_RATE_LIMIT_PER_MINUTE', '60'))
         self.import_public_only = os.getenv('BIBLIOME_IMPORT_PUBLIC_ONLY', 'true').lower() == 'true'
         self.user_batch_size = int(os.getenv('BIBLIOME_USER_BATCH_SIZE', '50'))
         self.running = True
@@ -75,36 +80,11 @@ class BiblioMeScanner:
         """Runs a complete scan and import cycle."""
         logger.info("Starting new scan cycle...")
         
-        # Authenticate the client if not already authenticated
-        if not self.client.client.me:
-            try:
-                username = os.getenv('BLUESKY_HANDLE')
-                password = os.getenv('BLUESKY_PASSWORD')
-                if not username or not password:
-                    raise ValueError("BLUESKY_HANDLE and BLUESKY_PASSWORD must be set in .env")
-                
-                atproto_client = Client()
-                atproto_client.login(username, password)
-                self.client.client = atproto_client
-                logger.info("AT-Proto client authenticated successfully.")
-            except Exception as e:
-                logger.error(f"Failed to authenticate AT-Proto client: {e}")
-                return # Stop if authentication fails
-        
         # 1. Discover users with Bibliome records
-        discovered_dids = await self.client.discover_bibliome_users()
+        discovered_dids = await self.discovery.discover_users()
         logger.info(f"Discovered a total of {len(discovered_dids)} Bibliome users.")
         
-        # 2. Sync profiles for each discovered user in batches
-        for i in range(0, len(discovered_dids), self.user_batch_size):
-            batch = discovered_dids[i:i + self.user_batch_size]
-            logger.info(f"Processing user profile batch {i//self.user_batch_size + 1}/{(len(discovered_dids) + self.user_batch_size - 1)//self.user_batch_size}...")
-            for did in batch:
-                await self.sync_user_profile(did)
-                await asyncio.sleep(60 / self.rate_limit_per_minute)
-            logger.info(f"Completed profile sync for batch of {len(batch)} users.")
-
-        # 3. Sync bookshelves and books for all remote users in batches
+        # 2. Sync bookshelves and books for all remote users in batches
         remote_users = self.db_tables['users']("is_remote=1")
         logger.info(f"Found {len(remote_users)} remote users to sync content for.")
         for i in range(0, len(remote_users), self.user_batch_size):
@@ -112,13 +92,11 @@ class BiblioMeScanner:
             logger.info(f"Processing user content batch {i//self.user_batch_size + 1}/{(len(remote_users) + self.user_batch_size - 1)//self.user_batch_size}...")
             for user in batch:
                 await self.sync_user_content(user.did)
-                await asyncio.sleep(60 / self.rate_limit_per_minute)
             logger.info(f"Completed content sync for batch of {len(batch)} users.")
 
-    async def sync_user_profile(self, did: str):
+    async def sync_user_profile(self, did: str, profile_data: Dict):
         """Sync a single user's profile."""
         try:
-            profile_data = await self.client.get_user_profile(did)
             if not profile_data:
                 self.log_sync_activity('user', did, 'failed', 'Profile not found')
                 return
@@ -128,18 +106,19 @@ class BiblioMeScanner:
                 # User exists, update if needed
                 user.is_remote = True
                 user.last_seen_remote = datetime.now(timezone.utc)
-                user.handle = profile_data['handle']
-                user.display_name = profile_data['display_name']
-                user.avatar_url = profile_data['avatar_url']
+                user.display_name = getattr(profile_data, 'displayName', None)
+                avatar = getattr(profile_data, 'avatar', None)
+                user.avatar_url = str(avatar) if avatar else None
                 self.db_tables['users'].update(user)
                 self.log_sync_activity('user', did, 'updated', 'Profile updated')
             except NotFoundError:
                 # New user, insert into DB
+                avatar = getattr(profile_data, 'avatar', None)
                 new_user = User(
                     did=did,
-                    handle=profile_data['handle'],
-                    display_name=profile_data['display_name'],
-                    avatar_url=profile_data['avatar_url'],
+                    handle=f"{did}", # Placeholder, will be updated
+                    display_name=getattr(profile_data, 'displayName', None),
+                    avatar_url=str(avatar) if avatar else None,
                     is_remote=True,
                     discovered_at=datetime.now(timezone.utc),
                     last_seen_remote=datetime.now(timezone.utc),
@@ -155,18 +134,24 @@ class BiblioMeScanner:
     async def sync_user_content(self, did: str):
         """Sync all bookshelves and books for a given user."""
         logger.info(f"Syncing content for user {did}...")
-        
-        # Sync bookshelves
-        remote_bookshelves = await self.client.get_user_bookshelves(did)
-        for shelf_data in remote_bookshelves:
-            await self.sync_bookshelf(did, shelf_data)
-            await asyncio.sleep(1) # Small delay
+        try:
+            data = await self.pds_client.get_repo_records(did, ["com.bibliome.book", "com.bibliome.bookshelf", "app.bsky.actor.profile"])
+            
+            # Sync profile
+            profile_data = data.get("collections", {}).get("app.bsky.actor.profile", [])
+            if profile_data:
+                await self.sync_user_profile(did, profile_data[0]['value'])
 
-        # Sync books
-        remote_books = await self.client.get_user_books(did)
-        for book_data in remote_books:
-            await self.sync_book(did, book_data)
-            await asyncio.sleep(1) # Small delay
+            # Sync bookshelves
+            for shelf_data in data.get("collections", {}).get("com.bibliome.bookshelf", []):
+                await self.sync_bookshelf(did, shelf_data)
+
+            # Sync books
+            for book_data in data.get("collections", {}).get("com.bibliome.book", []):
+                await self.sync_book(did, book_data)
+        except Exception as e:
+            logger.error(f"Error syncing content for {did}: {e}", exc_info=True)
+            self.log_sync_activity('content', did, 'failed', str(e))
 
     async def sync_bookshelf(self, did: str, shelf_data: Dict):
         """Sync a single bookshelf record."""
@@ -188,20 +173,20 @@ class BiblioMeScanner:
             if existing_shelf_list:
                 # Update existing shelf
                 shelf = existing_shelf_list[0]
-                shelf.name = value.get('name', shelf.name)
-                shelf.description = value.get('description', shelf.description)
-                shelf.privacy = value.get('privacy', shelf.privacy)
+                shelf.name = getattr(value, 'name', shelf.name)
+                shelf.description = getattr(value, 'description', shelf.description)
+                shelf.privacy = getattr(value, 'privacy', shelf.privacy)
                 shelf.last_synced = datetime.now(timezone.utc)
                 self.db_tables['bookshelves'].update(shelf)
                 self.log_sync_activity('bookshelf', uri, 'updated')
             else:
                 # Create new shelf
                 new_shelf = Bookshelf(
-                    name=value.get('name', 'Untitled Shelf'),
+                    name=getattr(value, 'name', 'Untitled Shelf'),
                     owner_did=did, # Local owner is the same as remote for now
                     slug=generate_slug(),
-                    description=value.get('description', ''),
-                    privacy=value.get('privacy', 'public'),
+                    description=getattr(value, 'description', ''),
+                    privacy=getattr(value, 'privacy', 'public'),
                     is_remote=True,
                     remote_owner_did=did,
                     discovered_at=datetime.now(timezone.utc),
@@ -228,7 +213,7 @@ class BiblioMeScanner:
             self.log_sync_activity('book', uri, 'skipped', 'Record value is None')
             return
 
-        bookshelf_ref_uri = value.get('bookshelfRef') if isinstance(value, dict) else None
+        bookshelf_ref_uri = getattr(value, 'bookshelfRef', None)
 
         if not bookshelf_ref_uri:
             self.log_sync_activity('book', uri, 'skipped', 'No bookshelf reference')
@@ -247,25 +232,25 @@ class BiblioMeScanner:
             if existing_book_list:
                 # Update existing book
                 book = existing_book_list[0]
-                book.title = value.get('title', book.title)
-                book.author = value.get('author', book.author)
-                book.isbn = value.get('isbn', book.isbn)
+                book.title = getattr(value, 'title', book.title)
+                book.author = getattr(value, 'author', book.author)
+                book.isbn = getattr(value, 'isbn', book.isbn)
                 self.db_tables['books'].update(book)
                 self.log_sync_activity('book', uri, 'updated')
             else:
                 # Create new book
                 new_book = Book(
                     bookshelf_id=parent_shelf_id,
-                    title=value.get('title', 'Untitled Book'),
+                    title=getattr(value, 'title', 'Untitled Book'),
                     added_by_did=did,
-                    isbn=value.get('isbn', ''),
-                    author=value.get('author', ''),
+                    isbn=getattr(value, 'isbn', ''),
+                    author=getattr(value, 'author', ''),
                     is_remote=True,
                     remote_added_by_did=did,
                     discovered_at=datetime.now(timezone.utc),
                     original_atproto_uri=uri,
                     remote_sync_status='synced',
-                    added_at=value.get('addedAt')
+                    added_at=getattr(value, 'addedAt', None)
                 )
                 self.db_tables['books'].insert(new_book)
                 self.log_sync_activity('book', uri, 'imported')
