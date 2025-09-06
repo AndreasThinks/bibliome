@@ -438,9 +438,6 @@ class ProcessMonitor:
         if process.status != ProcessStatus.RUNNING:
             return
         
-        # Check dependencies
-        self.check_dependencies(name)
-        
         # Check if PID is still valid
         if process.pid:
             try:
