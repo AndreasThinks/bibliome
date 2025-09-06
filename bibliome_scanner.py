@@ -92,9 +92,8 @@ class BiblioMeScanner:
         for i in range(0, len(remote_users), self.user_batch_size):
             batch = remote_users[i:i + self.user_batch_size]
             logger.info(f"Processing user content batch {i//self.user_batch_size + 1}/{(len(remote_users) + self.user_batch_size - 1)//self.user_batch_size}...")
-            with self.db_tables['db'].transaction():
-                for user in batch:
-                    await self.sync_user_content(user.did)
+            for user in batch:
+                await self.sync_user_content(user.did)
             logger.info(f"Completed content sync for batch of {len(batch)} users.")
 
     async def sync_user_profile(self, did: str, profile_data: Dict):

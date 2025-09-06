@@ -186,8 +186,9 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     import os
     from fastmigrate.core import create_db, run_migrations, get_db_version
     
-    # Ensure the data directory exists
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    # Ensure the data directory exists, unless it's an in-memory database
+    if db_path != ':memory:':
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
     
     # Initialize fastmigrate managed database
     # If no db exists, it's created and set to version 0
