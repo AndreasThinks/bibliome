@@ -421,7 +421,7 @@ def get_books_with_upvotes(bookshelf_id: int, user_did: str = None, db_tables=No
     """Get books for a bookshelf with upvote counts, user voting status, and added-by user info."""
     if not db_tables:
         return []
-    
+
     try:
         # Use SQL query to get books with user info who added them
         query = """
@@ -430,29 +430,25 @@ def get_books_with_upvotes(bookshelf_id: int, user_did: str = None, db_tables=No
             LEFT JOIN user u ON b.added_by_did = u.did
             WHERE b.bookshelf_id = ?
         """
-        
+
         cursor = db_tables['db'].execute(query, (bookshelf_id,))
         columns = [d[0] for d in cursor.description]
         rows = cursor.fetchall()
-        
+
         books_with_votes = []
         for row in rows:
             book_data = dict(zip(columns, row))
-            
+
             # Extract user info before creating Book object
             added_by_handle = book_data.pop('added_by_handle', None)
             added_by_display_name = book_data.pop('added_by_display_name', None)
-            
+
             # Create Book object
             book = Book(**{k: v for k, v in book_data.items() if k in Book.__annotations__})
-            
+
             # Count upvotes for this book
             upvote_count = len(db_tables['upvotes']("book_id=?", (book.id,)))
-            
-            # Skip books with no upvotes
-            if upvote_count == 0:
-                continue
-            
+
             # Check if current user has upvoted this book
             user_has_upvoted = False
             if user_did:
@@ -461,18 +457,18 @@ def get_books_with_upvotes(bookshelf_id: int, user_did: str = None, db_tables=No
                     user_has_upvoted = user_upvote is not None
                 except IndexError:
                     user_has_upvoted = False
-            
+
             # Add computed attributes to the book object
             book.upvote_count = upvote_count
             book.user_has_upvoted = user_has_upvoted
             book.added_by_handle = added_by_handle
             book.added_by_display_name = added_by_display_name
-            
+
             books_with_votes.append(book)
-        
+
         # Sort by upvote count (descending) then by title
         books_with_votes.sort(key=lambda b: (-b.upvote_count, b.title))
-        
+
         return books_with_votes
     except Exception as e:
         print(f"Error getting books with upvotes: {e}")
