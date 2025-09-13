@@ -32,6 +32,7 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 from database_manager import db_manager
+from api_clients import BookAPIClient
 
 # Process name for monitoring
 PROCESS_NAME = "firehose_ingester"
@@ -142,11 +143,46 @@ def store_bookshelf_from_network(record: dict, repo_did: str, record_uri: str):
     except Exception as e:
         logger.error(f"Error storing bookshelf from network: {e}", exc_info=True)
 
+async def enrich_book_with_cover(book_data: dict) -> dict:
+    """Enrich book data with cover image from external APIs."""
+    try:
+        # Initialize BookAPIClient if not already done
+        book_api = BookAPIClient()
+
+        # Try to get book details by ISBN first (most reliable)
+        if book_data.get('isbn'):
+            logger.debug(f"Looking up cover for ISBN: {book_data['isbn']}")
+            details = await book_api.get_book_details(book_data['isbn'])
+            if details and details.get('cover_url'):
+                book_data['cover_url'] = details['cover_url']
+                logger.debug(f"Found cover via ISBN lookup: {details['cover_url']}")
+                return book_data
+
+        # Fallback: search by title and author
+        if book_data.get('title'):
+            search_query = f"{book_data['title']}"
+            if book_data.get('author'):
+                search_query += f" {book_data['author']}"
+
+            logger.debug(f"Searching for cover with query: '{search_query}'")
+            results = await book_api.search_books(search_query, max_results=1)
+            if results and results[0].get('cover_url'):
+                book_data['cover_url'] = results[0]['cover_url']
+                logger.debug(f"Found cover via search: {results[0]['cover_url']}")
+                return book_data
+
+        logger.debug(f"No cover found for book: {book_data.get('title', 'Unknown')}")
+        return book_data
+
+    except Exception as e:
+        logger.warning(f"Error enriching book with cover: {e}")
+        return book_data
+
 def store_book_from_network(record: dict, repo_did: str, record_uri: str):
     """Stores a book discovered on the network."""
     try:
         logger.info(f"Discovered new book from {repo_did}: {record.get('title')}")
-        
+
         # Avoid duplicates using the correct field
         existing = db_tables['books'](where="original_atproto_uri=?", params=(record_uri,))
         if existing:
@@ -161,7 +197,7 @@ def store_book_from_network(record: dict, repo_did: str, record_uri: str):
         if not bookshelf_ref:
             logger.warning(f"Book {record.get('title')} has no bookshelf reference")
             return
-            
+
         bookshelf = db_tables['bookshelves'](where="original_atproto_uri=?", params=(bookshelf_ref,))
         if not bookshelf:
             logger.warning(f"Bookshelf not found for book {record.get('title')}: {bookshelf_ref}")
@@ -172,6 +208,7 @@ def store_book_from_network(record: dict, repo_did: str, record_uri: str):
             'title': record.get('title', 'Untitled Book'),
             'author': record.get('author', ''),
             'isbn': record.get('isbn', ''),
+            'cover_url': '',  # Will be populated by enrichment
             'added_by_did': repo_did,
             'is_remote': True,
             'remote_added_by_did': repo_did,
@@ -180,10 +217,22 @@ def store_book_from_network(record: dict, repo_did: str, record_uri: str):
             'remote_sync_status': 'discovered',
             'added_at': datetime.fromisoformat(record.get('addedAt', datetime.now().isoformat()).replace('Z', '+00:00'))
         }
-        
+
+        # Try to enrich with cover image (but don't fail if it doesn't work)
+        try:
+            import asyncio
+            # Create a new event loop for the async call since we're in a sync context
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            enriched_data = loop.run_until_complete(enrich_book_with_cover(book_data))
+            book_data.update(enriched_data)
+            loop.close()
+        except Exception as e:
+            logger.warning(f"Failed to enrich book with cover, proceeding without: {e}")
+
         result = db_tables['books'].insert(book_data)
         book_id = result.id if hasattr(result, 'id') else result
-        
+
         # Log activity for network discovery
         log_activity(
             user_did=repo_did,
@@ -193,9 +242,9 @@ def store_book_from_network(record: dict, repo_did: str, record_uri: str):
             book_id=book_id,
             metadata='{"source": "network_firehose"}'
         )
-        
+
         logger.info(f"Successfully stored book: {record.get('title')} (ID: {book_id})")
-        
+
     except Exception as e:
         logger.error(f"Error storing book from network: {e}", exc_info=True)
 

@@ -17,6 +17,7 @@ from direct_pds_client import DirectPDSClient
 from hybrid_discovery import HybridDiscoveryService
 from circuit_breaker import CircuitBreaker
 from rate_limiter import RateLimiter
+from api_clients import BookAPIClient
 
 # Configure logging with service name prefix
 log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -210,6 +211,41 @@ class BiblioMeScanner:
             logger.error(f"Error syncing bookshelf {uri}: {e}")
             self.log_sync_activity('bookshelf', uri, 'failed', str(e))
 
+    async def enrich_book_with_cover(self, book_data: dict) -> dict:
+        """Enrich book data with cover image from external APIs."""
+        try:
+            # Initialize BookAPIClient if not already done
+            book_api = BookAPIClient()
+
+            # Try to get book details by ISBN first (most reliable)
+            if book_data.get('isbn'):
+                logger.debug(f"Looking up cover for ISBN: {book_data['isbn']}")
+                details = await book_api.get_book_details(book_data['isbn'])
+                if details and details.get('cover_url'):
+                    book_data['cover_url'] = details['cover_url']
+                    logger.debug(f"Found cover via ISBN lookup: {details['cover_url']}")
+                    return book_data
+
+            # Fallback: search by title and author
+            if book_data.get('title'):
+                search_query = f"{book_data['title']}"
+                if book_data.get('author'):
+                    search_query += f" {book_data['author']}"
+
+                logger.debug(f"Searching for cover with query: '{search_query}'")
+                results = await book_api.search_books(search_query, max_results=1)
+                if results and results[0].get('cover_url'):
+                    book_data['cover_url'] = results[0]['cover_url']
+                    logger.debug(f"Found cover via search: {results[0]['cover_url']}")
+                    return book_data
+
+            logger.debug(f"No cover found for book: {book_data.get('title', 'Unknown')}")
+            return book_data
+
+        except Exception as e:
+            logger.warning(f"Error enriching book with cover: {e}")
+            return book_data
+
     async def sync_book(self, did: str, book_data: Dict):
         """Sync a single book record."""
         if book_data is None:
@@ -248,20 +284,30 @@ class BiblioMeScanner:
                 self.db_tables['books'].update(book)
                 self.log_sync_activity('book', uri, 'updated')
             else:
-                # Create new book
-                new_book = Book(
-                    bookshelf_id=parent_shelf_id,
-                    title=getattr(value, 'title', 'Untitled Book'),
-                    added_by_did=did,
-                    isbn=getattr(value, 'isbn', ''),
-                    author=getattr(value, 'author', ''),
-                    is_remote=True,
-                    remote_added_by_did=did,
-                    discovered_at=datetime.now(timezone.utc),
-                    original_atproto_uri=uri,
-                    remote_sync_status='synced',
-                    added_at=getattr(value, 'addedAt', None)
-                )
+                # Create new book with cover enrichment
+                book_dict = {
+                    'bookshelf_id': parent_shelf_id,
+                    'title': getattr(value, 'title', 'Untitled Book'),
+                    'added_by_did': did,
+                    'isbn': getattr(value, 'isbn', ''),
+                    'author': getattr(value, 'author', ''),
+                    'cover_url': '',  # Will be populated by enrichment
+                    'is_remote': True,
+                    'remote_added_by_did': did,
+                    'discovered_at': datetime.now(timezone.utc),
+                    'original_atproto_uri': uri,
+                    'remote_sync_status': 'synced',
+                    'added_at': getattr(value, 'addedAt', None)
+                }
+
+                # Try to enrich with cover image (but don't fail if it doesn't work)
+                try:
+                    enriched_data = await self.enrich_book_with_cover(book_dict)
+                    book_dict.update(enriched_data)
+                except Exception as e:
+                    logger.warning(f"Failed to enrich book with cover, proceeding without: {e}")
+
+                new_book = Book(**book_dict)
                 self.db_tables['books'].insert(new_book)
                 self.log_sync_activity('book', uri, 'imported')
         except Exception as e:
