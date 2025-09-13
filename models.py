@@ -764,7 +764,7 @@ def get_books_with_upvotes(bookshelf_id: int, user_did: str = None, db_tables=No
 
         return books_with_votes
     except Exception as e:
-        print(f"Error getting books with vote counts: {e}")
+        logger.error(f"Error getting books with vote counts: {e}")
         return []
 
 def log_activity(user_did: str, activity_type: str, db_tables, bookshelf_id: int = None, book_id: int = None, metadata: str = ""):
@@ -1465,6 +1465,7 @@ def get_book_comments(book_id: int, db_tables, limit: int = 50):
         """
         
         cursor = db_tables['db'].execute(query, (book_id, limit))
+        # Get column descriptions BEFORE calling fetchall()
         columns = [d[0] for d in cursor.description]
         rows = cursor.fetchall()
         
@@ -1480,7 +1481,7 @@ def get_book_comments(book_id: int, db_tables, limit: int = 50):
         return comments
         
     except Exception as e:
-        print(f"Error getting comments for book {book_id}: {e}")
+        logger.error(f"Error getting comments for book {book_id}: {e}")
         return []
 
 def get_book_activity(book_id: int, db_tables, activity_type: str = "all", limit: int = 20):
