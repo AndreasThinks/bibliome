@@ -71,8 +71,7 @@ def ensure_user_exists(repo_did: str):
         if existing_user:
             # If user exists but is not marked as remote, update them
             if not getattr(existing_user, 'is_remote', False):
-                existing_user.is_remote = True
-                db_tables['users'].update(existing_user)
+                db_tables['users'].update({'is_remote': True}, repo_did)
             return existing_user
     except:
         pass
@@ -410,15 +409,21 @@ def on_message_handler(message, db_tables):
 
         # Heartbeat on activity or every 100 messages
         if message_count % 100 == 0 or message_processed:
-            process_heartbeat(PROCESS_NAME, {
-                "messages_processed": message_count,
-                "bookshelves_found": bookshelf_count,
-                "books_found": book_count,
-                "errors_count": error_count
-            }, db_tables=db_tables)
+            try:
+                process_heartbeat(PROCESS_NAME, {
+                    "messages_processed": message_count,
+                    "bookshelves_found": bookshelf_count,
+                    "books_found": book_count,
+                    "errors_count": error_count
+                }, db_tables=db_tables)
+            except Exception as heartbeat_error:
+                logger.warning(f"Failed to send heartbeat: {heartbeat_error}")
             
             if message_count % 100 == 0:
-                log_process_event(PROCESS_NAME, f"Processed {message_count} messages total", "INFO", "activity", db_tables=db_tables)
+                try:
+                    log_process_event(PROCESS_NAME, f"Processed {message_count} messages total", "INFO", "activity", db_tables=db_tables)
+                except Exception as log_error:
+                    logger.warning(f"Failed to log process event: {log_error}")
 
     except Exception as e:
         error_count += 1
