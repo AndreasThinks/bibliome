@@ -173,14 +173,16 @@ class ProcessMonitor:
             return
         
         try:
-            log_entry = {
-                'process_name': process_name,
-                'log_level': log_level.value,
-                'event_type': event_type.value,
-                'message': message,
-                'details': json.dumps(details) if details else None,
-                'timestamp': datetime.now()
-            }
+            # Create ProcessLog object instead of raw dict to ensure proper FastLite handling
+            from models import ProcessLog
+            log_entry = ProcessLog(
+                process_name=process_name,
+                log_level=log_level.value,
+                event_type=event_type.value,
+                message=message,
+                details=json.dumps(details) if details else None,
+                timestamp=datetime.now()
+            )
             
             self.db_tables['process_logs'].insert(log_entry)
             
@@ -197,13 +199,15 @@ class ProcessMonitor:
             return
         
         try:
-            metric_entry = {
-                'process_name': process_name,
-                'metric_name': metric_name,
-                'metric_value': metric_value,
-                'metric_type': metric_type,
-                'recorded_at': datetime.now()
-            }
+            # Create ProcessMetric object instead of raw dict to ensure proper FastLite handling
+            from models import ProcessMetric
+            metric_entry = ProcessMetric(
+                process_name=process_name,
+                metric_name=metric_name,
+                metric_value=metric_value,
+                metric_type=metric_type,
+                recorded_at=datetime.now()
+            )
             
             self.db_tables['process_metrics'].insert(metric_entry)
             
