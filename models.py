@@ -8,6 +8,11 @@ import string
 from fasthtml.common import *
 from fastcore.all import patch
 from atproto import Client, models as at_models
+from atproto_client.models.com.atproto.repo.delete_record import Data as DeleteRecordData
+from atproto_client.exceptions import UnauthorizedError, BadRequestError
+import logging
+
+logger = logging.getLogger(__name__)
 
 def create_bookshelf_record(client: Client, name: str, description: str, privacy: str) -> str:
     """Creates a bookshelf record on the user's repo and returns its AT-URI."""
@@ -47,6 +52,108 @@ def add_book_record(client: Client, bookshelf_uri: str, title: str, author: str,
         )
     )
     return response.uri
+
+def delete_bookshelf_record(client: Client, atproto_uri: str) -> bool:
+    """
+    Delete a bookshelf record from AT Protocol.
+
+    Args:
+        client: Authenticated AT Protocol client
+        atproto_uri: AT Protocol URI of the bookshelf record to delete
+
+    Returns:
+        bool: True if deletion was successful, False otherwise
+    """
+    try:
+        # Parse the URI into components
+        if not atproto_uri.startswith('at://'):
+            logger.warning(f"Invalid AT URI format: {atproto_uri}")
+            return False
+
+        parts = atproto_uri[5:].split('/')
+        if len(parts) != 3:
+            logger.warning(f"Invalid AT URI structure: {atproto_uri}")
+            return False
+
+        repo, collection, rkey = parts
+
+        # Create the Data object for the delete_record call
+        delete_data = DeleteRecordData(
+            repo=repo,
+            collection=collection,
+            rkey=rkey
+        )
+
+        # Call the delete_record method
+        logger.info(f"Deleting bookshelf record: {atproto_uri}")
+        client.com.atproto.repo.delete_record(delete_data)
+
+        logger.info(f"Successfully deleted bookshelf record: {atproto_uri}")
+        return True
+
+    except BadRequestError as e:
+        if "RecordNotFound" in str(e):
+            logger.warning(f"Bookshelf record not found: {atproto_uri}")
+        else:
+            logger.error(f"Bad request error deleting bookshelf {atproto_uri}: {e}")
+        return False
+    except UnauthorizedError as e:
+        logger.error(f"Unauthorized to delete bookshelf record {atproto_uri}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Error deleting bookshelf record {atproto_uri}: {e}")
+        return False
+
+def delete_book_record(client: Client, atproto_uri: str) -> bool:
+    """
+    Delete a book record from AT Protocol.
+
+    Args:
+        client: Authenticated AT Protocol client
+        atproto_uri: AT Protocol URI of the book record to delete
+
+    Returns:
+        bool: True if deletion was successful, False otherwise
+    """
+    try:
+        # Parse the URI into components
+        if not atproto_uri.startswith('at://'):
+            logger.warning(f"Invalid AT URI format: {atproto_uri}")
+            return False
+
+        parts = atproto_uri[5:].split('/')
+        if len(parts) != 3:
+            logger.warning(f"Invalid AT URI structure: {atproto_uri}")
+            return False
+
+        repo, collection, rkey = parts
+
+        # Create the Data object for the delete_record call
+        delete_data = DeleteRecordData(
+            repo=repo,
+            collection=collection,
+            rkey=rkey
+        )
+
+        # Call the delete_record method
+        logger.info(f"Deleting book record: {atproto_uri}")
+        client.com.atproto.repo.delete_record(delete_data)
+
+        logger.info(f"Successfully deleted book record: {atproto_uri}")
+        return True
+
+    except BadRequestError as e:
+        if "RecordNotFound" in str(e):
+            logger.warning(f"Book record not found: {atproto_uri}")
+        else:
+            logger.error(f"Bad request error deleting book {atproto_uri}: {e}")
+        return False
+    except UnauthorizedError as e:
+        logger.error(f"Unauthorized to delete book record {atproto_uri}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Error deleting book record {atproto_uri}: {e}")
+        return False
 
 def generate_tid():
     """Generate a TID (Timestamp Identifier)."""

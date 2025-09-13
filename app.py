@@ -1552,16 +1552,33 @@ def remove_book(book_id: int, auth):
         # Get upvote count for logging
         upvote_count = len(db_tables['upvotes']("book_id=?", (book_id,)))
         
+        # Attempt AT Protocol deletion first (if book has atproto_uri)
+        atproto_deletion_success = True
+        if book.atproto_uri and book.atproto_uri.strip():
+            try:
+                client = bluesky_auth.get_client_from_session(auth)
+                from models import delete_book_record
+                atproto_deletion_success = delete_book_record(client, book.atproto_uri)
+                if atproto_deletion_success:
+                    logger.info(f"Successfully deleted book from AT Protocol: {book.atproto_uri}")
+                else:
+                    logger.warning(f"Failed to delete book from AT Protocol: {book.atproto_uri}")
+            except Exception as e:
+                logger.error(f"Error deleting book from AT Protocol {book.atproto_uri}: {e}", exc_info=True)
+                atproto_deletion_success = False
+        
         # Delete all upvotes for this book first
         try:
             db_tables['upvotes'].delete_where("book_id=?", (book_id,))
         except:
             pass
         
-        # Delete the book
+        # Delete the book from local database
         db_tables['books'].delete(book_id)
         
-        logger.info(f"Book '{book.title}' removed from shelf '{shelf.name}' by {auth.get('handle', 'unknown')} (had {upvote_count} votes)")
+        # Log the deletion with AT Protocol sync status
+        sync_status = "with AT Protocol sync" if atproto_deletion_success else "local only (AT Protocol sync failed)"
+        logger.info(f"Book '{book.title}' removed from shelf '{shelf.name}' by {auth.get('handle', 'unknown')} (had {upvote_count} votes) - {sync_status}")
         
         # Return empty response to remove the book card from the UI
         return ""
@@ -2560,7 +2577,47 @@ def delete_shelf(slug: str, confirmation_name: str, auth, sess):
             sess['error'] = "Confirmation name doesn't match. Deletion cancelled."
             return RedirectResponse(f'/shelf/{slug}/manage', status_code=303)
         
-        # Delete all related data in correct order
+        # AT Protocol cascading deletion - delete books first, then bookshelf
+        atproto_books_deleted = 0
+        atproto_books_failed = 0
+        atproto_bookshelf_deleted = False
+        
+        try:
+            client = bluesky_auth.get_client_from_session(auth)
+            
+            # 1. Delete all books from AT Protocol first
+            shelf_books = list(db_tables['books']("bookshelf_id=?", (shelf.id,)))
+            for book in shelf_books:
+                if book.atproto_uri and book.atproto_uri.strip():
+                    try:
+                        from models import delete_book_record
+                        if delete_book_record(client, book.atproto_uri):
+                            atproto_books_deleted += 1
+                            logger.info(f"Successfully deleted book from AT Protocol: {book.atproto_uri}")
+                        else:
+                            atproto_books_failed += 1
+                            logger.warning(f"Failed to delete book from AT Protocol: {book.atproto_uri}")
+                    except Exception as e:
+                        atproto_books_failed += 1
+                        logger.error(f"Error deleting book from AT Protocol {book.atproto_uri}: {e}", exc_info=True)
+            
+            # 2. Delete bookshelf from AT Protocol
+            if shelf.atproto_uri and shelf.atproto_uri.strip():
+                try:
+                    from models import delete_bookshelf_record
+                    atproto_bookshelf_deleted = delete_bookshelf_record(client, shelf.atproto_uri)
+                    if atproto_bookshelf_deleted:
+                        logger.info(f"Successfully deleted bookshelf from AT Protocol: {shelf.atproto_uri}")
+                    else:
+                        logger.warning(f"Failed to delete bookshelf from AT Protocol: {shelf.atproto_uri}")
+                except Exception as e:
+                    logger.error(f"Error deleting bookshelf from AT Protocol {shelf.atproto_uri}: {e}", exc_info=True)
+                    atproto_bookshelf_deleted = False
+        
+        except Exception as e:
+            logger.error(f"Error getting AT Protocol client for bookshelf deletion: {e}", exc_info=True)
+        
+        # Delete all related data in correct order (local database cleanup)
         # 1. Delete upvotes for books in this shelf
         shelf_books = list(db_tables['books']("bookshelf_id=?", (shelf.id,)))
         for book in shelf_books:
@@ -2590,6 +2647,24 @@ def delete_shelf(slug: str, confirmation_name: str, auth, sess):
         
         # 5. Finally delete the bookshelf
         db_tables['bookshelves'].delete(shelf.id)
+        
+        # Log comprehensive deletion status
+        total_books = len(shelf_books)
+        books_with_atproto = len([b for b in shelf_books if b.atproto_uri and b.atproto_uri.strip()])
+        
+        sync_status_parts = []
+        if books_with_atproto > 0:
+            sync_status_parts.append(f"books: {atproto_books_deleted}/{books_with_atproto} deleted from AT Protocol")
+        if shelf.atproto_uri and shelf.atproto_uri.strip():
+            bookshelf_status = "deleted" if atproto_bookshelf_deleted else "failed to delete"
+            sync_status_parts.append(f"bookshelf: {bookshelf_status} from AT Protocol")
+        
+        if sync_status_parts:
+            sync_status = f" - AT Protocol sync: {', '.join(sync_status_parts)}"
+        else:
+            sync_status = " - no AT Protocol records to sync"
+        
+        logger.info(f"Bookshelf '{shelf.name}' deleted by {auth.get('handle', 'unknown')} (had {total_books} books){sync_status}")
         
         sess['success'] = f"Bookshelf '{shelf.name}' has been permanently deleted."
         return RedirectResponse('/', status_code=303)
