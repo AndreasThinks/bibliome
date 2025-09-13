@@ -15,6 +15,7 @@ from process_monitor import (
     update_process_status, get_process_monitor
 )
 from circuit_breaker import CircuitBreaker
+from database_manager import db_manager
 
 load_dotenv()
 
@@ -40,13 +41,14 @@ PROCESS_NAME = "bluesky_automation"
 class BlueskyAutomator:
     """Handles automated posting to a dedicated Bluesky account."""
 
-    def __init__(self):
+    def __init__(self, db_tables=None):
         self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
         self.is_enabled = os.getenv('BLUESKY_AUTOMATION_ENABLED', 'false').lower() == 'true'
         self.handle = os.getenv('BLUESKY_AUTOMATION_HANDLE')
         self.password = os.getenv('BLUESKY_AUTOMATION_PASSWORD')
         self.post_threshold = int(os.getenv('BLUESKY_POST_THRESHOLD', 3))
         self.max_posts_per_hour = int(os.getenv('BLUESKY_MAX_POSTS_PER_HOUR', 3))
+        self.db_tables = db_tables
         
         if self.is_enabled and not (self.handle and self.password):
             logger.warning("Bluesky automation is enabled but handle or password are not set.")
@@ -140,16 +142,16 @@ class BlueskyAutomator:
     def post_to_bluesky(self, event_type: str, context: dict):
         """Posts a message to Bluesky if not rate-limited."""
         if not self.is_enabled:
-            log_process_event(PROCESS_NAME, "Automation disabled - skipping post", "INFO", "activity")
+            log_process_event(PROCESS_NAME, "Automation disabled - skipping post", "INFO", "activity", db_tables=self.db_tables)
             return
 
         if not self.client:
             if not self._login():
-                log_process_event(PROCESS_NAME, "Failed to login - cannot post", "ERROR", "error")
+                log_process_event(PROCESS_NAME, "Failed to login - cannot post", "ERROR", "error", db_tables=self.db_tables)
                 return
 
         if self._is_rate_limited():
-            log_process_event(PROCESS_NAME, f"Rate limited - {len(self._post_timestamps)} posts in last hour", "WARNING", "activity")
+            log_process_event(PROCESS_NAME, f"Rate limited - {len(self._post_timestamps)} posts in last hour", "WARNING", "activity", db_tables=self.db_tables)
             return
 
         try:
@@ -172,30 +174,31 @@ class BlueskyAutomator:
                 "message_length": len(message),
                 "shelf_name": context.get('shelf_name', ''),
                 "book_count": context.get('book_count', 0)
-            })
-            record_process_metric(PROCESS_NAME, "posts_sent", 1)
+            }, db_tables=self.db_tables)
+            record_process_metric(PROCESS_NAME, "posts_sent", 1, db_tables=self.db_tables)
             
             # Send heartbeat with activity info
-            process_heartbeat(PROCESS_NAME, {"posts_sent": len(self._post_timestamps)})
+            process_heartbeat(PROCESS_NAME, {"posts_sent": len(self._post_timestamps)}, db_tables=self.db_tables)
             
         except Exception as e:
             logger.error(f"Failed to post to Bluesky: {e}", exc_info=True)
-            log_process_event(PROCESS_NAME, f"Failed to post to Bluesky: {e}", "ERROR", "error")
-            record_process_metric(PROCESS_NAME, "post_failures", 1)
+            log_process_event(PROCESS_NAME, f"Failed to post to Bluesky: {e}", "ERROR", "error", db_tables=self.db_tables)
+            record_process_metric(PROCESS_NAME, "post_failures", 1, db_tables=self.db_tables)
 
 class BlueskyService:
     """Background service for Bluesky automation monitoring."""
     
     def __init__(self):
-        self.automator = BlueskyAutomator()
+        self.automator = None  # Will be initialized with db_tables
         self.running = False
+        self.db_tables = None
         
     def setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown."""
         def signal_handler(signum, frame):
             logger.info(f"Received signal {signum}, shutting down Bluesky service...")
-            update_process_status(PROCESS_NAME, "stopped")
-            log_process_event(PROCESS_NAME, "Service shutdown via signal", "INFO", "stop")
+            update_process_status(PROCESS_NAME, "stopped", db_tables=self.db_tables)
+            log_process_event(PROCESS_NAME, "Service shutdown via signal", "INFO", "stop", db_tables=self.db_tables)
             self.running = False
             sys.exit(0)
         
@@ -204,14 +207,26 @@ class BlueskyService:
     
     async def run_service(self):
         """Run the background service."""
+        # Establish database connection first
+        try:
+            self.db_tables = await db_manager.get_connection()
+            logger.info("Database connection established for Bluesky service")
+        except Exception as e:
+            logger.error(f"Failed to establish database connection: {e}")
+            # Continue without database - monitoring functions will fall back to logging
+            self.db_tables = None
+        
+        # Initialize automator with database connection
+        self.automator = BlueskyAutomator(db_tables=self.db_tables)
+        
         self.setup_signal_handlers()
         
         # Update process status to starting
-        update_process_status(PROCESS_NAME, "starting", pid=os.getpid())
-        log_process_event(PROCESS_NAME, "Bluesky automation service starting", "INFO", "start")
+        update_process_status(PROCESS_NAME, "starting", pid=os.getpid(), db_tables=self.db_tables)
+        log_process_event(PROCESS_NAME, "Bluesky automation service starting", "INFO", "start", db_tables=self.db_tables)
         
         # Update status to running
-        update_process_status(PROCESS_NAME, "running", pid=os.getpid())
+        update_process_status(PROCESS_NAME, "running", pid=os.getpid(), db_tables=self.db_tables)
         self.running = True
         
         heartbeat_interval = 300  # 5 minutes
@@ -230,8 +245,8 @@ class BlueskyService:
                         "automation_enabled": self.automator.is_enabled,
                         "rate_limited": self.automator._is_rate_limited()
                     }
-                    process_heartbeat(PROCESS_NAME, activity_info)
-                    log_process_event(PROCESS_NAME, "Periodic heartbeat", "DEBUG", "heartbeat")
+                    process_heartbeat(PROCESS_NAME, activity_info, db_tables=self.db_tables)
+                    log_process_event(PROCESS_NAME, "Periodic heartbeat", "DEBUG", "heartbeat", db_tables=self.db_tables)
                     last_heartbeat = current_time
                 
                 # Sleep for 30 seconds before next check
@@ -239,18 +254,38 @@ class BlueskyService:
                 
         except Exception as e:
             logger.error(f"Error in Bluesky service loop: {e}", exc_info=True)
-            log_process_event(PROCESS_NAME, f"Service error: {e}", "ERROR", "error")
-            update_process_status(PROCESS_NAME, "failed", error_message=str(e))
+            log_process_event(PROCESS_NAME, f"Service error: {e}", "ERROR", "error", db_tables=self.db_tables)
+            update_process_status(PROCESS_NAME, "failed", error_message=str(e), db_tables=self.db_tables)
         finally:
-            update_process_status(PROCESS_NAME, "stopped")
-            log_process_event(PROCESS_NAME, "Bluesky service stopped", "INFO", "stop")
+            update_process_status(PROCESS_NAME, "stopped", db_tables=self.db_tables)
+            log_process_event(PROCESS_NAME, "Bluesky service stopped", "INFO", "stop", db_tables=self.db_tables)
 
-# Singleton instances
-automator = BlueskyAutomator()
+# Global instances - will be initialized with database connections when needed
+automator = None
 service = BlueskyService()
+
+async def get_automator():
+    """Get or create the automator instance with database connection."""
+    global automator
+    if automator is None:
+        try:
+            db_tables = await db_manager.get_connection()
+            automator = BlueskyAutomator(db_tables=db_tables)
+        except Exception as e:
+            logger.error(f"Failed to establish database connection for automator: {e}")
+            # Create automator without database connection
+            automator = BlueskyAutomator(db_tables=None)
+    return automator
 
 def trigger_automation(event_type: str, context: dict):
     """Entry point for triggering an automation event."""
+    # This is a sync function, so we need to handle the async database connection carefully
+    # For now, use the basic automator without database connection for immediate triggers
+    # The background service will handle proper database connections
+    global automator
+    if automator is None:
+        automator = BlueskyAutomator(db_tables=None)
+    
     if automator.is_enabled:
         # In a more complex system, this could be a background task
         automator.post_to_bluesky(event_type, context)
@@ -265,5 +300,12 @@ if __name__ == "__main__":
         asyncio.run(run_background_service())
     except KeyboardInterrupt:
         logger.info("Bluesky automation service terminated")
-        update_process_status(PROCESS_NAME, "stopped")
-        log_process_event(PROCESS_NAME, "Service terminated by interrupt", "INFO", "stop")
+        # Try to get database connection for proper shutdown logging
+        try:
+            db_tables = asyncio.run(db_manager.get_connection())
+            update_process_status(PROCESS_NAME, "stopped", db_tables=db_tables)
+            log_process_event(PROCESS_NAME, "Service terminated by interrupt", "INFO", "stop", db_tables=db_tables)
+        except:
+            # Fallback to logging without database
+            update_process_status(PROCESS_NAME, "stopped")
+            log_process_event(PROCESS_NAME, "Service terminated by interrupt", "INFO", "stop")
