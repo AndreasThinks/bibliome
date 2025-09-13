@@ -25,6 +25,7 @@ from bluesky_automation import trigger_automation
 from admin_operations import get_database_path, backup_database, upload_database
 from process_monitor import init_process_monitoring, get_process_monitor
 from dependency_graph import get_dependencies
+from models import get_book_by_id, get_book_comments, get_book_activity, get_book_shelves
 
 load_dotenv()
 
@@ -973,6 +974,267 @@ def user_profile(handle: str, auth, req):
             UniversalFooter()
         )
 
+@rt("/book/{book_id}")
+def book_detail_page(book_id: int, auth, req, activity_filter: str = "all"):
+    """Display book detail page with comments and activity."""
+    try:
+        # Get the book
+        book = get_book_by_id(book_id, db_tables)
+        if not book:
+            return (
+                Title("Book Not Found - Bibliome"),
+                Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
+                NavBar(auth),
+                Container(
+                    H1("Book Not Found"),
+                    P("The book you're looking for doesn't exist."),
+                    A("← Back to Home", href="/")
+                ),
+                UniversalFooter()
+            )
+        
+        # Get the bookshelf to check permissions
+        shelf = db_tables['bookshelves'][book.bookshelf_id]
+        user_did = get_current_user_did(auth)
+        
+        # Check if user can view the bookshelf
+        if not can_view_bookshelf(shelf, user_did, db_tables):
+            return (
+                Title("Access Denied - Bibliome"),
+                Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
+                NavBar(auth),
+                Container(
+                    H1("Access Denied"),
+                    P("You don't have permission to view this book."),
+                    A("← Back to Home", href="/")
+                ),
+                UniversalFooter()
+            )
+        
+        # Get book data
+        comments = get_book_comments(book_id, db_tables)
+        activity = get_book_activity(book_id, db_tables, activity_type=activity_filter)
+        shelves = get_book_shelves(book_id, db_tables, viewer_did=user_did)
+        
+        # Check permissions for commenting
+        from models import can_comment_on_books
+        can_comment = can_comment_on_books(shelf, user_did, db_tables)
+        
+        # Build page content
+        content = []
+        
+        # Book header with details
+        content.append(
+            Section(
+                Div(
+                    A("← Back to Shelf", href=f"/shelf/{shelf.slug}", cls="back-link"),
+                    cls="book-navigation"
+                ),
+                Div(
+                    Div(
+                        Img(
+                            src=book.cover_url,
+                            alt=f"Cover of {book.title}",
+                            cls="book-detail-cover",
+                            loading="lazy"
+                        ) if book.cover_url else Div("📖", cls="book-detail-cover-placeholder"),
+                        cls="book-detail-cover-container"
+                    ),
+                    Div(
+                        H1(book.title, cls="book-detail-title"),
+                        P(f"by {book.author}", cls="book-detail-author") if book.author else None,
+                        P(book.description, cls="book-detail-description") if book.description else None,
+                        Div(
+                            book.publisher and P(f"Publisher: {book.publisher}") or None,
+                            book.published_date and P(f"Published: {book.published_date}") or None,
+                            book.page_count and P(f"Pages: {book.page_count}") or None,
+                            book.isbn and P(f"ISBN: {book.isbn}") or None,
+                            cls="book-detail-metadata"
+                        ),
+                        cls="book-detail-info"
+                    ),
+                    cls="book-detail-header"
+                ),
+                cls="book-detail-section"
+            )
+        )
+        
+        # Shelves this book appears on
+        if shelves:
+            content.append(
+                Section(
+                    H2("Appears on these shelves"),
+                    Div(
+                        *[
+                            Div(
+                                A(
+                                    f"{shelf_item.name} ({shelf_item.vote_count} votes)",
+                                    href=f"/shelf/{shelf_item.slug}",
+                                    cls="shelf-link"
+                                ),
+                                cls="shelf-item"
+                            ) for shelf_item in shelves
+                        ],
+                        cls="book-shelves-list"
+                    ),
+                    cls="book-detail-section"
+                )
+            )
+        
+        # Activity filters
+        content.append(
+            Section(
+                H2("Activity"),
+                Div(
+                    A("All", href=f"/book/{book_id}?activity_filter=all", 
+                      cls="filter-btn" + (" active" if activity_filter == "all" else "")),
+                    A("Comments", href=f"/book/{book_id}?activity_filter=comment_added", 
+                      cls="filter-btn" + (" active" if activity_filter == "comment_added" else "")),
+                    A("Added to Shelves", href=f"/book/{book_id}?activity_filter=book_added", 
+                      cls="filter-btn" + (" active" if activity_filter == "book_added" else "")),
+                    cls="activity-filters"
+                ),
+                cls="book-detail-section"
+            )
+        )
+        
+        # Comment form (if user can comment)
+        if can_comment:
+            content.append(
+                Section(
+                    H3("Add a Comment"),
+                    Form(
+                        Textarea(
+                            name="content",
+                            placeholder="Share your thoughts about this book...",
+                            required=True,
+                            rows=4,
+                            cls="comment-textarea"
+                        ),
+                        Button("Post Comment", type="submit", cls="primary"),
+                        hx_post=f"/api/book/{book_id}/comment",
+                        hx_target="#comments-section",
+                        hx_swap="afterbegin"
+                    ),
+                    cls="comment-form-section"
+                )
+            )
+        
+        # Comments section
+        comment_items = []
+        for comment in comments:
+            comment_items.append(
+                Div(
+                    Div(
+                        Img(
+                            src=comment.user_avatar_url,
+                            alt=comment.user_display_name or comment.user_handle,
+                            cls="comment-avatar"
+                        ) if comment.user_avatar_url else Div("👤", cls="comment-avatar-placeholder"),
+                        Div(
+                            Strong(comment.user_display_name or comment.user_handle),
+                            Span(f"@{comment.user_handle}", cls="comment-handle"),
+                            cls="comment-user-info"
+                        ),
+                        cls="comment-header"
+                    ),
+                    P(comment.content, cls="comment-content"),
+                    Div(
+                        Span(comment.created_at.strftime("%B %d, %Y at %I:%M %p") if comment.created_at else "Unknown time"),
+                        comment.is_edited and Span("(edited)", cls="edited-indicator") or None,
+                        cls="comment-meta"
+                    ),
+                    cls="comment-item",
+                    id=f"comment-{comment.id}"
+                )
+            )
+        
+        content.append(
+            Section(
+                H3(f"Comments ({len(comments)})"),
+                Div(
+                    *comment_items if comment_items else [P("No comments yet. Be the first to share your thoughts!")],
+                    cls="comments-list",
+                    id="comments-section"
+                ),
+                cls="book-detail-section"
+            )
+        )
+        
+        # Activity timeline
+        activity_items = []
+        for act in activity:
+            activity_icon = {
+                'book_added': '📚',
+                'comment_added': '💬',
+                'bookshelf_created': '📂'
+            }.get(act['activity_type'], '📝')
+            
+            activity_text = {
+                'book_added': f"added this book to {act['bookshelf_name']}",
+                'comment_added': "commented on this book",
+                'bookshelf_created': f"created the shelf {act['bookshelf_name']}"
+            }.get(act['activity_type'], "performed an action")
+            
+            activity_items.append(
+                Div(
+                    Div(
+                        Img(
+                            src=act['user_avatar_url'],
+                            alt=act['user_display_name'] or act['user_handle'],
+                            cls="activity-avatar"
+                        ) if act['user_avatar_url'] else Div("👤", cls="activity-avatar-placeholder"),
+                        Span(activity_icon, cls="activity-icon"),
+                        cls="activity-header"
+                    ),
+                    P(
+                        Strong(act['user_display_name'] or act['user_handle']),
+                        f" {activity_text}",
+                        cls="activity-text"
+                    ),
+                    Div(
+                        Span(act['created_at'].strftime("%B %d, %Y at %I:%M %p") if act['created_at'] else "Unknown time"),
+                        act['bookshelf_slug'] and A("View Shelf", href=f"/shelf/{act['bookshelf_slug']}", cls="activity-link") or None,
+                        cls="activity-meta"
+                    ),
+                    cls="activity-item"
+                )
+            )
+        
+        if activity_filter != "comment_added":  # Don't show activity timeline if filtering for comments only
+            content.append(
+                Section(
+                    H3("Recent Activity"),
+                    Div(
+                        *activity_items if activity_items else [P("No recent activity.")],
+                        cls="activity-timeline"
+                    ),
+                    cls="book-detail-section"
+                )
+            )
+        
+        return (
+            Title(f"{book.title} - Bibliome"),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
+            NavBar(auth),
+            Container(*content),
+            UniversalFooter()
+        )
+        
+    except Exception as e:
+        logger.error(f"Error loading book detail page for book {book_id}: {e}", exc_info=True)
+        return (
+            Title("Error - Bibliome"),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
+            NavBar(auth),
+            Container(
+                H1("Error"),
+                P(f"An error occurred: {str(e)}"),
+                A("← Back to Home", href="/")
+            ),
+            UniversalFooter()
+        )
+
 @rt("/shelf/{slug}")
 def view_shelf(slug: str, auth, req, view: str = "grid"):
     """Display a bookshelf."""
@@ -1049,7 +1311,8 @@ def view_shelf(slug: str, auth, req, view: str = "grid"):
                     user_has_upvoted=book.user_has_upvoted,
                     upvote_count=book.upvote_count,
                     can_remove=can_remove,
-                    user_auth_status=user_auth_status
+                    user_auth_status=user_auth_status,
+                    db_tables=db_tables
                 ) for book in shelf_books], cls="book-grid", id="book-grid")
             
             books_section = Section(
@@ -1075,7 +1338,9 @@ def view_shelf(slug: str, auth, req, view: str = "grid"):
             add_books_section,
             books_section,
             # Share modal container
-            Div(id="share-modal-container")
+            Div(id="share-modal-container"),
+            # Comment modal container
+            Div(id="comment-modal-container")
         ]
         
         # Add JavaScript for book removal confirmation if user can remove books
@@ -1823,7 +2088,8 @@ def toggle_view(slug: str, view: str, auth):
                     user_has_upvoted=book.user_has_upvoted,
                     upvote_count=book.upvote_count,
                     can_remove=can_remove,
-                    user_auth_status=user_auth_status
+                    user_auth_status=user_auth_status,
+                    db_tables=db_tables
                 ) for book in shelf_books], cls="book-grid", id="book-grid")
             
             books_section_content = Div(books_content, id="books-container")
@@ -3063,6 +3329,76 @@ def get_user_writable_shelves(auth):
         logger.error(f"Error getting user writable shelves: {e}", exc_info=True)
         return Div(f"Error: {str(e)}", cls="error")
 
+@rt("/api/book/{book_id}/comment", methods=["POST"])
+def add_comment_api(book_id: int, content: str, auth):
+    """HTMX endpoint to add a comment to a book."""
+    if not auth:
+        return Div("Authentication required.", cls="error")
+    
+    try:
+        # Get the book and shelf
+        book = get_book_by_id(book_id, db_tables)
+        if not book:
+            return Div("Book not found.", cls="error")
+        
+        shelf = db_tables['bookshelves'][book.bookshelf_id]
+        user_did = get_current_user_did(auth)
+        
+        # Check if user can comment on books in this shelf
+        from models import can_comment_on_books
+        if not can_comment_on_books(shelf, user_did, db_tables):
+            return Div("You don't have permission to comment on books in this shelf.", cls="error")
+        
+        # Create the comment
+        from models import Comment
+        comment = Comment(
+            book_id=book_id,
+            bookshelf_id=book.bookshelf_id,
+            user_did=user_did,
+            content=content.strip(),
+            created_at=datetime.now()
+        )
+        
+        created_comment = db_tables['comments'].insert(comment)
+        
+        # Log activity for social feed
+        try:
+            from models import log_activity
+            log_activity(user_did, 'comment_added', db_tables, bookshelf_id=book.bookshelf_id, book_id=book_id)
+        except Exception as e:
+            logger.warning(f"Could not log comment activity: {e}")
+        
+        # Get user info for display
+        user = db_tables['users'][user_did]
+        
+        # Return the new comment HTML
+        return Div(
+            Div(
+                Img(
+                    src=user.avatar_url,
+                    alt=user.display_name or user.handle,
+                    cls="comment-avatar"
+                ) if user.avatar_url else Div("👤", cls="comment-avatar-placeholder"),
+                Div(
+                    Strong(user.display_name or user.handle),
+                    Span(f"@{user.handle}", cls="comment-handle"),
+                    cls="comment-user-info"
+                ),
+                cls="comment-header"
+            ),
+            P(created_comment.content, cls="comment-content"),
+            Div(
+                Span("Just now"),
+                cls="comment-meta"
+            ),
+            cls="comment-item",
+            id=f"comment-{created_comment.id}"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error adding comment to book {book_id}: {e}", exc_info=True)
+        return Div(f"Error adding comment: {str(e)}", cls="error")
+
 @rt("/api/book/add-to-shelf", methods=["POST"])
 def add_book_to_shelf_api(shelf_slug: str, book_title: str, book_author: str, book_isbn: str, auth):
     """HTMX endpoint to add a book to a specific shelf."""
@@ -3155,6 +3491,46 @@ def get_contact_modal():
 @rt("/api/close-contact-modal")
 def close_contact_modal():
     """HTMX endpoint to close the contact modal."""
+    return ""  # Return empty content to clear the modal
+
+@rt("/api/book/{book_id}/comment-modal")
+def get_comment_modal(book_id: int, auth):
+    """HTMX endpoint to get the comment modal content."""
+    try:
+        # Get the book
+        book = get_book_by_id(book_id, db_tables)
+        if not book:
+            return Div("Book not found.", cls="error")
+        
+        # Get the bookshelf to check permissions
+        shelf = db_tables['bookshelves'][book.bookshelf_id]
+        user_did = get_current_user_did(auth)
+        
+        # Check if user can view the bookshelf
+        if not can_view_bookshelf(shelf, user_did, db_tables):
+            return Div("You don't have permission to view this book.", cls="error")
+        
+        # Get comments for the book
+        comments = get_book_comments(book_id, db_tables)
+        
+        # Check permissions for commenting
+        from models import can_comment_on_books
+        can_comment = can_comment_on_books(shelf, user_did, db_tables) if user_did else False
+        
+        # Determine user authentication status
+        user_auth_status = "anonymous" if not auth else "logged_in"
+        
+        # Import and return the modal component
+        from components import CommentModal
+        return CommentModal(book, comments, can_comment=can_comment, user_auth_status=user_auth_status)
+        
+    except Exception as e:
+        logger.error(f"Error loading comment modal for book {book_id}: {e}", exc_info=True)
+        return Div(f"Error loading comments: {str(e)}", cls="error")
+
+@rt("/api/close-comment-modal")
+def close_comment_modal():
+    """HTMX endpoint to close the comment modal."""
     return ""  # Return empty content to clear the modal
 
 @rt("/api/auth/health")

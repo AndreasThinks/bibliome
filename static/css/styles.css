@@ -4869,6 +4869,93 @@ section + section {
     transform: scale(1.02);
 }
 
+/* Clickable Book Title Styles */
+.book-title-link {
+    color: var(--brand-navy);
+    text-decoration: none;
+    font-size: 0.85rem;
+    line-height: 1.3;
+    font-weight: 600;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.5rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    margin: 0;
+    padding: 0.25rem;
+    border-radius: 0.25rem;
+}
+
+.book-title-link:hover {
+    color: var(--brand-amber);
+    background: rgba(212, 148, 30, 0.1);
+    text-decoration: none;
+    transform: scale(1.02);
+}
+
+.book-title-link:active {
+    transform: scale(0.98);
+}
+
+/* Comment Preview Styles */
+.comment-preview {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid var(--brand-border);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    margin: 0.5rem 0;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    transition: all 0.2s ease;
+}
+
+.comment-preview:hover {
+    background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+    border-color: var(--brand-amber);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.comment-preview-text {
+    color: var(--brand-text);
+    font-style: italic;
+    margin: 0 0 0.25rem 0;
+    font-weight: 500;
+}
+
+.comment-preview-author {
+    color: var(--brand-muted);
+    font-size: 0.7rem;
+    margin: 0;
+    text-align: right;
+    font-weight: 600;
+}
+
+/* Enhanced card heights for consistent grid alignment */
+.book-card.interactive-book {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 320px; /* Ensure consistent minimum height */
+}
+
+.book-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+/* Ensure action row stays at bottom */
+.book-actions-row {
+    margin-top: auto;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--brand-border);
+}
+
 /* Table view user attribution */
 .book-added-by-table {
     font-size: 0.75rem;
@@ -6854,4 +6941,1077 @@ select:focus {
     font-size: 1rem;
     color: var(--brand-muted);
     margin: 0;
+}
+
+/* ===== BOOK DETAIL PAGE STYLES ===== */
+
+/* Book detail header */
+.book-navigation {
+    margin-bottom: 1.5rem;
+}
+
+.back-link {
+    color: var(--brand-amber);
+    text-decoration: none;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    transition: all 0.2s ease;
+}
+
+.back-link:hover {
+    background: var(--brand-light);
+    color: var(--brand-navy);
+    text-decoration: none;
+}
+
+.book-detail-header {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 2rem;
+    padding: 2rem;
+    background: var(--brand-light);
+    border-radius: 0.75rem;
+    border: 1px solid var(--brand-border);
+}
+
+.book-detail-cover-container {
+    flex-shrink: 0;
+}
+
+.book-detail-cover {
+    width: 200px;
+    height: 300px;
+    object-fit: cover;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.book-detail-cover-placeholder {
+    width: 200px;
+    height: 300px;
+    background: var(--brand-border);
+    color: var(--brand-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 4rem;
+    border-radius: 0.5rem;
+}
+
+.book-detail-info {
+    flex: 1;
+}
+
+.book-detail-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--brand-navy);
+    margin: 0 0 0.5rem 0;
+    line-height: 1.2;
+}
+
+.book-detail-author {
+    font-size: 1.5rem;
+    color: var(--brand-muted);
+    margin: 0 0 1.5rem 0;
+    font-style: italic;
+}
+
+.book-detail-description {
+    font-size: 1.1rem;
+    color: var(--brand-text);
+    line-height: 1.6;
+    margin: 0 0 1.5rem 0;
+}
+
+.book-detail-metadata {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.book-detail-metadata p {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--brand-muted);
+}
+
+/* Book detail sections */
+.book-detail-section {
+    margin-bottom: 3rem;
+    padding: 2rem;
+    background: var(--brand-white);
+    border-radius: 0.75rem;
+    border: 1px solid var(--brand-border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.book-detail-section h2 {
+    color: var(--brand-navy);
+    margin: 0 0 1.5rem 0;
+    font-size: 1.5rem;
+}
+
+.book-detail-section h3 {
+    color: var(--brand-navy);
+    margin: 0 0 1rem 0;
+    font-size: 1.25rem;
+}
+
+/* Book shelves list */
+.book-shelves-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.shelf-item {
+    padding: 1rem;
+    background: var(--brand-light);
+    border-radius: 0.5rem;
+    border: 1px solid var(--brand-border);
+}
+
+.shelf-link {
+    color: var(--brand-amber);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.shelf-link:hover {
+    color: var(--brand-navy);
+    text-decoration: underline;
+}
+
+/* Activity filters */
+.activity-filters {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    padding: 0.75rem 1.25rem;
+    border: 2px solid var(--brand-border);
+    border-radius: 0.5rem;
+    background: var(--brand-white);
+    color: var(--brand-text);
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.filter-btn:hover {
+    background: var(--brand-light);
+    border-color: var(--brand-amber);
+    color: var(--brand-navy);
+    text-decoration: none;
+}
+
+.filter-btn.active {
+    background: var(--brand-amber);
+    color: var(--brand-navy);
+    border-color: var(--brand-amber);
+    font-weight: 600;
+}
+
+/* ===== COMMENT SYSTEM STYLES ===== */
+
+/* Comment form section */
+.comment-form-section {
+    margin-bottom: 2rem;
+}
+
+.comment-textarea {
+    width: 100%;
+    padding: 1rem;
+    border: 2px solid var(--brand-border);
+    border-radius: 0.75rem;
+    font-size: 1rem;
+    font-family: var(--font-primary);
+    line-height: 1.6;
+    resize: vertical;
+    min-height: 120px;
+    transition: all 0.2s ease;
+    background: var(--brand-white);
+    box-sizing: border-box;
+}
+
+.comment-textarea:focus {
+    outline: none;
+    border-color: var(--brand-amber);
+    box-shadow: 0 0 0 3px rgba(212, 148, 30, 0.15);
+    transform: translateY(-1px);
+}
+
+.comment-textarea::placeholder {
+    color: var(--brand-muted);
+    font-style: italic;
+}
+
+/* Comments list */
+.comments-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+/* Individual comment item */
+.comment-item {
+    background: var(--brand-white);
+    border: 1px solid var(--brand-border);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.comment-item:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: var(--brand-amber);
+}
+
+/* Comment header with user info */
+.comment-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.comment-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--brand-border);
+}
+
+.comment-avatar-placeholder {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--brand-muted);
+    color: var(--brand-white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    border: 2px solid var(--brand-border);
+}
+
+.comment-user-info {
+    flex: 1;
+}
+
+.comment-user-info strong {
+    display: block;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--brand-text);
+    margin-bottom: 0.25rem;
+}
+
+.comment-handle {
+    font-size: 0.9rem;
+    color: var(--brand-muted);
+    font-weight: 400;
+}
+
+/* Comment content */
+.comment-content {
+    font-size: 1rem;
+    color: var(--brand-text);
+    line-height: 1.6;
+    margin: 0 0 1rem 0;
+    word-wrap: break-word;
+}
+
+/* Comment metadata */
+.comment-meta {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-size: 0.85rem;
+    color: var(--brand-muted);
+}
+
+.edited-indicator {
+    font-style: italic;
+    color: var(--brand-muted);
+}
+
+/* Activity timeline */
+.activity-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.activity-item {
+    background: var(--brand-light);
+    border: 1px solid var(--brand-border);
+    border-radius: 0.5rem;
+    padding: 1.25rem;
+    transition: all 0.2s ease;
+}
+
+.activity-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-color: var(--brand-amber);
+}
+
+.activity-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.activity-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid var(--brand-border);
+}
+
+.activity-avatar-placeholder {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--brand-muted);
+    color: var(--brand-white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    border: 1px solid var(--brand-border);
+}
+
+.activity-icon {
+    font-size: 1.25rem;
+    background: var(--brand-white);
+    padding: 0.5rem;
+    border-radius: 50%;
+    border: 1px solid var(--brand-border);
+}
+
+.activity-text {
+    font-size: 1rem;
+    color: var(--brand-text);
+    margin: 0 0 0.75rem 0;
+    line-height: 1.5;
+}
+
+.activity-text strong {
+    color: var(--brand-navy);
+    font-weight: 600;
+}
+
+.activity-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 0.85rem;
+    color: var(--brand-muted);
+}
+
+.activity-link {
+    color: var(--brand-amber);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.activity-link:hover {
+    color: var(--brand-navy);
+    text-decoration: underline;
+}
+
+/* Mobile responsive for book detail page */
+@media (max-width: 768px) {
+    .book-detail-header {
+        flex-direction: column;
+        gap: 1.5rem;
+        padding: 1.5rem;
+        margin: 0 -1rem 2rem -1rem;
+        border-radius: 0;
+    }
+    
+    .book-detail-cover,
+    .book-detail-cover-placeholder {
+        width: 150px;
+        height: 225px;
+        align-self: center;
+    }
+    
+    .book-detail-title {
+        font-size: 2rem;
+        text-align: center;
+    }
+    
+    .book-detail-author {
+        font-size: 1.25rem;
+        text-align: center;
+    }
+    
+    .book-detail-description {
+        font-size: 1rem;
+        text-align: center;
+    }
+    
+    .book-detail-metadata {
+        align-items: center;
+        text-align: center;
+    }
+    
+    .book-detail-section {
+        padding: 1.5rem;
+        margin: 0 -1rem 2rem -1rem;
+        border-radius: 0;
+    }
+    
+    .activity-filters {
+        justify-content: center;
+    }
+    
+    .filter-btn {
+        padding: 0.75rem 1rem;
+        font-size: 0.9rem;
+    }
+    
+    .comment-textarea {
+        padding: 0.875rem;
+        font-size: 16px; /* Prevent zoom on iOS */
+    }
+    
+    .comment-item {
+        padding: 1.25rem;
+    }
+    
+    .comment-header {
+        gap: 0.75rem;
+    }
+    
+    .comment-avatar,
+    .comment-avatar-placeholder {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .comment-user-info strong {
+        font-size: 1rem;
+    }
+    
+    .comment-handle {
+        font-size: 0.85rem;
+    }
+    
+    .comment-content {
+        font-size: 0.95rem;
+    }
+    
+    .activity-item {
+        padding: 1rem;
+    }
+    
+    .activity-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .book-detail-cover,
+    .book-detail-cover-placeholder {
+        width: 120px;
+        height: 180px;
+    }
+    
+    .book-detail-title {
+        font-size: 1.75rem;
+    }
+    
+    .book-detail-author {
+        font-size: 1.1rem;
+    }
+    
+    .book-detail-description {
+        font-size: 0.95rem;
+    }
+    
+    .book-detail-section {
+        padding: 1.25rem;
+    }
+    
+    .book-detail-section h2 {
+        font-size: 1.25rem;
+    }
+    
+    .book-detail-section h3 {
+        font-size: 1.1rem;
+    }
+    
+    .activity-filters {
+        gap: 0.25rem;
+    }
+    
+    .filter-btn {
+        padding: 0.6rem 0.8rem;
+        font-size: 0.85rem;
+    }
+    
+    .comment-textarea {
+        padding: 0.75rem;
+        min-height: 100px;
+    }
+    
+    .comment-item {
+        padding: 1rem;
+    }
+    
+    .comment-avatar,
+    .comment-avatar-placeholder {
+        width: 36px;
+        height: 36px;
+        font-size: 1.25rem;
+    }
+    
+    .comment-user-info strong {
+        font-size: 0.95rem;
+    }
+    
+    .comment-handle {
+        font-size: 0.8rem;
+    }
+    
+    .comment-content {
+        font-size: 0.9rem;
+    }
+    
+    .comment-meta {
+        font-size: 0.8rem;
+    }
+    
+    .activity-item {
+        padding: 0.875rem;
+    }
+    
+    .activity-header {
+        gap: 0.5rem;
+    }
+    
+    .activity-avatar,
+    .activity-avatar-placeholder {
+        width: 32px;
+        height: 32px;
+        font-size: 0.9rem;
+    }
+    
+    .activity-icon {
+        font-size: 1rem;
+        padding: 0.375rem;
+    }
+    
+    .activity-text {
+        font-size: 0.9rem;
+    }
+    
+    .activity-meta {
+        font-size: 0.8rem;
+    }
+}
+
+/* Shelf selector dropdown styling */
+.shelf-selector-dropdown {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.shelf-option {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    border-bottom: 1px solid #e0e0e0;
+    transition: background-color 0.2s ease;
+}
+
+.shelf-option:hover {
+    background-color: #f5f3f0;
+}
+
+.shelf-option:last-child {
+    border-bottom: none;
+}
+
+.no-shelves-message {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+}
+
+.no-shelves-message .btn {
+    margin-top: 1rem;
+}
+
+/* ===== COMMENT MODAL STYLES ===== */
+
+/* Comment modal overlay */
+.comment-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 2rem;
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Comment modal dialog container */
+.comment-modal-dialog {
+    background: var(--brand-white);
+    border-radius: 1rem;
+    max-width: 700px;
+    width: 100%;
+    max-height: 85vh;
+    overflow: hidden;
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--brand-border);
+    animation: slideIn 0.4s ease-out;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Comment modal header */
+.comment-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 2rem 2rem 1.5rem 2rem;
+    border-bottom: 1px solid var(--brand-border);
+    background: linear-gradient(135deg, var(--brand-light) 0%, #ffffff 100%);
+    flex-shrink: 0;
+}
+
+.comment-modal-close {
+    background: var(--brand-white);
+    border: 2px solid var(--brand-border);
+    color: var(--brand-muted);
+    cursor: pointer;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    transition: all 0.2s ease;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.comment-modal-close:hover {
+    background: #fee;
+    border-color: #dc3545;
+    color: #dc3545;
+    transform: scale(1.05);
+}
+
+.comment-modal-book-header {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex: 1;
+    margin-right: 2rem;
+}
+
+.comment-modal-book-cover {
+    width: 80px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    flex-shrink: 0;
+}
+
+.comment-modal-book-cover-placeholder {
+    width: 80px;
+    height: 120px;
+    background: var(--brand-border);
+    color: var(--brand-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    border-radius: 0.5rem;
+    flex-shrink: 0;
+}
+
+.comment-modal-book-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.comment-modal-book-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--brand-navy);
+    margin: 0 0 0.5rem 0;
+    line-height: 1.2;
+    word-wrap: break-word;
+}
+
+.comment-modal-book-author {
+    font-size: 1.1rem;
+    color: var(--brand-muted);
+    margin: 0;
+    font-style: italic;
+}
+
+/* Comment modal body */
+.comment-modal-body {
+    padding: 2rem;
+    overflow-y: auto;
+    flex: 1;
+    max-height: calc(85vh - 200px);
+}
+
+.comments-section-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--brand-navy);
+    margin: 0 0 1.5rem 0;
+    font-family: var(--font-heading);
+}
+
+.no-comments-message {
+    text-align: center;
+    color: var(--brand-muted);
+    font-style: italic;
+    padding: 2rem;
+    background: var(--brand-light);
+    border-radius: 0.5rem;
+    border: 2px dashed var(--brand-border);
+}
+
+/* Comment modal footer */
+.comment-modal-footer {
+    padding: 1.5rem 2rem;
+    border-top: 1px solid var(--brand-border);
+    background: linear-gradient(135deg, var(--brand-light) 0%, #ffffff 100%);
+    flex-shrink: 0;
+}
+
+.comment-modal-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.comment-modal-textarea {
+    width: 100%;
+    padding: 1rem;
+    border: 2px solid var(--brand-border);
+    border-radius: 0.75rem;
+    font-size: 1rem;
+    font-family: var(--font-primary);
+    line-height: 1.6;
+    resize: vertical;
+    min-height: 100px;
+    transition: all 0.2s ease;
+    background: var(--brand-white);
+    box-sizing: border-box;
+}
+
+.comment-modal-textarea:focus {
+    outline: none;
+    border-color: var(--brand-amber);
+    box-shadow: 0 0 0 3px rgba(212, 148, 30, 0.15);
+    transform: translateY(-1px);
+}
+
+.comment-modal-textarea::placeholder {
+    color: var(--brand-muted);
+    font-style: italic;
+}
+
+.comment-modal-submit-btn {
+    background: linear-gradient(135deg, var(--brand-amber) 0%, #e6a429 100%);
+    color: var(--brand-navy);
+    border: none;
+    padding: 1rem 2rem;
+    border-radius: 0.75rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    box-shadow: 0 4px 16px rgba(212, 148, 30, 0.3);
+    align-self: flex-end;
+}
+
+.comment-modal-submit-btn:hover {
+    background: linear-gradient(135deg, #c08419 0%, #d49520 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(212, 148, 30, 0.4);
+}
+
+/* Comment auth sections */
+.comment-auth-section {
+    text-align: center;
+    padding: 2rem;
+    background: var(--brand-light);
+    border-radius: 0.75rem;
+    border: 2px dashed var(--brand-border);
+}
+
+.comment-auth-message {
+    font-size: 1.1rem;
+    color: var(--brand-text);
+    margin: 0 0 1.5rem 0;
+    font-weight: 500;
+}
+
+.comment-auth-btn {
+    background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+    color: white;
+    border: none;
+    padding: 1rem 2rem;
+    border-radius: 0.75rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: 0 4px 16px rgba(33, 150, 243, 0.3);
+}
+
+.comment-auth-btn:hover {
+    background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(33, 150, 243, 0.4);
+    color: white;
+    text-decoration: none;
+}
+
+.comment-permission-section {
+    text-align: center;
+    padding: 2rem;
+    background: #fff3cd;
+    border-radius: 0.75rem;
+    border: 2px solid #ffc107;
+}
+
+.comment-permission-message {
+    font-size: 1.1rem;
+    color: #856404;
+    margin: 0;
+    font-weight: 500;
+}
+
+/* Enable comment button */
+.action-btn.comment-btn {
+    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+    color: white;
+    border-color: #17a2b8;
+    box-shadow: 0 2px 8px rgba(23, 162, 184, 0.25);
+    cursor: pointer;
+    opacity: 1;
+}
+
+.action-btn.comment-btn:hover {
+    background: linear-gradient(135deg, #138496 0%, #117a8b 100%);
+    border-color: #117a8b;
+    box-shadow: 0 4px 16px rgba(23, 162, 184, 0.35);
+    transform: translateY(-2px);
+}
+
+/* Mobile responsive for comment modal */
+@media (max-width: 768px) {
+    .comment-modal-overlay {
+        padding: 1rem;
+        align-items: flex-start;
+        padding-top: 2rem;
+    }
+    
+    .comment-modal-dialog {
+        max-width: 100%;
+        max-height: 95vh;
+        border-radius: 0.75rem;
+    }
+    
+    .comment-modal-header {
+        padding: 1.5rem 1.5rem 1rem 1.5rem;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .comment-modal-book-header {
+        margin-right: 0;
+        width: 100%;
+        gap: 1rem;
+    }
+    
+    .comment-modal-close {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        min-width: 40px;
+        min-height: 40px;
+        padding: 0.5rem;
+    }
+    
+    .comment-modal-book-cover,
+    .comment-modal-book-cover-placeholder {
+        width: 60px;
+        height: 90px;
+    }
+    
+    .comment-modal-book-title {
+        font-size: 1.25rem;
+    }
+    
+    .comment-modal-book-author {
+        font-size: 1rem;
+    }
+    
+    .comment-modal-body {
+        padding: 1.5rem;
+        max-height: calc(95vh - 180px);
+    }
+    
+    .comment-modal-footer {
+        padding: 1.25rem 1.5rem;
+    }
+    
+    .comment-modal-textarea {
+        padding: 0.875rem;
+        font-size: 16px; /* Prevent zoom on iOS */
+        min-height: 80px;
+    }
+    
+    .comment-modal-submit-btn {
+        padding: 0.875rem 1.5rem;
+        font-size: 1rem;
+        align-self: stretch;
+    }
+    
+    .comment-auth-section,
+    .comment-permission-section {
+        padding: 1.5rem;
+    }
+    
+    .comment-auth-message,
+    .comment-permission-message {
+        font-size: 1rem;
+    }
+    
+    .comment-auth-btn {
+        padding: 0.875rem 1.5rem;
+        font-size: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .comment-modal-overlay {
+        padding: 0.5rem;
+        padding-top: 1rem;
+    }
+    
+    .comment-modal-dialog {
+        max-height: 98vh;
+        border-radius: 0.5rem;
+    }
+    
+    .comment-modal-header {
+        padding: 1rem 1rem 0.75rem 1rem;
+    }
+    
+    .comment-modal-close {
+        top: 0.75rem;
+        right: 0.75rem;
+        min-width: 36px;
+        min-height: 36px;
+        padding: 0.4rem;
+        font-size: 1rem;
+    }
+    
+    .comment-modal-book-header {
+        gap: 0.75rem;
+    }
+    
+    .comment-modal-book-cover,
+    .comment-modal-book-cover-placeholder {
+        width: 50px;
+        height: 75px;
+        font-size: 1.5rem;
+    }
+    
+    .comment-modal-book-title {
+        font-size: 1.1rem;
+    }
+    
+    .comment-modal-book-author {
+        font-size: 0.9rem;
+    }
+    
+    .comment-modal-body {
+        padding: 1rem;
+        max-height: calc(98vh - 160px);
+    }
+    
+    .comments-section-title {
+        font-size: 1.1rem;
+    }
+    
+    .comment-modal-footer {
+        padding: 1rem;
+    }
+    
+    .comment-modal-textarea {
+        padding: 0.75rem;
+        font-size: 16px;
+        min-height: 70px;
+    }
+    
+    .comment-modal-submit-btn {
+        padding: 0.75rem 1.25rem;
+        font-size: 0.95rem;
+    }
+    
+    .comment-auth-section,
+    .comment-permission-section {
+        padding: 1.25rem;
+    }
+    
+    .comment-auth-message,
+    .comment-permission-message {
+        font-size: 0.95rem;
+        margin-bottom: 1rem;
+    }
+    
+    .comment-auth-btn {
+        padding: 0.75rem 1.25rem;
+        font-size: 0.95rem;
+    }
 }

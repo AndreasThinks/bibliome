@@ -2626,3 +2626,120 @@ def BackupHistoryCard():
         Div(id="backup-list", hx_get="/admin/list-backups", hx_trigger="load", hx_swap="innerHTML"),
         cls="backup-history-card"
     )
+
+def CommentModal(book, comments, can_comment=False, user_auth_status="anonymous"):
+    """Modal content for viewing and adding comments to a book."""
+    # Book header with cover and title
+    cover = Img(
+        src=book.cover_url,
+        alt=f"Cover of {book.title}",
+        cls="comment-modal-book-cover"
+    ) if book.cover_url else Div("📖", cls="comment-modal-book-cover-placeholder")
+    
+    # Comments list
+    comment_items = []
+    for comment in comments:
+        comment_items.append(
+            Div(
+                Div(
+                    Img(
+                        src=comment.user_avatar_url,
+                        alt=comment.user_display_name or comment.user_handle,
+                        cls="comment-avatar"
+                    ) if comment.user_avatar_url else Div("👤", cls="comment-avatar-placeholder"),
+                    Div(
+                        Strong(comment.user_display_name or comment.user_handle),
+                        Span(f"@{comment.user_handle}", cls="comment-handle"),
+                        cls="comment-user-info"
+                    ),
+                    cls="comment-header"
+                ),
+                P(comment.content, cls="comment-content"),
+                Div(
+                    Span(comment.created_at.strftime("%B %d, %Y at %I:%M %p") if comment.created_at else "Unknown time"),
+                    comment.is_edited and Span("(edited)", cls="edited-indicator") or None,
+                    cls="comment-meta"
+                ),
+                cls="comment-item",
+                id=f"comment-{comment.id}"
+            )
+        )
+    
+    # Comment form (if user can comment)
+    comment_form = None
+    if can_comment:
+        comment_form = Form(
+            Textarea(
+                name="content",
+                placeholder="Share your thoughts about this book...",
+                required=True,
+                rows=3,
+                cls="comment-modal-textarea"
+            ),
+            Button("Post Comment", type="submit", cls="comment-modal-submit-btn primary"),
+            hx_post=f"/api/book/{book.id}/comment",
+            hx_target="#modal-comments-list",
+            hx_swap="afterbegin",
+            hx_on_after_request="this.reset()",  # Clear form after successful submission
+            cls="comment-modal-form"
+        )
+    elif user_auth_status == "anonymous":
+        comment_form = Div(
+            P("Sign in to comment on this book", cls="comment-auth-message"),
+            A("Sign In", href="/auth/login", cls="primary comment-auth-btn"),
+            cls="comment-auth-section"
+        )
+    else:
+        comment_form = Div(
+            P("Only contributors can comment on books in this shelf", cls="comment-permission-message"),
+            cls="comment-permission-section"
+        )
+    
+    return Div(
+        Div(
+            # Modal header
+            Div(
+                Button(
+                    I(cls="fas fa-times"),
+                    hx_get="/api/close-comment-modal",
+                    hx_target="#comment-modal-container",
+                    hx_swap="innerHTML",
+                    cls="comment-modal-close",
+                    title="Close"
+                ),
+                Div(
+                    cover,
+                    Div(
+                        H2(book.title, cls="comment-modal-book-title"),
+                        P(f"by {book.author}", cls="comment-modal-book-author") if book.author else None,
+                        cls="comment-modal-book-info"
+                    ),
+                    cls="comment-modal-book-header"
+                ),
+                cls="comment-modal-header"
+            ),
+            
+            # Modal body with comments
+            Div(
+                Div(
+                    H3(f"Comments ({len(comments)})", cls="comments-section-title"),
+                    Div(
+                        *comment_items if comment_items else [P("No comments yet. Be the first to share your thoughts!", cls="no-comments-message")],
+                        cls="comments-list",
+                        id="modal-comments-list"
+                    ),
+                    cls="comments-section"
+                ),
+                cls="comment-modal-body"
+            ),
+            
+            # Modal footer with comment form
+            Div(
+                comment_form,
+                cls="comment-modal-footer"
+            ),
+            
+            cls="comment-modal-dialog"
+        ),
+        cls="comment-modal-overlay"
+    )

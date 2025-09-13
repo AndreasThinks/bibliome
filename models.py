@@ -263,11 +263,25 @@ class BookshelfInvite:
     is_active: bool = True
 
 
+class Comment:
+    """Comment model for book discussions."""
+    id: int = None  # Auto-incrementing primary key
+    book_id: int
+    bookshelf_id: int  # Reference to bookshelf for context/permissions
+    user_did: str
+    content: str
+    parent_comment_id: int = None  # For threaded replies
+    created_at: datetime = None
+    updated_at: datetime = None
+    is_edited: bool = False
+    # Future AT Protocol sync (not implemented initially)
+    atproto_uri: str = ""
+
 class Activity:
     """Track user activity for social feed."""
     id: int = None  # Auto-incrementing primary key
     user_did: str
-    activity_type: str  # 'bookshelf_created', 'book_added'
+    activity_type: str  # 'bookshelf_created', 'book_added', 'comment_added'
     bookshelf_id: int = None
     book_id: int = None
     created_at: datetime = None
@@ -362,6 +376,7 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     books = db.create(Book, transform=True)
     permissions = db.create(Permission, transform=True)
     bookshelf_invites = db.create(BookshelfInvite, transform=True)
+    comments = db.create(Comment, transform=True)
     activities = db.create(Activity, transform=True)
     sync_logs = db.create(SyncLog, transform=True)
     
@@ -377,6 +392,7 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
         'books': books,
         'permissions': permissions,
         'bookshelf_invites': bookshelf_invites,
+        'comments': comments,
         'activities': activities,
         'sync_logs': sync_logs,
         'process_status': process_status,
@@ -468,6 +484,36 @@ def can_delete_shelf(bookshelf, user_did: str, db_tables) -> bool:
     if not user_did:
         return False
     return bookshelf.owner_did == user_did
+
+def can_comment_on_books(bookshelf, user_did: str, db_tables) -> bool:
+    """Check if user can comment on books (same as can_add_books)."""
+    if not user_did:
+        return False
+    # Check explicit permissions OR self-join enabled for logged-in users
+    return (check_permission(bookshelf, user_did, ['contributor', 'moderator', 'owner'], db_tables) 
+            or bookshelf.self_join)
+
+def can_edit_comment(comment, user_did: str, db_tables) -> bool:
+    """Check if user can edit a comment (own comments only)."""
+    if not user_did:
+        return False
+    return comment.user_did == user_did
+
+def can_delete_comment(comment, user_did: str, db_tables) -> bool:
+    """Check if user can delete a comment (own comments or moderator/owner)."""
+    if not user_did:
+        return False
+    
+    # Users can delete their own comments
+    if comment.user_did == user_did:
+        return True
+    
+    # Moderators and owners can delete any comments
+    try:
+        bookshelf = db_tables['bookshelves'][comment.bookshelf_id]
+        return check_permission(bookshelf, user_did, ['moderator', 'owner'], db_tables)
+    except:
+        return False
 
 def get_user_role(bookshelf, user_did: str, db_tables) -> str:
     """Get the user's role for a bookshelf."""
@@ -1281,6 +1327,139 @@ def search_users(db_tables, query: str = "", viewer_did: str = None, limit: int 
         print(f"Error searching users: {e}")
         return []
 
+def get_book_by_id(book_id: int, db_tables):
+    """Get a book by its ID, returning None if not found."""
+    try:
+        return db_tables['books'][book_id]
+    except IndexError:
+        return None
+
+def get_book_comments(book_id: int, db_tables, limit: int = 50):
+    """Get comments for a book with user information."""
+    try:
+        query = """
+            SELECT c.*, u.handle, u.display_name, u.avatar_url
+            FROM comment c
+            JOIN user u ON c.user_did = u.did
+            WHERE c.book_id = ?
+            ORDER BY c.created_at ASC
+            LIMIT ?
+        """
+        
+        cursor = db_tables['db'].execute(query, (book_id, limit))
+        columns = [d[0] for d in cursor.description]
+        rows = cursor.fetchall()
+        
+        comments = []
+        for row in rows:
+            comment_data = dict(zip(columns, row))
+            comment = Comment(**{k: v for k, v in comment_data.items() if k in Comment.__annotations__})
+            comment.user_handle = comment_data.get('handle')
+            comment.user_display_name = comment_data.get('display_name')
+            comment.user_avatar_url = comment_data.get('avatar_url')
+            comments.append(comment)
+        
+        return comments
+        
+    except Exception as e:
+        print(f"Error getting comments for book {book_id}: {e}")
+        return []
+
+def get_book_activity(book_id: int, db_tables, activity_type: str = "all", limit: int = 20):
+    """Get activity for a specific book with filtering."""
+    try:
+        query = """
+            SELECT a.*, u.handle, u.display_name, u.avatar_url,
+                   b.name as bookshelf_name, b.slug as bookshelf_slug
+            FROM activity a
+            JOIN user u ON a.user_did = u.did
+            LEFT JOIN bookshelf b ON a.bookshelf_id = b.id
+            WHERE a.book_id = ?
+        """
+        
+        params = [book_id]
+        
+        # Add activity type filter
+        if activity_type != "all":
+            query += " AND a.activity_type = ?"
+            params.append(activity_type)
+        
+        query += " ORDER BY a.created_at DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor = db_tables['db'].execute(query, params)
+        columns = [d[0] for d in cursor.description]
+        rows = cursor.fetchall()
+        
+        activities = []
+        for row in rows:
+            activity_data = dict(zip(columns, row))
+            activity = {
+                'id': activity_data['id'],
+                'user_did': activity_data['user_did'],
+                'activity_type': activity_data['activity_type'],
+                'bookshelf_id': activity_data['bookshelf_id'],
+                'book_id': activity_data['book_id'],
+                'created_at': activity_data['created_at'],
+                'metadata': activity_data['metadata'],
+                'user_handle': activity_data['handle'],
+                'user_display_name': activity_data['display_name'],
+                'user_avatar_url': activity_data['avatar_url'],
+                'bookshelf_name': activity_data['bookshelf_name'],
+                'bookshelf_slug': activity_data['bookshelf_slug']
+            }
+            activities.append(activity)
+        
+        return activities
+        
+    except Exception as e:
+        print(f"Error getting activity for book {book_id}: {e}")
+        return []
+
+def get_book_shelves(book_id: int, db_tables, viewer_did: str = None):
+    """Get all shelves that contain this book (with permission filtering)."""
+    try:
+        # Get the book to find similar books by title/author/ISBN
+        book = get_book_by_id(book_id, db_tables)
+        if not book:
+            return []
+        
+        # Find all shelves containing books with the same title/author/ISBN
+        query = """
+            SELECT DISTINCT bs.*, COUNT(b.id) as vote_count
+            FROM bookshelf bs
+            JOIN book b ON bs.id = b.bookshelf_id
+            LEFT JOIN permission p ON bs.id = p.bookshelf_id AND p.user_did = ? AND p.status = 'active'
+            WHERE b.title = ? AND b.author = ? AND COALESCE(b.isbn, '') = COALESCE(?, '')
+            AND (
+                bs.privacy = 'public' 
+                OR bs.privacy = 'link-only'
+                OR (bs.privacy = 'private' AND bs.owner_did = ?)
+                OR (bs.privacy = 'private' AND p.user_did IS NOT NULL)
+            )
+            GROUP BY bs.id
+            ORDER BY vote_count DESC, bs.updated_at DESC
+        """
+        
+        params = [viewer_did or '', book.title, book.author, book.isbn or '', viewer_did or '']
+        cursor = db_tables['db'].execute(query, params)
+        columns = [d[0] for d in cursor.description]
+        rows = cursor.fetchall()
+        
+        shelves = []
+        for row in rows:
+            shelf_data = dict(zip(columns, row))
+            vote_count = shelf_data.pop('vote_count', 0)
+            shelf = Bookshelf(**{k: v for k, v in shelf_data.items() if k in Bookshelf.__annotations__})
+            shelf.vote_count = vote_count
+            shelves.append(shelf)
+        
+        return shelves
+        
+    except Exception as e:
+        print(f"Error getting shelves for book {book_id}: {e}")
+        return []
+
 # FT rendering methods for models
 @patch
 def __ft__(self: Bookshelf):
@@ -1344,15 +1523,8 @@ def __ft__(self: Book):
     )
 
 @patch
-def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False, user_auth_status="anonymous"):
-    """Render Book as a card with three-icon action row and vote count badge on cover."""
-    # Generate Google Books URL
-    if self.isbn:
-        google_books_url = f"https://books.google.com/books?isbn={self.isbn}"
-    else:
-        # Fallback to search query if no ISBN
-        search_query = f"{self.title} {self.author}".replace(" ", "+")
-        google_books_url = f"https://books.google.com/books?q={search_query}"
+def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False, user_auth_status="anonymous", db_tables=None):
+    """Render Book as a card with clickable title, +1/-1 toggle, and optional comment preview."""
     
     cover = Img(
         src=self.cover_url,
@@ -1367,7 +1539,26 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
         cls="book-description"
     ) if self.description else None
     
-    # Build three-icon action row
+    # Get a random comment if available
+    comment_preview = None
+    if db_tables:
+        try:
+            comments = get_book_comments(self.id, db_tables, limit=10)
+            if comments:
+                import random
+                random_comment = random.choice(comments)
+                comment_preview = Div(
+                    P(f'"{random_comment.content[:60]}{"..." if len(random_comment.content) > 60 else ""}"', 
+                      cls="comment-preview-text"),
+                    P(f"— {random_comment.user_display_name or random_comment.user_handle}", 
+                      cls="comment-preview-author"),
+                    cls="comment-preview"
+                )
+        except Exception as e:
+            # Silently handle any errors in comment fetching
+            pass
+    
+    # Build action row with just +1/-1 toggle and comment button
     action_icons = []
     
     # 1. +1/-1 Toggle Button
@@ -1412,12 +1603,14 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
                 title="Only contributors can add books to this shelf"
             ))
     
-    # 2. Comment Icon (placeholder - disabled)
+    # 2. Comment Icon - HTMX modal trigger
     action_icons.append(Button(
         "💬",
-        cls="action-btn comment-btn disabled",
-        disabled=True,
-        title="Comments coming soon",
+        hx_get=f"/api/book/{self.id}/comment-modal",
+        hx_target="#comment-modal-container",
+        hx_swap="innerHTML",
+        cls="action-btn comment-btn",
+        title="View and add comments",
         onclick="event.stopPropagation()"
     ))
     
@@ -1458,7 +1651,8 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
     
     # Book info section
     book_info_children = [
-        H4(self.title, cls="book-title"),
+        # Clickable book title that links to book detail page
+        A(self.title, href=f"/book/{self.id}", cls="book-title-link"),
     ]
     
     if self.author:
@@ -1467,20 +1661,14 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
     if description:
         book_info_children.append(description)
     
-    # Three-icon action row
+    # Add comment preview if available
+    if comment_preview:
+        book_info_children.append(comment_preview)
+    
+    # Action row with +1/-1 toggle and comment button
     book_info_children.append(Div(
         *action_icons,
         cls="book-actions-row"
-    ))
-    
-    # More info link
-    book_info_children.append(A(
-        "More Info",
-        href=google_books_url,
-        target="_blank",
-        rel="noopener noreferrer",
-        cls="more-info-link",
-        title="View on Google Books"
     ))
     
     # Discrete user attribution
