@@ -194,25 +194,36 @@ class ProcessMonitor:
     
     def record_metric(self, process_name: str, metric_name: str, metric_value: int, 
                      metric_type: str = "counter"):
-        """Record a process metric."""
+        """Record a process metric with improved error handling."""
         if not self.db_tables:
             return
         
-        try:
-            # Create ProcessMetric object instead of raw dict to ensure proper FastLite handling
-            from models import ProcessMetric
-            metric_entry = ProcessMetric(
-                process_name=process_name,
-                metric_name=metric_name,
-                metric_value=metric_value,
-                metric_type=metric_type,
-                recorded_at=datetime.now()
-            )
-            
-            self.db_tables['process_metrics'].insert(metric_entry)
-            
-        except Exception as e:
-            self.logger.error(f"Error recording metric {metric_name} for {process_name}: {e}")
+        # Use retry logic for better reliability under concurrent load
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Use direct dictionary insertion instead of ProcessMetric object
+                # to avoid potential FastLite object creation issues
+                metric_data = {
+                    'process_name': process_name,
+                    'metric_name': metric_name,
+                    'metric_value': metric_value,
+                    'metric_type': metric_type,
+                    'recorded_at': datetime.now()
+                }
+                
+                self.db_tables['process_metrics'].insert(metric_data)
+                return  # Success, exit retry loop
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    # Wait briefly before retry (exponential backoff)
+                    import time
+                    time.sleep(0.01 * (2 ** attempt))
+                    continue
+                else:
+                    # Final attempt failed, log error
+                    self.logger.error(f"Error recording metric {metric_name} for {process_name} (after {max_retries} attempts): {e}")
     
     def register_process(self, name: str, process_type: str, config: Optional[Dict[str, Any]] = None):
         """Register a new process for monitoring."""
