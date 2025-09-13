@@ -3349,14 +3349,34 @@ def add_comment_api(book_id: int, content: str, auth):
         if not can_comment_on_books(shelf, user_did, db_tables):
             return Div("You don't have permission to comment on books in this shelf.", cls="error")
         
-        # Create the comment
+        # Sync to AT Protocol first
+        atproto_uri = ""
+        try:
+            client = bluesky_auth.get_client_from_session(auth)
+            from models import create_comment_record
+            
+            # We need the AT Protocol URIs for the book and bookshelf
+            book_uri = book.atproto_uri if book.atproto_uri else ""
+            bookshelf_uri = shelf.atproto_uri if shelf.atproto_uri else ""
+            
+            if book_uri and bookshelf_uri:
+                atproto_uri = create_comment_record(client, book_uri, bookshelf_uri, content.strip())
+                logger.info(f"Comment synced to AT Protocol: {atproto_uri}")
+            else:
+                logger.warning(f"Cannot sync comment to AT Protocol - missing URIs: book={book_uri}, shelf={bookshelf_uri}")
+        except Exception as e:
+            logger.error(f"Failed to sync comment to AT Protocol: {e}", exc_info=True)
+            # Don't fail the whole request, just log the error and continue
+        
+        # Create the comment in local database
         from models import Comment
         comment = Comment(
             book_id=book_id,
             bookshelf_id=book.bookshelf_id,
             user_did=user_did,
             content=content.strip(),
-            created_at=datetime.now()
+            created_at=datetime.now(),
+            atproto_uri=atproto_uri
         )
         
         created_comment = db_tables['comments'].insert(comment)

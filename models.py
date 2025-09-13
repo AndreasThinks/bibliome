@@ -155,6 +155,119 @@ def delete_book_record(client: Client, atproto_uri: str) -> bool:
         logger.error(f"Error deleting book record {atproto_uri}: {e}")
         return False
 
+def create_comment_record(client: Client, book_uri: str, bookshelf_uri: str, content: str) -> str:
+    """Creates a comment record on the user's repo and returns its AT-URI."""
+    record = {
+        '$type': 'com.bibliome.comment',
+        'content': content,
+        'bookRef': book_uri,
+        'bookshelfRef': bookshelf_uri,
+        'createdAt': client.get_current_time_iso()
+    }
+    response = client.com.atproto.repo.put_record(
+        at_models.ComAtprotoRepoPutRecord.Data(
+            repo=client.me.did,
+            collection='com.bibliome.comment',
+            rkey=generate_tid(),
+            record=record
+        )
+    )
+    return response.uri
+
+def update_comment_record(client: Client, comment_uri: str, content: str) -> str:
+    """Updates a comment record on AT Protocol and returns its AT-URI."""
+    try:
+        # Parse the URI into components
+        if not comment_uri.startswith('at://'):
+            logger.warning(f"Invalid AT URI format: {comment_uri}")
+            return ""
+
+        parts = comment_uri[5:].split('/')
+        if len(parts) != 3:
+            logger.warning(f"Invalid AT URI structure: {comment_uri}")
+            return ""
+
+        repo, collection, rkey = parts
+
+        # Get the existing record first to preserve other fields
+        existing_record = client.com.atproto.repo.get_record(
+            at_models.ComAtprotoRepoGetRecord.Params(
+                repo=repo,
+                collection=collection,
+                rkey=rkey
+            )
+        )
+
+        # Update the record with new content and editedAt timestamp
+        updated_record = existing_record.value
+        updated_record['content'] = content
+        updated_record['editedAt'] = client.get_current_time_iso()
+
+        response = client.com.atproto.repo.put_record(
+            at_models.ComAtprotoRepoPutRecord.Data(
+                repo=repo,
+                collection=collection,
+                rkey=rkey,
+                record=updated_record
+            )
+        )
+        return response.uri
+
+    except Exception as e:
+        logger.error(f"Error updating comment record {comment_uri}: {e}")
+        return ""
+
+def delete_comment_record(client: Client, atproto_uri: str) -> bool:
+    """
+    Delete a comment record from AT Protocol.
+
+    Args:
+        client: Authenticated AT Protocol client
+        atproto_uri: AT Protocol URI of the comment record to delete
+
+    Returns:
+        bool: True if deletion was successful, False otherwise
+    """
+    try:
+        # Parse the URI into components
+        if not atproto_uri.startswith('at://'):
+            logger.warning(f"Invalid AT URI format: {atproto_uri}")
+            return False
+
+        parts = atproto_uri[5:].split('/')
+        if len(parts) != 3:
+            logger.warning(f"Invalid AT URI structure: {atproto_uri}")
+            return False
+
+        repo, collection, rkey = parts
+
+        # Create the Data object for the delete_record call
+        delete_data = DeleteRecordData(
+            repo=repo,
+            collection=collection,
+            rkey=rkey
+        )
+
+        # Call the delete_record method
+        logger.info(f"Deleting comment record: {atproto_uri}")
+        client.com.atproto.repo.delete_record(delete_data)
+
+        logger.info(f"Successfully deleted comment record: {atproto_uri}")
+        return True
+
+    except BadRequestError as e:
+        if "RecordNotFound" in str(e):
+            logger.warning(f"Comment record not found: {atproto_uri}")
+        else:
+            logger.error(f"Bad request error deleting comment {atproto_uri}: {e}")
+        return False
+    except UnauthorizedError as e:
+        logger.error(f"Unauthorized to delete comment record {atproto_uri}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Error deleting comment record {atproto_uri}: {e}")
+        return False
+
 def generate_tid():
     """Generate a TID (Timestamp Identifier)."""
     import time
@@ -274,8 +387,13 @@ class Comment:
     created_at: datetime = None
     updated_at: datetime = None
     is_edited: bool = False
-    # Future AT Protocol sync (not implemented initially)
+    # AT Protocol sync fields
     atproto_uri: str = ""
+    is_remote: bool = False
+    remote_user_did: str = ""
+    discovered_at: datetime = None
+    original_atproto_uri: str = ""
+    remote_sync_status: str = "local"
 
 class Activity:
     """Track user activity for social feed."""

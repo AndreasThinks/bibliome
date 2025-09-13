@@ -44,7 +44,7 @@ db_tables = None
 CURSOR_FILE = Path("firehose.cursor")
 
 # Collections we're interested in
-WANTED = {"com.bibliome.bookshelf", "com.bibliome.book"}
+WANTED = {"com.bibliome.bookshelf", "com.bibliome.book", "com.bibliome.comment"}
 
 def collection_of(op_path: str) -> str:
     """Extract collection from operation path (e.g., 'com.bibliome.bookshelf/3l6abc...')"""
@@ -248,6 +248,77 @@ def store_book_from_network(record: dict, repo_did: str, record_uri: str):
     except Exception as e:
         logger.error(f"Error storing book from network: {e}", exc_info=True)
 
+def store_comment_from_network(record: dict, repo_did: str, record_uri: str):
+    """Stores a comment discovered on the network."""
+    try:
+        logger.info(f"Discovered new comment from {repo_did}: {record.get('content', '')[:50]}...")
+
+        # Avoid duplicates using the correct field
+        existing = db_tables['comments'](where="original_atproto_uri=?", params=(record_uri,))
+        if existing:
+            logger.debug(f"Comment already exists: {record_uri}")
+            return
+
+        # Ensure user exists
+        ensure_user_exists(repo_did)
+
+        # Find the book in the local DB using bookRef
+        book_ref = record.get('bookRef')
+        if not book_ref:
+            logger.warning(f"Comment has no book reference")
+            return
+
+        book = db_tables['books'](where="original_atproto_uri=?", params=(book_ref,))
+        if not book:
+            logger.warning(f"Book not found for comment: {book_ref}")
+            return
+
+        # Find the bookshelf using bookshelfRef
+        bookshelf_ref = record.get('bookshelfRef')
+        if not bookshelf_ref:
+            logger.warning(f"Comment has no bookshelf reference")
+            return
+
+        bookshelf = db_tables['bookshelves'](where="original_atproto_uri=?", params=(bookshelf_ref,))
+        if not bookshelf:
+            logger.warning(f"Bookshelf not found for comment: {bookshelf_ref}")
+            return
+
+        comment_data = {
+            'book_id': book[0].id,
+            'bookshelf_id': bookshelf[0].id,
+            'user_did': repo_did,
+            'content': record.get('content', ''),
+            'parent_comment_id': None,  # Threading not implemented yet
+            'created_at': datetime.fromisoformat(record.get('createdAt', datetime.now().isoformat()).replace('Z', '+00:00')),
+            'updated_at': datetime.fromisoformat(record.get('editedAt', record.get('createdAt', datetime.now().isoformat())).replace('Z', '+00:00')) if record.get('editedAt') else None,
+            'is_edited': bool(record.get('editedAt')),
+            'atproto_uri': record_uri,
+            'is_remote': True,
+            'remote_user_did': repo_did,
+            'discovered_at': datetime.now(),
+            'original_atproto_uri': record_uri,
+            'remote_sync_status': 'discovered'
+        }
+
+        result = db_tables['comments'].insert(comment_data)
+        comment_id = result.id if hasattr(result, 'id') else result
+
+        # Log activity for network discovery
+        log_activity(
+            user_did=repo_did,
+            activity_type='comment_added',
+            db_tables=db_tables,
+            bookshelf_id=bookshelf[0].id,
+            book_id=book[0].id,
+            metadata='{"source": "network_firehose"}'
+        )
+
+        logger.info(f"Successfully stored comment: {record.get('content', '')[:50]}... (ID: {comment_id})")
+
+    except Exception as e:
+        logger.error(f"Error storing comment from network: {e}", exc_info=True)
+
 # Global counters for monitoring
 message_count = 0
 bookshelf_count = 0
@@ -325,6 +396,11 @@ def on_message_handler(message, db_tables):
                     book_count += 1
                     message_processed = True
                     log_process_event(PROCESS_NAME, f"Processed book: {record.get('title')}", "INFO", "activity", db_tables=db_tables)
+
+                elif path_collection == "com.bibliome.comment":
+                    store_comment_from_network(record, evt.repo, record_uri)
+                    message_processed = True
+                    log_process_event(PROCESS_NAME, f"Processed comment: {record.get('content', '')[:50]}...", "INFO", "activity", db_tables=db_tables)
 
             except Exception as e:
                 error_count += 1

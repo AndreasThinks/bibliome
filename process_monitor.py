@@ -160,8 +160,7 @@ class ProcessMonitor:
                 update_data['error_message'] = None
             
             # Update database
-            update_data['process_name'] = process_name
-            self.db_tables['process_status'].update(update_data)
+            self.db_tables['process_status'].update(update_data, process_name)
             
         except Exception as e:
             self.logger.error(f"Error updating process status for {process_name}: {e}")
@@ -298,8 +297,7 @@ class ProcessMonitor:
                         if activity_info:
                             update_data['last_activity'] = now
                         
-                        update_data['process_name'] = name
-                        self.db_tables['process_status'].update(update_data)
+                        self.db_tables['process_status'].update(update_data, name)
                     except Exception as e:
                         self.logger.error(f"Error updating heartbeat for {name}: {e}")
                 
