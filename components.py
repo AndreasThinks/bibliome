@@ -355,7 +355,7 @@ def EnhancedEmptyState(can_add=False, shelf_id=None, user_auth_status="anonymous
             cls="empty-state-card"
         )
 
-def ShelfHeader(shelf, action_buttons, current_view="grid", can_share=False, user_is_logged_in=False):
+def ShelfHeader(shelf, action_buttons, current_view="grid", can_share=False, user_is_logged_in=False, creator=None):
     """A visually appealing header for the shelf page."""
     # Create both toggle buttons - only one will be visible at a time
     grid_toggle_btn = Button(
@@ -409,13 +409,59 @@ def ShelfHeader(shelf, action_buttons, current_view="grid", can_share=False, use
         all_actions.append(share_btn)
     all_actions.extend(icon_action_buttons)
     
+    # Creator information section
+    creator_info = None
+    if creator:
+        creator_avatar = Img(
+            src=creator.avatar_url,
+            alt=creator.display_name or creator.handle,
+            cls="owner-avatar"
+        ) if creator.avatar_url else Div("👤", cls="owner-avatar-placeholder")
+        
+        creator_info = Div(
+            creator_avatar,
+            A(
+                creator.display_name or creator.handle,
+                href=f"/user/{creator.handle}",
+                cls="shelf-owner-link",
+                title="View creator's profile"
+            ),
+            cls="shelf-owner-info"
+        )
+    
+    # Format creation date as "Created X ago"
+    created_date_text = None
+    if shelf.created_at:
+        try:
+            # Handle both string and datetime objects
+            if isinstance(shelf.created_at, str):
+                from datetime import datetime
+                try:
+                    # Try ISO format first
+                    created_dt = datetime.fromisoformat(shelf.created_at.replace('Z', '+00:00'))
+                except ValueError:
+                    # Fallback for other formats
+                    from dateutil.parser import parse
+                    created_dt = parse(shelf.created_at)
+            else:
+                created_dt = shelf.created_at
+            
+            time_ago = format_time_ago(created_dt)
+            created_date_text = f"📅 Created {time_ago}"
+        except Exception:
+            created_date_text = "📅 Creation date unknown"
+    else:
+        created_date_text = "📅 Creation date unknown"
+    
     return Card(
         H1(shelf.name, cls="shelf-title"),
         P(shelf.description, cls="shelf-description") if shelf.description else None,
+        creator_info,
         Div(
             Div(
                 Span(f"🌍 {shelf.privacy.replace('-', ' ').title()}", cls="privacy-badge"),
                 Span("🤝 Open to contributions", cls="contribution-badge") if getattr(shelf, 'self_join', False) else None,
+                Span(created_date_text, cls="shelf-created-date") if created_date_text else None,
                 cls="shelf-badges"
             ),
             Div(*all_actions, cls="shelf-actions"),

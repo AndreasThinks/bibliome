@@ -1863,62 +1863,47 @@ def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_co
         cls="description-cell"
     )
     
-    # Voting cell with permission-aware states
+    # Voting cell with +1/-1 toggle system (matching card view)
     voting_buttons = []
     if can_upvote:
-        upvote_cls = "vote-btn-small upvote-btn" + (" voted" if user_has_upvoted else "")
-        voting_buttons.append(Button(
-            "👍",
-            hx_post=f"/book/{self.id}/upvote",
-            hx_target=f"#book-row-{self.id}",
-            hx_swap="outerHTML",
-            cls=upvote_cls,
-            disabled=user_has_upvoted,
-            title=f"Upvote ({upvote_count})" if not user_has_upvoted else f"Remove upvote ({upvote_count})"
-        ))
-        
-        downvote_cls = "vote-btn-small downvote-btn" + (" disabled" if not user_has_upvoted else "")
-        downvote_attrs = {
-            "cls": downvote_cls,
-            "disabled": not user_has_upvoted,
-            "title": "Remove vote" if user_has_upvoted else "You haven't upvoted this book"
-        }
         if user_has_upvoted:
-            downvote_attrs.update({
-                "hx_post": f"/book/{self.id}/upvote",
-                "hx_target": f"#book-row-{self.id}",
-                "hx_swap": "outerHTML"
-            })
-        voting_buttons.append(Button("👎", **downvote_attrs))
+            # User has +1, show -1 option
+            voting_buttons.append(Button(
+                "-1",
+                hx_post=f"/book/{self.id}/toggle",
+                hx_target=f"#book-row-{self.id}",
+                hx_swap="outerHTML",
+                cls="vote-btn-small toggle-btn remove-vote",
+                title=f"Remove your +1 (currently {upvote_count} votes)",
+                onclick="event.stopPropagation()"
+            ))
+        else:
+            # User doesn't have +1, show +1 option
+            voting_buttons.append(Button(
+                "+1",
+                hx_post=f"/book/{self.id}/toggle",
+                hx_target=f"#book-row-{self.id}",
+                hx_swap="outerHTML",
+                cls="vote-btn-small toggle-btn add-vote",
+                title=f"Add your +1 (currently {upvote_count} votes)",
+                onclick="event.stopPropagation()"
+            ))
     else:
         # Permission-aware disabled states
         if user_auth_status == "anonymous":
             voting_buttons.append(Button(
-                "👍", 
-                cls="vote-btn-small upvote-btn disabled-anonymous", 
+                "+1", 
+                cls="vote-btn-small toggle-btn disabled-anonymous", 
                 disabled=True, 
-                title="Sign in to vote on books",
-                onclick="window.location.href='/auth/login'"
-            ))
-            voting_buttons.append(Button(
-                "👎", 
-                cls="vote-btn-small downvote-btn disabled-anonymous", 
-                disabled=True, 
-                title="Sign in to vote on books",
+                title="Sign in to add books to this shelf",
                 onclick="window.location.href='/auth/login'"
             ))
         else:
             voting_buttons.append(Button(
-                "👍", 
-                cls="vote-btn-small upvote-btn disabled-no-permission", 
+                "+1", 
+                cls="vote-btn-small toggle-btn disabled-no-permission", 
                 disabled=True, 
-                title="Only contributors can vote on books in this shelf"
-            ))
-            voting_buttons.append(Button(
-                "👎", 
-                cls="vote-btn-small downvote-btn disabled-no-permission", 
-                disabled=True, 
-                title="Only contributors can vote on books in this shelf"
+                title="Only contributors can add books to this shelf"
             ))
     
     votes_cell = Td(

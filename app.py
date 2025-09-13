@@ -1284,8 +1284,21 @@ def view_shelf(slug: str, auth, req, view: str = "grid"):
         if can_edit or can_share:
             action_buttons.append(A("Manage", href=f"/shelf/{shelf.slug}/manage", cls="secondary"))
         
-        # New Shelf Header with view toggle and share button
-        shelf_header = ShelfHeader(shelf, action_buttons, current_view=view, can_share=can_share, user_is_logged_in=bool(auth))
+        # Get shelf creator information
+        shelf_creator = None
+        try:
+            shelf_creator = db_tables['users'][shelf.owner_did]
+        except (IndexError, KeyError):
+            # Creator not found in local database, create placeholder
+            shelf_creator = type('User', (), {
+                'did': shelf.owner_did,
+                'handle': f"user-{shelf.owner_did[-8:]}",
+                'display_name': f"User {shelf.owner_did[-8:]}",
+                'avatar_url': ''
+            })()
+        
+        # New Shelf Header with view toggle, share button, and creator info
+        shelf_header = ShelfHeader(shelf, action_buttons, current_view=view, can_share=can_share, user_is_logged_in=bool(auth), creator=shelf_creator)
         
         # Show self-join button if applicable (logged in user, public shelf with self-join enabled, not already a member)
         self_join_section = None

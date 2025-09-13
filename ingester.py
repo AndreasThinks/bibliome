@@ -109,6 +109,33 @@ def store_bookshelf_from_network(record: dict, repo_did: str, record_uri: str):
         # Ensure user exists
         ensure_user_exists(repo_did)
 
+        # Improved date parsing with better error handling
+        def safe_parse_date(date_str, field_name="date"):
+            """Safely parse a date string with fallback to current time."""
+            if not date_str or str(date_str).strip() == '':
+                return datetime.now()
+            
+            try:
+                # Handle different timezone formats
+                if str(date_str).endswith('Z'):
+                    date_str = str(date_str).replace('Z', '+00:00')
+                
+                return datetime.fromisoformat(str(date_str))
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid {field_name} format '{date_str}': {e}")
+                return datetime.now()
+        
+        # Parse dates with proper fallback logic
+        created_at = safe_parse_date(record.get('createdAt'), 'createdAt')
+        
+        # For updated_at: try updatedAt first, then createdAt, then current time
+        updated_at_raw = record.get('updatedAt')
+        if updated_at_raw:
+            updated_at = safe_parse_date(updated_at_raw, 'updatedAt')
+        else:
+            # Fall back to createdAt if updatedAt is not available
+            updated_at = safe_parse_date(record.get('createdAt'), 'createdAt (for updated_at)')
+
         shelf_data = {
             'name': record.get('name', 'Untitled Bookshelf'),
             'description': record.get('description', ''),
@@ -121,8 +148,8 @@ def store_bookshelf_from_network(record: dict, repo_did: str, record_uri: str):
             'discovered_at': datetime.now(),
             'last_synced': datetime.now(),
             'remote_sync_status': 'discovered',
-            'created_at': datetime.fromisoformat(record.get('createdAt', datetime.now().isoformat()).replace('Z', '+00:00')),
-            'updated_at': datetime.fromisoformat(record.get('createdAt', datetime.now().isoformat()).replace('Z', '+00:00'))
+            'created_at': created_at,
+            'updated_at': updated_at
         }
         
         result = db_tables['bookshelves'].insert(shelf_data)
