@@ -1474,58 +1474,115 @@ def add_book_and_close_api(bookshelf_id: int, title: str, author: str, isbn: str
     except Exception as e:
         return Div(f"Error adding book: {str(e)}", cls="error")
 
-@rt("/book/{book_id}/upvote", methods=["POST"])
-def upvote_book(book_id: int, auth):
-    """HTMX endpoint to upvote/downvote a book. Hides book from view if votes reach 0."""
+@rt("/book/{book_id}/toggle", methods=["POST"])
+def toggle_book(book_id: int, auth):
+    """HTMX endpoint to toggle a user's +1/-1 for a book. 
+    +1: Add a Book record for this user and book
+    -1: Remove the user's Book record (both locally and on AT Protocol)
+    """
     if not auth:
         return Div("Authentication required.", cls="error")
     
     try:
+        # Get the representative book to find the shelf and book details
         book = db_tables['books'][book_id]
+        shelf = db_tables['bookshelves'][book.bookshelf_id]
         user_did = get_current_user_did(auth)
         
-        # Check if user already upvoted
+        # Check if user can add books to this shelf
+        from models import can_add_books
+        if not can_add_books(shelf, user_did, db_tables):
+            return Div("You don't have permission to add books to this shelf.", cls="error")
+        
+        # Check if user already has a book record for this title/author/ISBN combination
+        existing_user_book = None
         try:
-            existing_upvote = db_tables['upvotes']("book_id=? AND user_did=?", (book_id, user_did))[0]
-            if existing_upvote:
-                # Remove upvote (downvote)
-                db_tables['upvotes'].delete((book_id, user_did))
-                
-                # Count remaining votes
-                new_vote_count = len(db_tables['upvotes']("book_id=?", (book_id,)))
-                
-                # If votes reach 0, hide book from view (return empty response)
-                if new_vote_count <= 0:
-                    logger.info(f"Book '{book.title}' hidden from shelf due to 0 votes")
-                    return ""
-                else:
-                    # Return updated card with new count
-                    book.upvote_count = new_vote_count
-                    book.user_has_upvoted = False
-                    return book.as_interactive_card(can_upvote=True, user_has_upvoted=False, upvote_count=new_vote_count)
-            else:
-                # Add upvote
-                from models import Upvote
-                upvote = Upvote(book_id=book_id, user_did=user_did, created_at=datetime.now())
-                db_tables['upvotes'].insert(upvote)
-                
-                # Count total votes
-                new_vote_count = len(db_tables['upvotes']("book_id=?", (book_id,)))
-                
-                # Return updated card with new count
-                book.upvote_count = new_vote_count
-                book.user_has_upvoted = True
-                return book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=new_vote_count)
+            # Find user's book record for this specific book (by title, author, ISBN)
+            user_books = list(db_tables['books'](
+                "bookshelf_id=? AND added_by_did=? AND title=? AND author=? AND COALESCE(isbn, '') = COALESCE(?, '')", 
+                (book.bookshelf_id, user_did, book.title, book.author, book.isbn or '')
+            ))
+            if user_books:
+                existing_user_book = user_books[0]
         except:
-            # Add upvote (first time)
-            from models import Upvote
-            upvote = Upvote(book_id=book_id, user_did=user_did, created_at=datetime.now())
-            db_tables['upvotes'].insert(upvote)
+            pass
+        
+        if existing_user_book:
+            # User has a +1 already - remove it (-1 action)
+            atproto_deletion_success = True
+            if existing_user_book.atproto_uri and existing_user_book.atproto_uri.strip():
+                try:
+                    client = bluesky_auth.get_client_from_session(auth)
+                    from models import delete_book_record
+                    atproto_deletion_success = delete_book_record(client, existing_user_book.atproto_uri)
+                except Exception as e:
+                    logger.error(f"Failed to delete book from AT Protocol: {e}", exc_info=True)
+                    atproto_deletion_success = False
             
-            # Count total votes
-            new_vote_count = len(db_tables['upvotes']("book_id=?", (book_id,)))
+            # Delete the user's book record from local database
+            db_tables['books'].delete(existing_user_book.id)
+            
+            # Count remaining book records for this title/author/ISBN
+            remaining_books = list(db_tables['books'](
+                "bookshelf_id=? AND title=? AND author=? AND COALESCE(isbn, '') = COALESCE(?, '')", 
+                (book.bookshelf_id, book.title, book.author, book.isbn or '')
+            ))
+            
+            # If no more book records exist, hide the book from view
+            if not remaining_books:
+                logger.info(f"Book '{book.title}' hidden from shelf due to no remaining +1 votes")
+                return ""
+            else:
+                # Return updated card with new count
+                new_vote_count = len(remaining_books)
+                book.upvote_count = new_vote_count
+                book.user_has_upvoted = False
+                return book.as_interactive_card(can_upvote=True, user_has_upvoted=False, upvote_count=new_vote_count)
+        else:
+            # User doesn't have a +1 yet - add one (+1 action)
+            atproto_uri = None
+            try:
+                client = bluesky_auth.get_client_from_session(auth)
+                from models import add_book_record
+                atproto_uri = add_book_record(client, shelf.atproto_uri, book.title, book.author, book.isbn)
+            except Exception as e:
+                logger.error(f"Failed to write book to AT Protocol: {e}", exc_info=True)
+                # Don't fail the whole request, just log the error and continue
+
+            # Create a new book record for this user
+            from models import Book
+            new_book = Book(
+                bookshelf_id=book.bookshelf_id,
+                isbn=book.isbn,
+                title=book.title,
+                author=book.author,
+                cover_url=book.cover_url,
+                description=book.description,
+                publisher=book.publisher,
+                published_date=book.published_date,
+                page_count=book.page_count,
+                atproto_uri=atproto_uri,
+                added_by_did=user_did,
+                added_at=datetime.now()
+            )
+            
+            created_book = db_tables['books'].insert(new_book)
+            
+            # Log activity for social feed
+            try:
+                from models import log_activity
+                log_activity(user_did, 'book_added', db_tables, bookshelf_id=book.bookshelf_id, book_id=created_book.id)
+            except Exception as e:
+                logger.warning(f"Could not log book addition activity: {e}")
+            
+            # Count total book records for this title/author/ISBN
+            all_books = list(db_tables['books'](
+                "bookshelf_id=? AND title=? AND author=? AND COALESCE(isbn, '') = COALESCE(?, '')", 
+                (book.bookshelf_id, book.title, book.author, book.isbn or '')
+            ))
             
             # Return updated card with new count
+            new_vote_count = len(all_books)
             book.upvote_count = new_vote_count
             book.user_has_upvoted = True
             return book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=new_vote_count)

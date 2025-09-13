@@ -262,11 +262,6 @@ class BookshelfInvite:
     uses_count: int = 0
     is_active: bool = True
 
-class Upvote:
-    """Track user upvotes on books."""
-    book_id: int
-    user_did: str
-    created_at: datetime = None
 
 class Activity:
     """Track user activity for social feed."""
@@ -367,7 +362,6 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     books = db.create(Book, transform=True)
     permissions = db.create(Permission, transform=True)
     bookshelf_invites = db.create(BookshelfInvite, transform=True)
-    upvotes = db.create(Upvote, pk=['book_id', 'user_did'], transform=True)
     activities = db.create(Activity, transform=True)
     sync_logs = db.create(SyncLog, transform=True)
     
@@ -383,7 +377,6 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
         'books': books,
         'permissions': permissions,
         'bookshelf_invites': bookshelf_invites,
-        'upvotes': upvotes,
         'activities': activities,
         'sync_logs': sync_logs,
         'process_status': process_status,
@@ -525,58 +518,89 @@ def validate_invite(invite_code: str, db_tables) -> Optional[object]:
         return None
 
 def get_books_with_upvotes(bookshelf_id: int, user_did: str = None, db_tables=None):
-    """Get books for a bookshelf with upvote counts, user voting status, and added-by user info.
+    """Get books for a bookshelf with vote counts based on Book records, user voting status, and added-by user info.
 
-    Uses efficient SQL JOINs to avoid database locking issues - FastLite optimized.
+    In the new system, each Book record represents a user's +1 vote for that book.
+    We count Book records grouped by title/author/ISBN to get the vote count.
     """
     if not db_tables:
         return []
 
     try:
-        # Single efficient query with JOINs to get all data at once
-        # This replaces 763 individual queries with just 1 optimized query
+        # Query to get unique books with vote counts based on Book records
+        # Group by title, author, and ISBN to identify the same book added by different users
         query = """
             SELECT
-                b.*,
-                u.handle as added_by_handle,
-                u.display_name as added_by_display_name,
-                COUNT(DISTINCT upv.user_did) as upvote_count,
-                CASE WHEN user_upv.user_did IS NOT NULL THEN 1 ELSE 0 END as user_has_upvoted
+                b.title,
+                b.author,
+                b.isbn,
+                b.cover_url,
+                b.description,
+                b.publisher,
+                b.published_date,
+                b.page_count,
+                COUNT(*) as upvote_count,
+                MIN(b.id) as representative_id,
+                MIN(b.added_at) as first_added_at,
+                CASE WHEN user_book.id IS NOT NULL THEN 1 ELSE 0 END as user_has_upvoted,
+                first_adder.handle as added_by_handle,
+                first_adder.display_name as added_by_display_name
             FROM book b
-            LEFT JOIN user u ON b.added_by_did = u.did
-            LEFT JOIN upvote upv ON b.id = upv.book_id
-            LEFT JOIN upvote user_upv ON b.id = user_upv.book_id AND user_upv.user_did = ?
+            LEFT JOIN book user_book ON b.bookshelf_id = user_book.bookshelf_id 
+                AND b.title = user_book.title 
+                AND b.author = user_book.author 
+                AND COALESCE(b.isbn, '') = COALESCE(user_book.isbn, '')
+                AND user_book.added_by_did = ?
+            LEFT JOIN book first_book ON b.title = first_book.title 
+                AND b.author = first_book.author 
+                AND COALESCE(b.isbn, '') = COALESCE(first_book.isbn, '')
+                AND b.bookshelf_id = first_book.bookshelf_id
+                AND first_book.added_at = (
+                    SELECT MIN(added_at) FROM book 
+                    WHERE bookshelf_id = ? 
+                    AND title = b.title 
+                    AND author = b.author 
+                    AND COALESCE(isbn, '') = COALESCE(b.isbn, '')
+                )
+            LEFT JOIN user first_adder ON first_book.added_by_did = first_adder.did
             WHERE b.bookshelf_id = ?
-            GROUP BY b.id
+            GROUP BY b.title, b.author, COALESCE(b.isbn, '')
             ORDER BY upvote_count DESC, b.title ASC
         """
 
         # Use FastLite's q() method for efficient raw SQL execution
-        params = [user_did or '', bookshelf_id]  # Handle None user_did
+        params = [user_did or '', bookshelf_id, bookshelf_id]
         rows = db_tables['db'].q(query, params)
 
         books_with_votes = []
         for row in rows:
-            # Extract computed fields before creating Book object
-            upvote_count = row.pop('upvote_count', 0)
-            user_has_upvoted = bool(row.pop('user_has_upvoted', 0))
-            added_by_handle = row.pop('added_by_handle', None)
-            added_by_display_name = row.pop('added_by_display_name', None)
-
-            # Create Book object from remaining fields
-            book = Book(**{k: v for k, v in row.items() if k in Book.__annotations__})
+            # Create a Book object using the representative data
+            book = Book(
+                id=row['representative_id'],
+                bookshelf_id=bookshelf_id,
+                title=row['title'],
+                author=row['author'],
+                isbn=row['isbn'] or '',
+                cover_url=row['cover_url'] or '',
+                description=row['description'] or '',
+                publisher=row['publisher'] or '',
+                published_date=row['published_date'] or '',
+                page_count=row['page_count'] or 0,
+                added_by_did='',  # Not relevant for grouped books
+                added_at=row['first_added_at']
+            )
 
             # Add computed attributes
-            book.upvote_count = upvote_count
-            book.user_has_upvoted = user_has_upvoted
-            book.added_by_handle = added_by_handle
-            book.added_by_display_name = added_by_display_name
+            book.upvote_count = row['upvote_count']
+            book.user_has_upvoted = bool(row['user_has_upvoted'])
+            book.added_by_handle = row['added_by_handle']
+            book.added_by_display_name = row['added_by_display_name']
 
             books_with_votes.append(book)
 
         return books_with_votes
     except Exception as e:
-        print(f"Error getting books with upvotes: {e}")
+        print(f"Error getting books with vote counts: {e}")
         return []
 
 def log_activity(user_did: str, activity_type: str, db_tables, bookshelf_id: int = None, book_id: int = None, metadata: str = ""):
@@ -969,14 +993,14 @@ def calculate_shelf_activity_score(shelf_id: int, db_tables) -> float:
         cursor = db_tables['db'].execute(contributors_query, (shelf_id,))
         contributor_count = cursor.fetchone()[0]
         
-        # Total engagement (upvotes) - weight: 20%
-        upvotes_query = """
-            SELECT COUNT(*) FROM upvote u
-            JOIN book b ON u.book_id = b.id
-            WHERE b.bookshelf_id = ?
+        # Total engagement (book records) - weight: 20%
+        # Count total book records as engagement metric
+        books_query = """
+            SELECT COUNT(*) FROM book 
+            WHERE bookshelf_id = ?
         """
-        cursor = db_tables['db'].execute(upvotes_query, (shelf_id,))
-        total_upvotes = cursor.fetchone()[0]
+        cursor = db_tables['db'].execute(books_query, (shelf_id,))
+        total_books = cursor.fetchone()[0]
         
         # Shelf age boost (newer shelves get bonus) - weight: 10%
         # Handle both datetime objects and string dates
@@ -1000,7 +1024,7 @@ def calculate_shelf_activity_score(shelf_id: int, db_tables) -> float:
         activity_score = (
             (recent_books_count * 10) * 0.4 +  # Recent activity
             (contributor_count * 5) * 0.3 +    # Collaboration
-            (total_upvotes * 2) * 0.2 +        # Engagement
+            (total_books * 2) * 0.2 +          # Engagement
             (age_score * 20) * 0.1              # Recency
         )
         
@@ -1343,71 +1367,52 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
         cls="book-description"
     ) if self.description else None
     
-    # Build voting buttons with better permission-aware states
+    # Build +1/-1 toggle button with better permission-aware states
     voting_buttons = []
     
     if can_upvote:
-        # User can vote - show active buttons
-        upvote_cls = "vote-btn upvote-btn" + (" voted" if user_has_upvoted else "")
-        voting_buttons.append(Button(
-            "👍",
-            hx_post=f"/book/{self.id}/upvote",
-            hx_target=f"#book-{self.id}",
-            hx_swap="outerHTML",
-            cls=upvote_cls,
-            disabled=user_has_upvoted,
-            title=f"Upvote ({upvote_count})" if not user_has_upvoted else f"Remove upvote ({upvote_count})",
-            onclick="event.stopPropagation()"
-        ))
-        
-        # Downvote button (remove vote if user has upvoted)
-        downvote_cls = "vote-btn downvote-btn" + (" disabled" if not user_has_upvoted else "")
-        downvote_attrs = {
-            "cls": downvote_cls,
-            "disabled": not user_has_upvoted,
-            "title": "Remove vote" if user_has_upvoted else "You haven't upvoted this book",
-            "onclick": "event.stopPropagation()"
-        }
-        if user_has_upvoted:
-            downvote_attrs.update({
-                "hx_post": f"/book/{self.id}/upvote",
-                "hx_target": f"#book-{self.id}",
-                "hx_swap": "outerHTML"
-            })
-        
-        voting_buttons.append(Button("👎", **downvote_attrs))
+            # User can vote - show +1/-1 toggle button
+            if user_has_upvoted:
+                # User has +1, show -1 option
+                voting_buttons.append(Button(
+                    "-1",
+                    hx_post=f"/book/{self.id}/toggle",
+                    hx_target=f"#book-{self.id}",
+                    hx_swap="outerHTML",
+                    cls="vote-btn toggle-btn remove-vote",
+                    title=f"Remove your +1 (currently {upvote_count} votes)",
+                    onclick="event.stopPropagation()"
+                ))
+            else:
+                # User doesn't have +1, show +1 option
+                voting_buttons.append(Button(
+                    "+1",
+                    hx_post=f"/book/{self.id}/toggle",
+                    hx_target=f"#book-{self.id}",
+                    hx_swap="outerHTML",
+                    cls="vote-btn toggle-btn add-vote",
+                    title=f"Add your +1 (currently {upvote_count} votes)",
+                    onclick="event.stopPropagation()"
+                ))
     else:
         # User cannot vote - show appropriate disabled state with clear messaging
-        if user_auth_status == "anonymous":
-            # Not logged in
-            voting_buttons.append(Button(
-                "👍", 
-                cls="vote-btn upvote-btn disabled-anonymous", 
-                disabled=True, 
-                title="Sign in to vote on books",
-                onclick="window.location.href='/auth/login'"
-            ))
-            voting_buttons.append(Button(
-                "👎", 
-                cls="vote-btn downvote-btn disabled-anonymous", 
-                disabled=True, 
-                title="Sign in to vote on books",
-                onclick="window.location.href='/auth/login'"
-            ))
-        else:
-            # Logged in but no permission
-            voting_buttons.append(Button(
-                "👍", 
-                cls="vote-btn upvote-btn disabled-no-permission", 
-                disabled=True, 
-                title="Only contributors can vote on books in this shelf"
-            ))
-            voting_buttons.append(Button(
-                "👎", 
-                cls="vote-btn downvote-btn disabled-no-permission", 
-                disabled=True, 
-                title="Only contributors can vote on books in this shelf"
-            ))
+            if user_auth_status == "anonymous":
+                # Not logged in
+                voting_buttons.append(Button(
+                    "+1", 
+                    cls="vote-btn toggle-btn disabled-anonymous", 
+                    disabled=True, 
+                    title="Sign in to add books to this shelf",
+                    onclick="window.location.href='/auth/login'"
+                ))
+            else:
+                # Logged in but no permission
+                voting_buttons.append(Button(
+                    "+1", 
+                    cls="vote-btn toggle-btn disabled-no-permission", 
+                    disabled=True, 
+                    title="Only contributors can add books to this shelf"
+                ))
     
     # Vote count display
     vote_count_display = Span(f"{upvote_count}", cls="vote-count")

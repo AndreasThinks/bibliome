@@ -751,6 +751,80 @@ h1, h2, h3, h4, h5, h6 {
     border-color: #e0a800;
 }
 
+/* New +1/-1 Toggle Button Styles */
+.vote-btn.toggle-btn {
+    font-weight: 600;
+    font-size: 0.8rem;
+    min-width: 36px;
+    min-height: 36px;
+    border-radius: 0.375rem;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.vote-btn.toggle-btn.add-vote {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    border: 2px solid #28a745;
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.25);
+}
+
+.vote-btn.toggle-btn.add-vote:hover {
+    background: linear-gradient(135deg, #218838 0%, #1ea085 100%);
+    border-color: #1e7e34;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(40, 167, 69, 0.35);
+}
+
+.vote-btn.toggle-btn.remove-vote {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+    border: 2px solid #dc3545;
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.25);
+}
+
+.vote-btn.toggle-btn.remove-vote:hover {
+    background: linear-gradient(135deg, #c82333 0%, #bd2130 100%);
+    border-color: #bd2130;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(220, 53, 69, 0.35);
+}
+
+/* Enhanced disabled states for toggle buttons */
+.vote-btn.toggle-btn.disabled-anonymous {
+    background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+    color: var(--brand-navy);
+    border: 2px solid #2196f3;
+    cursor: pointer;
+    opacity: 0.9;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.2);
+}
+
+.vote-btn.toggle-btn.disabled-anonymous:hover {
+    background: linear-gradient(135deg, #bbdefb 0%, #e1bee7 100%);
+    border-color: #1976d2;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+}
+
+.vote-btn.toggle-btn.disabled-no-permission {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    color: #856404;
+    border: 2px solid #ffc107;
+    cursor: not-allowed;
+    opacity: 0.8;
+    font-weight: 500;
+    box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
+}
+
+.vote-btn.toggle-btn.disabled-no-permission:hover {
+    background: linear-gradient(135deg, #ffeaa7 0%, #ffdd57 100%);
+    border-color: #e0a800;
+}
+
 .vote-count {
     font-size: 0.75rem;
     font-weight: 600;
@@ -3593,6 +3667,44 @@ section + section {
     border-color: var(--brand-border);
     cursor: not-allowed;
     opacity: 0.6;
+}
+
+/* Small toggle buttons for table view */
+.vote-btn-small.toggle-btn {
+    font-weight: 600;
+    font-size: 0.7rem;
+    min-width: 32px;
+    min-height: 32px;
+    border-radius: 0.25rem;
+    transition: all 0.3s ease;
+}
+
+.vote-btn-small.toggle-btn.add-vote {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    border: 2px solid #28a745;
+    box-shadow: 0 1px 4px rgba(40, 167, 69, 0.2);
+}
+
+.vote-btn-small.toggle-btn.add-vote:hover {
+    background: linear-gradient(135deg, #218838 0%, #1ea085 100%);
+    border-color: #1e7e34;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}
+
+.vote-btn-small.toggle-btn.remove-vote {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+    border: 2px solid #dc3545;
+    box-shadow: 0 1px 4px rgba(220, 53, 69, 0.2);
+}
+
+.vote-btn-small.toggle-btn.remove-vote:hover {
+    background: linear-gradient(135deg, #c82333 0%, #bd2130 100%);
+    border-color: #bd2130;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
 }
 
 .table-vote-count {
