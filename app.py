@@ -1099,12 +1099,12 @@ def view_shelf(slug: str, auth, req, view: str = "grid"):
                 """)
             )
         
-        # Add JavaScript for share functionality
+        # Add JavaScript for share functionality and shelf selector
         content.append(
-            Script("""
+            Script(f"""
             // Copy to clipboard functionality
-            async function copyToClipboard(text, buttonElement) {
-                try {
+            async function copyToClipboard(text, buttonElement) {{
+                try {{
                     await navigator.clipboard.writeText(text);
                     
                     // Update button to show success
@@ -1113,44 +1113,172 @@ def view_shelf(slug: str, auth, req, view: str = "grid"):
                     buttonElement.classList.add('copied');
                     
                     // Reset after 2 seconds
-                    setTimeout(() => {
+                    setTimeout(() => {{
                         buttonElement.innerHTML = originalText;
                         buttonElement.classList.remove('copied');
-                    }, 2000);
-                } catch (err) {
+                    }}, 2000);
+                }} catch (err) {{
                     console.error('Failed to copy text: ', err);
                     // Fallback for older browsers
                     const textArea = document.createElement('textarea');
                     textArea.value = text;
                     document.body.appendChild(textArea);
                     textArea.select();
-                    try {
+                    try {{
                         document.execCommand('copy');
                         const originalText = buttonElement.innerHTML;
                         buttonElement.innerHTML = '<i class="fas fa-check"></i> Copied!';
                         buttonElement.classList.add('copied');
-                        setTimeout(() => {
+                        setTimeout(() => {{
                             buttonElement.innerHTML = originalText;
                             buttonElement.classList.remove('copied');
-                        }, 2000);
-                    } catch (fallbackErr) {
+                        }}, 2000);
+                    }} catch (fallbackErr) {{
                         console.error('Fallback copy failed: ', fallbackErr);
                         alert('Copy failed. Please copy the text manually.');
-                    }
+                    }}
                     document.body.removeChild(textArea);
-                }
-            }
+                }}
+            }}
             
             // Close modal when clicking outside
-            document.addEventListener('click', function(event) {
+            document.addEventListener('click', function(event) {{
                 const modal = document.querySelector('.share-modal-overlay');
-                if (modal && event.target === modal) {
-                    htmx.ajax('GET', `/api/shelf/${slug}/close-share-modal`, {
+                if (modal && event.target === modal) {{
+                    htmx.ajax('GET', `/api/shelf/{slug}/close-share-modal`, {{
                         target: '#share-modal-container',
                         swap: 'innerHTML'
-                    });
-                }
-            });
+                    }});
+                }}
+            }});
+            
+            // Shelf selector functionality for "Add to Shelf" feature
+            function showShelfSelector(buttonElement) {{
+                const bookId = buttonElement.getAttribute('data-book-id');
+                const bookTitle = buttonElement.getAttribute('data-book-title');
+                const bookAuthor = buttonElement.getAttribute('data-book-author');
+                const bookIsbn = buttonElement.getAttribute('data-book-isbn');
+                
+                // Create modal overlay
+                const overlay = document.createElement('div');
+                overlay.className = 'shelf-selector-overlay';
+                overlay.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0, 0, 0, 0.6);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 1000;
+                    padding: 2rem;
+                `;
+                
+                // Create modal dialog
+                const dialog = document.createElement('div');
+                dialog.className = 'shelf-selector-dialog';
+                dialog.style.cssText = `
+                    background: white;
+                    border-radius: 0.75rem;
+                    max-width: 400px;
+                    width: 100%;
+                    max-height: 80vh;
+                    overflow: hidden;
+                    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.4);
+                    border: 1px solid #e0e0e0;
+                `;
+                
+                // Create header
+                const header = document.createElement('div');
+                header.style.cssText = `
+                    padding: 1.5rem;
+                    border-bottom: 1px solid #e0e0e0;
+                    background: linear-gradient(135deg, #f5f3f0 0%, #ffffff 100%);
+                `;
+                header.innerHTML = `
+                    <h3 style="margin: 0; color: #1a3d5c; font-size: 1.25rem; font-weight: 600;">Add to Shelf</h3>
+                    <p style="margin: 0.5rem 0 0 0; color: #666; font-size: 0.9rem;">${{bookTitle}} by ${{bookAuthor}}</p>
+                `;
+                
+                // Create body with loading state
+                const body = document.createElement('div');
+                body.style.cssText = `
+                    padding: 1.5rem;
+                    max-height: 300px;
+                    overflow-y: auto;
+                `;
+                body.innerHTML = `
+                    <div style="display: flex; align-items: center; justify-content: center; padding: 2rem;">
+                        <div style="width: 32px; height: 32px; border: 3px solid #e0e0e0; border-top: 3px solid #d4941e; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                        <span style="margin-left: 1rem; color: #1a3d5c;">Loading your shelves...</span>
+                    </div>
+                `;
+                
+                // Create footer
+                const footer = document.createElement('div');
+                footer.style.cssText = `
+                    padding: 1rem 1.5rem;
+                    border-top: 1px solid #e0e0e0;
+                    background: linear-gradient(135deg, #f5f3f0 0%, #ffffff 100%);
+                    display: flex;
+                    justify-content: flex-end;
+                `;
+                const closeBtn = document.createElement('button');
+                closeBtn.textContent = 'Cancel';
+                closeBtn.style.cssText = `
+                    background: white;
+                    color: #666;
+                    border: 2px solid #e0e0e0;
+                    padding: 0.75rem 1.5rem;
+                    border-radius: 0.5rem;
+                    cursor: pointer;
+                    font-weight: 600;
+                `;
+                closeBtn.onclick = () => document.body.removeChild(overlay);
+                footer.appendChild(closeBtn);
+                
+                // Assemble modal
+                dialog.appendChild(header);
+                dialog.appendChild(body);
+                dialog.appendChild(footer);
+                overlay.appendChild(dialog);
+                
+                // Close on overlay click
+                overlay.onclick = (e) => {{
+                    if (e.target === overlay) {{
+                        document.body.removeChild(overlay);
+                    }}
+                }};
+                
+                // Add to page
+                document.body.appendChild(overlay);
+                
+                // Load shelves via HTMX
+                htmx.ajax('GET', '/api/user/shelves/writable', {{
+                    target: body,
+                    swap: 'innerHTML'
+                }});
+                
+                // Add global selectShelf function
+                window.selectShelf = function(shelfSlug, shelfName) {{
+                    // Close the modal
+                    document.body.removeChild(overlay);
+                    
+                    // Make the API call to add book to shelf
+                    htmx.ajax('POST', '/api/book/add-to-shelf', {{
+                        values: {{
+                            'shelf_slug': shelfSlug,
+                            'book_title': bookTitle,
+                            'book_author': bookAuthor,
+                            'book_isbn': bookIsbn
+                        }},
+                        target: buttonElement,
+                        swap: 'innerHTML'
+                    }});
+                }};
+            }}
             """)
         )
         
@@ -2886,6 +3014,137 @@ def close_share_modal(slug: str, auth):
         return ""
     
     return ""  # Return empty content to clear the modal
+
+# Add to Shelf functionality API endpoints
+@rt("/api/user/shelves/writable")
+def get_user_writable_shelves(auth):
+    """HTMX endpoint to get user's shelves where they can add books."""
+    if not auth:
+        return Div("Authentication required.", cls="error")
+    
+    try:
+        user_did = get_current_user_did(auth)
+        
+        # Get shelves where user is owner or has contributor+ permissions
+        from models import get_user_shelves, can_add_books
+        user_shelves = get_user_shelves(user_did, db_tables, limit=50)
+        
+        writable_shelves = []
+        for shelf in user_shelves:
+            if can_add_books(shelf, user_did, db_tables):
+                writable_shelves.append(shelf)
+        
+        if not writable_shelves:
+            return Div(
+                P("You don't have any shelves where you can add books."),
+                A("Create a new shelf", href="/shelf/new", cls="btn btn-primary"),
+                cls="no-shelves-message"
+            )
+        
+        # Return dropdown options
+        options = []
+        for shelf in writable_shelves:
+            privacy_icon = {"public": "🌍", "link-only": "🔗", "private": "🔒"}.get(shelf.privacy, "🌍")
+            options.append(
+                Div(
+                    f"{privacy_icon} {shelf.name}",
+                    onclick=f"selectShelf('{shelf.slug}', '{shelf.name}')",
+                    cls="shelf-option",
+                    **{"data-shelf-slug": shelf.slug, "data-shelf-name": shelf.name}
+                )
+            )
+        
+        return Div(
+            *options,
+            cls="shelf-selector-dropdown"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting user writable shelves: {e}", exc_info=True)
+        return Div(f"Error: {str(e)}", cls="error")
+
+@rt("/api/book/add-to-shelf", methods=["POST"])
+def add_book_to_shelf_api(shelf_slug: str, book_title: str, book_author: str, book_isbn: str, auth):
+    """HTMX endpoint to add a book to a specific shelf."""
+    if not auth:
+        return Div("Authentication required.", cls="error")
+    
+    try:
+        # Get the target shelf
+        shelf = get_shelf_by_slug(shelf_slug, db_tables)
+        if not shelf:
+            return Div("Shelf not found.", cls="error")
+        
+        user_did = get_current_user_did(auth)
+        
+        # Check if user can add books to this shelf
+        from models import can_add_books
+        if not can_add_books(shelf, user_did, db_tables):
+            return Div("You don't have permission to add books to this shelf.", cls="error")
+        
+        # Check if book already exists on this shelf (by title, author, ISBN)
+        existing_books = list(db_tables['books'](
+            "bookshelf_id=? AND title=? AND author=? AND COALESCE(isbn, '') = COALESCE(?, '')", 
+            (shelf.id, book_title.strip(), book_author.strip(), book_isbn.strip() or '')
+        ))
+        
+        # Check if user already has this book on this shelf
+        user_has_book = any(
+            book.added_by_did == user_did for book in existing_books
+        )
+        
+        if user_has_book:
+            return Div(
+                f"✓ You've already added this book to '{shelf.name}'",
+                cls="success-message"
+            )
+        
+        # Add the book to the shelf (create a new Book record)
+        atproto_uri = None
+        try:
+            client = bluesky_auth.get_client_from_session(auth)
+            from models import add_book_record
+            atproto_uri = add_book_record(client, shelf.atproto_uri, book_title, book_author, book_isbn)
+        except Exception as e:
+            logger.error(f"Failed to write book to AT Protocol: {e}", exc_info=True)
+            # Don't fail the whole request, just log the error and continue
+
+        # Create new book record
+        from models import Book
+        new_book = Book(
+            bookshelf_id=shelf.id,
+            isbn=book_isbn.strip() or '',
+            title=book_title.strip(),
+            author=book_author.strip(),
+            cover_url='',  # We don't have cover URL from the action row context
+            description='',
+            publisher='',
+            published_date='',
+            page_count=0,
+            atproto_uri=atproto_uri,
+            added_by_did=user_did,
+            added_at=datetime.now()
+        )
+        
+        created_book = db_tables['books'].insert(new_book)
+        
+        # Log activity for social feed
+        try:
+            from models import log_activity
+            log_activity(user_did, 'book_added', db_tables, bookshelf_id=shelf.id, book_id=created_book.id)
+        except Exception as e:
+            logger.warning(f"Could not log book addition activity: {e}")
+        
+        logger.info(f"Book '{book_title}' by {book_author} added to shelf '{shelf.name}' by {auth.get('handle')}")
+        
+        return Div(
+            f"✓ Added to '{shelf.name}'",
+            cls="success-message"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error adding book to shelf: {e}", exc_info=True)
+        return Div(f"Error: {str(e)}", cls="error")
 
 # Contact functionality API endpoints
 @rt("/api/contact-modal")

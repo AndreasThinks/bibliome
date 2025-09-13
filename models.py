@@ -1345,7 +1345,7 @@ def __ft__(self: Book):
 
 @patch
 def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False, user_auth_status="anonymous"):
-    """Render Book as a card with upvote and remove functionality."""
+    """Render Book as a card with three-icon action row and vote count badge on cover."""
     # Generate Google Books URL
     if self.isbn:
         google_books_url = f"https://books.google.com/books?isbn={self.isbn}"
@@ -1367,55 +1367,68 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
         cls="book-description"
     ) if self.description else None
     
-    # Build +1/-1 toggle button with better permission-aware states
-    voting_buttons = []
+    # Build three-icon action row
+    action_icons = []
     
+    # 1. +1/-1 Toggle Button
     if can_upvote:
-            # User can vote - show +1/-1 toggle button
-            if user_has_upvoted:
-                # User has +1, show -1 option
-                voting_buttons.append(Button(
-                    "-1",
-                    hx_post=f"/book/{self.id}/toggle",
-                    hx_target=f"#book-{self.id}",
-                    hx_swap="outerHTML",
-                    cls="vote-btn toggle-btn remove-vote",
-                    title=f"Remove your +1 (currently {upvote_count} votes)",
-                    onclick="event.stopPropagation()"
-                ))
-            else:
-                # User doesn't have +1, show +1 option
-                voting_buttons.append(Button(
-                    "+1",
-                    hx_post=f"/book/{self.id}/toggle",
-                    hx_target=f"#book-{self.id}",
-                    hx_swap="outerHTML",
-                    cls="vote-btn toggle-btn add-vote",
-                    title=f"Add your +1 (currently {upvote_count} votes)",
-                    onclick="event.stopPropagation()"
-                ))
+        if user_has_upvoted:
+            # User has +1, show -1 option
+            action_icons.append(Button(
+                "-1",
+                hx_post=f"/book/{self.id}/toggle",
+                hx_target=f"#book-{self.id}",
+                hx_swap="outerHTML",
+                cls="action-btn toggle-btn remove-vote",
+                title=f"Remove your +1 (currently {upvote_count} votes)",
+                onclick="event.stopPropagation()"
+            ))
+        else:
+            # User doesn't have +1, show +1 option
+            action_icons.append(Button(
+                "+1",
+                hx_post=f"/book/{self.id}/toggle",
+                hx_target=f"#book-{self.id}",
+                hx_swap="outerHTML",
+                cls="action-btn toggle-btn add-vote",
+                title=f"Add your +1 (currently {upvote_count} votes)",
+                onclick="event.stopPropagation()"
+            ))
     else:
-        # User cannot vote - show appropriate disabled state with clear messaging
-            if user_auth_status == "anonymous":
-                # Not logged in
-                voting_buttons.append(Button(
-                    "+1", 
-                    cls="vote-btn toggle-btn disabled-anonymous", 
-                    disabled=True, 
-                    title="Sign in to add books to this shelf",
-                    onclick="window.location.href='/auth/login'"
-                ))
-            else:
-                # Logged in but no permission
-                voting_buttons.append(Button(
-                    "+1", 
-                    cls="vote-btn toggle-btn disabled-no-permission", 
-                    disabled=True, 
-                    title="Only contributors can add books to this shelf"
-                ))
+        # User cannot vote - show appropriate disabled state
+        if user_auth_status == "anonymous":
+            action_icons.append(Button(
+                "+1", 
+                cls="action-btn toggle-btn disabled-anonymous", 
+                disabled=True, 
+                title="Sign in to add books to this shelf",
+                onclick="window.location.href='/auth/login'"
+            ))
+        else:
+            action_icons.append(Button(
+                "+1", 
+                cls="action-btn toggle-btn disabled-no-permission", 
+                disabled=True, 
+                title="Only contributors can add books to this shelf"
+            ))
     
-    # Vote count display
-    vote_count_display = Span(f"{upvote_count}", cls="vote-count")
+    # 2. Comment Icon (placeholder - disabled)
+    action_icons.append(Button(
+        "💬",
+        cls="action-btn comment-btn disabled",
+        disabled=True,
+        title="Comments coming soon",
+        onclick="event.stopPropagation()"
+    ))
+    
+    # 3. Add to Shelf Icon
+    action_icons.append(Button(
+        "📚",
+        cls="action-btn add-to-shelf-btn",
+        title="Add to one of your shelves",
+        onclick="event.stopPropagation(); showShelfSelector(this)",
+        **{"data-book-id": self.id, "data-book-title": self.title, "data-book-author": self.author, "data-book-isbn": self.isbn or ""}
+    ))
     
     # Build the card components
     card_children = []
@@ -1430,8 +1443,18 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
             title="Remove book from shelf"
         ))
     
-    # Cover container
-    card_children.append(Div(cover, cls="book-cover-container"))
+    # Cover container with vote count badge overlay
+    cover_container_children = [cover]
+    
+    # Vote count badge (always visible, positioned over cover)
+    if upvote_count > 0:
+        cover_container_children.append(Div(
+            f"{upvote_count}",
+            cls="vote-count-badge",
+            title=f"{upvote_count} votes"
+        ))
+    
+    card_children.append(Div(*cover_container_children, cls="book-cover-container"))
     
     # Book info section
     book_info_children = [
@@ -1444,11 +1467,10 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
     if description:
         book_info_children.append(description)
     
-    # Voting section
+    # Three-icon action row
     book_info_children.append(Div(
-        Div(*voting_buttons, cls="voting-buttons"),
-        vote_count_display,
-        cls="book-voting"
+        *action_icons,
+        cls="book-actions-row"
     ))
     
     # More info link
