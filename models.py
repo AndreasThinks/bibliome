@@ -1895,30 +1895,25 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
     )
 
 @patch
-def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False, user_auth_status="anonymous"):
-    """Render Book as a table row for list view."""
-    # Generate Google Books URL
-    if self.isbn:
-        google_books_url = f"https://books.google.com/books?isbn={self.isbn}"
-    else:
-        # Fallback to search query if no ISBN
-        search_query = f"{self.title} {self.author}".replace(" ", "+")
-        google_books_url = f"https://books.google.com/books?q={search_query}"
+def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False, user_auth_status="anonymous", db_tables=None):
+    """Render Book as a table row for list view with full feature parity to grid view."""
     
-    # Small cover thumbnail
+    # Clickable cover thumbnail (links to book detail page)
+    cover_content = Img(
+        src=self.cover_url,
+        alt=f"Cover of {self.title}",
+        cls="book-table-cover",
+        loading="lazy"
+    ) if self.cover_url else Div("📖", cls="book-table-cover-placeholder")
+    
     cover_cell = Td(
-        Img(
-            src=self.cover_url,
-            alt=f"Cover of {self.title}",
-            cls="book-table-cover",
-            loading="lazy"
-        ) if self.cover_url else Div("📖", cls="book-table-cover-placeholder"),
+        A(cover_content, href=f"/book/{self.id}", cls="book-table-cover-link", title="View book details"),
         cls="cover-cell"
     )
     
-    # Title cell
+    # Clickable title cell (links to book detail page)
     title_cell = Td(
-        Strong(self.title, cls="book-table-title"),
+        A(self.title, href=f"/book/{self.id}", cls="book-table-title-link", title="View book details"),
         cls="title-cell"
     )
     
@@ -1928,11 +1923,32 @@ def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_co
         cls="author-cell"
     )
     
-    # Description cell (truncated) with discrete user attribution
+    # Description cell with comment preview and user attribution
     description_parts = []
+    
+    # Main description (truncated)
     description_text = self.description[:60] + "..." if len(self.description) > 60 else self.description
     if description_text:
         description_parts.append(Div(description_text, cls="book-table-description"))
+    
+    # Get a random comment preview if available (matching grid view)
+    if db_tables:
+        try:
+            comments = get_book_comments(self.id, db_tables, limit=10)
+            if comments:
+                import random
+                random_comment = random.choice(comments)
+                comment_preview = Div(
+                    P(f'"{random_comment.content[:40]}{"..." if len(random_comment.content) > 40 else ""}"', 
+                      cls="comment-preview-text"),
+                    P(f"— {random_comment.user_display_name or random_comment.user_handle}", 
+                      cls="comment-preview-author"),
+                    cls="comment-preview table-comment-preview"
+                )
+                description_parts.append(comment_preview)
+        except Exception:
+            # Silently handle any errors in comment fetching
+            pass
     
     # Add discrete user attribution
     added_by_handle = getattr(self, 'added_by_handle', None)
@@ -2000,12 +2016,30 @@ def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_co
         cls="votes-cell"
     )
     
-    # Actions cell
-    actions = [
-        A("More Info", href=google_books_url, target="_blank", rel="noopener noreferrer", 
-          cls="table-more-info-link", title="View on Google Books")
-    ]
+    # Actions cell with comment and add-to-shelf buttons (matching grid view)
+    actions = []
     
+    # Comment button - HTMX modal trigger (matching grid view)
+    actions.append(Button(
+        "💬",
+        hx_get=f"/api/book/{self.id}/comment-modal",
+        hx_target="#comment-modal-container",
+        hx_swap="innerHTML",
+        cls="action-btn comment-btn table-comment-btn",
+        title="View and add comments",
+        onclick="event.stopPropagation()"
+    ))
+    
+    # Add to Shelf button (matching grid view)
+    actions.append(Button(
+        "📚",
+        cls="action-btn add-to-shelf-btn table-add-to-shelf-btn",
+        title="Add to one of your shelves",
+        onclick="event.stopPropagation(); showShelfSelector(this)",
+        **{"data-book-id": self.id, "data-book-title": self.title, "data-book-author": self.author, "data-book-isbn": self.isbn or ""}
+    ))
+    
+    # Remove button (if user can remove)
     if can_remove:
         escaped_title = self.title.replace("'", "\\'").replace('"', '\\"')
         actions.append(Button(

@@ -1868,7 +1868,7 @@ def SearchResultsGrid(shelves, users=None, search_type="all", page: int = 1, que
     
     return Div(*sections, pagination, id="search-results-grid")
 
-def BookListView(books, can_upvote=True, can_remove=False, user_auth_status="anonymous"):
+def BookListView(books, can_upvote=True, can_remove=False, user_auth_status="anonymous", db_tables=None):
     """Render books in a table/list view format."""
     if not books:
         return Div("No books to display", cls="empty-list-message")
@@ -1879,7 +1879,8 @@ def BookListView(books, can_upvote=True, can_remove=False, user_auth_status="ano
         user_has_upvoted=book.user_has_upvoted,
         upvote_count=book.upvote_count,
         can_remove=can_remove,
-        user_auth_status=user_auth_status
+        user_auth_status=user_auth_status,
+        db_tables=db_tables
     ) for book in books]
     
     return Table(
