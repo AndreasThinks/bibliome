@@ -1476,19 +1476,43 @@ def get_book_by_id(book_id: int, db_tables):
     except IndexError:
         return None
 
-def get_book_comments(book_id: int, db_tables, limit: int = 50):
-    """Get comments for a book with user information."""
+def get_book_comments(book_id: int, db_tables, bookshelf_id: int = None, limit: int = 50):
+    """Get comments for a book with user information.
+    
+    Args:
+        book_id: The book to get comments for
+        db_tables: Database tables
+        bookshelf_id: Optional bookshelf ID to filter comments by shelf context
+        limit: Maximum number of comments to return
+    
+    Returns:
+        List of comments, filtered by bookshelf if bookshelf_id is provided
+    """
     try:
-        query = """
-            SELECT c.*, u.handle, u.display_name, u.avatar_url
-            FROM comment c
-            JOIN user u ON c.user_did = u.did
-            WHERE c.book_id = ?
-            ORDER BY c.created_at ASC
-            LIMIT ?
-        """
+        if bookshelf_id is not None:
+            # Filter comments by both book and bookshelf (shelf-specific context)
+            query = """
+                SELECT c.*, u.handle, u.display_name, u.avatar_url
+                FROM comment c
+                JOIN user u ON c.user_did = u.did
+                WHERE c.book_id = ? AND c.bookshelf_id = ?
+                ORDER BY c.created_at ASC
+                LIMIT ?
+            """
+            params = (book_id, bookshelf_id, limit)
+        else:
+            # Show all comments for the book across all bookshelves (general book page)
+            query = """
+                SELECT c.*, u.handle, u.display_name, u.avatar_url
+                FROM comment c
+                JOIN user u ON c.user_did = u.did
+                WHERE c.book_id = ?
+                ORDER BY c.created_at ASC
+                LIMIT ?
+            """
+            params = (book_id, limit)
         
-        cursor = db_tables['db'].execute(query, (book_id, limit))
+        cursor = db_tables['db'].execute(query, params)
         # Get column descriptions BEFORE calling fetchall()
         columns = [d[0] for d in cursor.description]
         rows = cursor.fetchall()
@@ -1505,7 +1529,7 @@ def get_book_comments(book_id: int, db_tables, limit: int = 50):
         return comments
         
     except Exception as e:
-        logger.error(f"Error getting comments for book {book_id}: {e}")
+        logger.error(f"Error getting comments for book {book_id} (bookshelf {bookshelf_id}): {e}")
         return []
 
 def get_book_activity(book_id: int, db_tables, activity_type: str = "all", limit: int = 20):
@@ -1747,6 +1771,7 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
             ))
     
     # 2. Comment Icon - HTMX modal trigger
+    # Try to get bookshelf context from the current page URL
     action_icons.append(Button(
         "💬",
         hx_get=f"/api/book/{self.id}/comment-modal",

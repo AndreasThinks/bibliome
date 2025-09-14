@@ -975,8 +975,16 @@ def user_profile(handle: str, auth, req):
         )
 
 @rt("/book/{book_id}")
-def book_detail_page(book_id: int, auth, req, activity_filter: str = "all"):
-    """Display book detail page with comments and activity."""
+def book_detail_page(book_id: int, auth, req, activity_filter: str = "all", from_shelf: str = None):
+    """Display book detail page with comments and activity.
+    
+    Args:
+        book_id: The book ID to display
+        auth: User authentication data
+        req: Request object
+        activity_filter: Filter for activity type
+        from_shelf: Optional shelf slug to provide bookshelf context for comments
+    """
     try:
         # Get the book
         book = get_book_by_id(book_id, db_tables)
@@ -1011,8 +1019,19 @@ def book_detail_page(book_id: int, auth, req, activity_filter: str = "all"):
                 UniversalFooter()
             )
         
-        # Get book data
-        comments = get_book_comments(book_id, db_tables)
+        # Determine bookshelf context for comments
+        bookshelf_context_id = None
+        context_shelf = None
+        
+        if from_shelf:
+            # User came from a specific shelf - use that shelf's context
+            context_shelf = get_shelf_by_slug(from_shelf, db_tables)
+            if context_shelf and can_view_bookshelf(context_shelf, user_did, db_tables):
+                bookshelf_context_id = context_shelf.id
+        
+        # If no valid shelf context, show all comments (general book page)
+        # Get book data with bookshelf-aware comments
+        comments = get_book_comments(book_id, db_tables, bookshelf_id=bookshelf_context_id)
         activity = get_book_activity(book_id, db_tables, activity_type=activity_filter)
         shelves = get_book_shelves(book_id, db_tables, viewer_did=user_did)
         
@@ -3527,8 +3546,14 @@ def close_contact_modal():
     return ""  # Return empty content to clear the modal
 
 @rt("/api/book/{book_id}/comment-modal")
-def get_comment_modal(book_id: int, auth):
-    """HTMX endpoint to get the comment modal content."""
+def get_comment_modal(book_id: int, auth, from_shelf: str = None):
+    """HTMX endpoint to get the comment modal content.
+    
+    Args:
+        book_id: The book ID to show comments for
+        auth: User authentication data
+        from_shelf: Optional shelf slug to provide bookshelf context for comments
+    """
     try:
         # Get the book
         book = get_book_by_id(book_id, db_tables)
@@ -3543,8 +3568,18 @@ def get_comment_modal(book_id: int, auth):
         if not can_view_bookshelf(shelf, user_did, db_tables):
             return Div("You don't have permission to view this book.", cls="error")
         
-        # Get comments for the book
-        comments = get_book_comments(book_id, db_tables)
+        # Determine bookshelf context for comments (same logic as book detail page)
+        bookshelf_context_id = None
+        context_shelf = None
+        
+        if from_shelf:
+            # User came from a specific shelf - use that shelf's context
+            context_shelf = get_shelf_by_slug(from_shelf, db_tables)
+            if context_shelf and can_view_bookshelf(context_shelf, user_did, db_tables):
+                bookshelf_context_id = context_shelf.id
+        
+        # Get comments for the book with bookshelf-aware filtering
+        comments = get_book_comments(book_id, db_tables, bookshelf_id=bookshelf_context_id)
         
         # Check permissions for commenting
         from models import can_comment_on_books
