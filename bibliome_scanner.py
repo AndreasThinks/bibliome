@@ -58,6 +58,9 @@ class BiblioMeScanner:
         
         # Initialize ID resolver for handle resolution
         self.id_resolver = IdResolver()
+        
+        # Initialize persistent BookAPIClient with rate limiting
+        self.book_api_client = BookAPIClient()
 
         # Apply circuit breaker to methods
         self.run_scan_cycle = self.circuit_breaker(self.run_scan_cycle)
@@ -312,15 +315,13 @@ class BiblioMeScanner:
             self.log_sync_activity('bookshelf', uri, 'failed', str(e))
 
     async def enrich_book_with_cover(self, book_data: dict) -> dict:
-        """Enrich book data with cover image from external APIs."""
+        """Enrich book data with cover image from external APIs using persistent rate-limited client."""
         try:
-            # Initialize BookAPIClient if not already done
-            book_api = BookAPIClient()
-
+            # Use the persistent BookAPIClient with rate limiting
             # Try to get book details by ISBN first (most reliable)
             if book_data.get('isbn'):
                 logger.debug(f"Looking up cover for ISBN: {book_data['isbn']}")
-                details = await book_api.get_book_details(book_data['isbn'])
+                details = await self.book_api_client.get_book_details(book_data['isbn'])
                 if details and details.get('cover_url'):
                     book_data['cover_url'] = details['cover_url']
                     logger.debug(f"Found cover via ISBN lookup: {details['cover_url']}")
@@ -333,7 +334,7 @@ class BiblioMeScanner:
                     search_query += f" {book_data['author']}"
 
                 logger.debug(f"Searching for cover with query: '{search_query}'")
-                results = await book_api.search_books(search_query, max_results=1)
+                results = await self.book_api_client.search_books(search_query, max_results=1)
                 if results and results[0].get('cover_url'):
                     book_data['cover_url'] = results[0]['cover_url']
                     logger.debug(f"Found cover via search: {results[0]['cover_url']}")
