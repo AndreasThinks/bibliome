@@ -40,6 +40,9 @@ class ServiceManager:
                 'script': 'ingester.py',
                 'process': None,
                 'restart_count': 0,
+                'consecutive_failures': 0,
+                'last_successful_start': None,
+                'last_restart_attempt': None,
                 'enabled': True,
                 'description': 'AT-Proto firehose monitor'
             },
@@ -47,6 +50,9 @@ class ServiceManager:
                 'script': 'bluesky_automation.py',
                 'process': None,
                 'restart_count': 0,
+                'consecutive_failures': 0,
+                'last_successful_start': None,
+                'last_restart_attempt': None,
                 'enabled': os.getenv('BLUESKY_AUTOMATION_ENABLED', 'false').lower() == 'true',
                 'description': 'Bluesky automation service'
             },
@@ -54,6 +60,9 @@ class ServiceManager:
                 'script': 'bibliome_scanner.py',
                 'process': None,
                 'restart_count': 0,
+                'consecutive_failures': 0,
+                'last_successful_start': None,
+                'last_restart_attempt': None,
                 'enabled': os.getenv('BIBLIOME_SCANNER_ENABLED', 'false').lower() == 'true',
                 'description': 'Bibliome network scanner'
             }
@@ -107,10 +116,14 @@ class ServiceManager:
             time.sleep(2)
             
             if service['process'].poll() is None:
+                # Mark successful start
+                service['last_successful_start'] = time.time()
+                service['consecutive_failures'] = 0  # Reset consecutive failures on successful start
                 logger.info(f"Service {service_name} started successfully (PID: {service['process'].pid})")
                 return True
             else:
                 # Process exited immediately
+                service['consecutive_failures'] += 1
                 stdout, stderr = service['process'].communicate()
                 logger.error(f"Service {service_name} failed to start:")
                 logger.error(f"STDOUT: {stdout.decode()}")
@@ -274,24 +287,53 @@ class ServiceManager:
                     if not service['enabled']:
                         continue
                     
+                    # Reset consecutive failures if service has been running successfully for 1 hour
+                    if (service['last_successful_start'] and 
+                        current_time - service['last_successful_start'] > 3600 and  # 1 hour
+                        service['process'] and service['process'].poll() is None):
+                        if service['consecutive_failures'] > 0:
+                            logger.info(f"Service {service_name} has been running successfully for 1 hour, resetting failure count")
+                            service['consecutive_failures'] = 0
+                    
                     # Check if process died
                     if service['process'] and service['process'].poll() is not None:
                         # Process has exited
                         exit_code = service['process'].returncode
-                        logger.warning(f"Service {service_name} exited with code {exit_code}")
+                        service['consecutive_failures'] += 1
+                        logger.warning(f"Service {service_name} exited with code {exit_code} (consecutive failures: {service['consecutive_failures']})")
                         
-                        # Auto-restart with exponential backoff
-                        restart_count = service['restart_count']
-                        if restart_count < 5:  # Max 5 restart attempts
-                            delay = min(60, 5 * (2 ** restart_count))  # Exponential backoff, max 60s
-                            logger.info(f"Restarting {service_name} in {delay} seconds (attempt {restart_count + 1})")
+                        # Determine restart strategy based on consecutive failures
+                        should_restart = True
+                        delay = 5  # Base delay
+                        
+                        if service['consecutive_failures'] <= 3:
+                            # Quick restart for first few failures (likely transient issues)
+                            delay = min(30, 5 * service['consecutive_failures'])
+                            logger.info(f"Quick restart for {service_name} in {delay} seconds (failure {service['consecutive_failures']}/3)")
+                        elif service['consecutive_failures'] <= 10:
+                            # Progressive backoff for persistent issues
+                            delay = min(300, 30 * (service['consecutive_failures'] - 3))  # 30s to 5min
+                            logger.info(f"Progressive restart for {service_name} in {delay} seconds (failure {service['consecutive_failures']}/10)")
+                        else:
+                            # Long delays for chronic failures, but never give up completely
+                            delay = min(1800, 300 * (service['consecutive_failures'] - 10))  # 5min to 30min max
+                            logger.warning(f"Long delay restart for {service_name} in {delay} seconds (failure {service['consecutive_failures']})")
+                        
+                        # Check if enough time has passed since last restart attempt
+                        if (service['last_restart_attempt'] and 
+                            current_time - service['last_restart_attempt'] < delay):
+                            continue  # Still in cooldown period
+                        
+                        service['last_restart_attempt'] = current_time
+                        
+                        if should_restart:
+                            logger.info(f"Scheduling restart for {service_name} in {delay} seconds")
                             await asyncio.sleep(delay)
                             
                             if self.running:  # Check if we're still supposed to run
-                                self.restart_service(service_name)
-                        else:
-                            logger.error(f"Service {service_name} has failed too many times, giving up")
-                            service['enabled'] = False
+                                success = self.restart_service(service_name)
+                                if not success:
+                                    logger.error(f"Failed to restart {service_name}")
                 
                 # Print status periodically
                 if current_time - last_status_print >= status_interval:

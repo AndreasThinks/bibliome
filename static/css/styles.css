@@ -629,6 +629,48 @@ h1, h2, h3, h4, h5, h6 {
     white-space: nowrap;
 }
 
+/* ===== BOOK MAIN LINK STYLES ===== */
+
+/* Main clickable link for book cards - removes default link styling */
+.book-main-link {
+    color: inherit;
+    text-decoration: none;
+    display: block;
+    transition: all 0.2s ease;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.book-main-link:hover {
+    color: inherit;
+    text-decoration: none;
+    transform: translateY(-2px);
+}
+
+.book-main-link:focus {
+    outline: 3px solid var(--brand-amber);
+    outline-offset: 2px;
+    color: inherit;
+    text-decoration: none;
+}
+
+.book-main-link:active {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Ensure book titles within the main link don't have link styling */
+.book-main-link .book-title {
+    color: var(--brand-text);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.book-main-link:hover .book-title {
+    color: var(--brand-amber);
+}
+
 /* Book Card Components - Mobile First */
 .book-cover-container {
     height: 140px;
@@ -902,9 +944,9 @@ h1, h2, h3, h4, h5, h6 {
     justify-content: center;
     align-items: center;
     gap: 0.5rem;
-    margin-top: auto;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--brand-border);
+    margin-top: 0px;
+    padding-top: 0px;
+    margin: 0 4px;
 }
 
 /* Action Button Base Styles - Compact and Clean */

@@ -1840,6 +1840,9 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
             title="Remove book from shelf"
         ))
     
+    # Create the main clickable area that includes cover and title
+    clickable_content = []
+    
     # Cover container with vote count badge overlay
     cover_container_children = [cover]
     
@@ -1851,12 +1854,12 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
             title=f"{upvote_count} votes"
         ))
     
-    card_children.append(Div(*cover_container_children, cls="book-cover-container"))
+    clickable_content.append(Div(*cover_container_children, cls="book-cover-container"))
     
-    # Book info section
+    # Book info section (without action buttons)
     book_info_children = [
-        # Clickable book title that links to book detail page
-        A(self.title, href=f"/book/{self.id}", cls="book-title-link"),
+        # Book title (no longer wrapped in separate link)
+        H4(self.title, cls="book-title"),
     ]
     
     if self.author:
@@ -1869,24 +1872,32 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
     if comment_preview:
         book_info_children.append(comment_preview)
     
-    # Action row with +1/-1 toggle and comment button
-    book_info_children.append(Div(
+    clickable_content.append(Div(*book_info_children, cls="book-info"))
+    
+    # Wrap cover and title in a single clickable link
+    card_children.append(A(
+        *clickable_content,
+        href=f"/book/{self.id}",
+        cls="book-main-link",
+        title="View book details"
+    ))
+    
+    # Action row with +1/-1 toggle and comment button (outside the main link)
+    card_children.append(Div(
         *action_icons,
         cls="book-actions-row"
     ))
     
-    # Discrete user attribution
+    # Discrete user attribution (outside the main link)
     added_by_handle = getattr(self, 'added_by_handle', None)
     added_by_display_name = getattr(self, 'added_by_display_name', None)
     if added_by_handle:
         user_display = added_by_display_name or added_by_handle
-        book_info_children.append(P(
+        card_children.append(P(
             "Added by ",
             A(f"@{added_by_handle}", href=f"/user/{added_by_handle}", cls="book-added-by-link", title="View profile"),
             cls="book-added-by"
         ))
-    
-    card_children.append(Div(*book_info_children, cls="book-info"))
     
     return Div(
         *card_children,
@@ -1911,7 +1922,7 @@ def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_co
         cls="cover-cell"
     )
     
-    # Clickable title cell (links to book detail page)
+    # Clickable title cell (links to book detail page) - now matches the card implementation
     title_cell = Td(
         A(self.title, href=f"/book/{self.id}", cls="book-table-title-link", title="View book details"),
         cls="title-cell"

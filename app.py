@@ -60,10 +60,14 @@ book_api = BookAPIClient()
 
 # Beforeware function that includes database tables
 async def before_handler(req, sess):
-    global db_tables
+    global db_tables, process_monitor
     if db_tables is None:
         from database_manager import db_manager
         db_tables = await db_manager.get_connection()
+        
+        # Initialize process monitoring with the database connection
+        if process_monitor is None:
+            process_monitor = init_process_monitoring(db_tables)
     return auth_beforeware(req, sess, db_tables)
 
 # Initialize FastHTML app with persistent sessions
