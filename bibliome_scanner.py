@@ -87,7 +87,30 @@ class BiblioMeScanner:
         discovered_dids = await self.discovery.discover_users()
         logger.info(f"Discovered a total of {len(discovered_dids)} Bibliome users.")
         
-        # 2. Sync bookshelves and books for all remote users in batches
+        # 2. Process discovered users and create database entries
+        logger.info(f"Processing {len(discovered_dids)} discovered users to create database entries...")
+        processed_count = 0
+        for i, did in enumerate(discovered_dids):
+            try:
+                # Get user profile data
+                data = await self.pds_client.get_repo_records(did, ["app.bsky.actor.profile"])
+                profile_data = data.get("collections", {}).get("app.bsky.actor.profile", [])
+                pds_endpoint = data.get("pds")
+                
+                if profile_data and pds_endpoint:
+                    await self.sync_user_profile(did, profile_data[0]['value'], pds_endpoint)
+                    processed_count += 1
+                
+                if (i + 1) % 10 == 0:  # Log progress every 10 users
+                    logger.info(f"Processed {i + 1}/{len(discovered_dids)} users ({processed_count} successfully)...")
+                    
+            except Exception as e:
+                logger.error(f"Error processing user {did}: {e}")
+                continue
+        
+        logger.info(f"Completed processing discovered users. Successfully processed {processed_count}/{len(discovered_dids)} users.")
+        
+        # 3. Sync bookshelves and books for all remote users in batches
         remote_users = self.db_tables['users']("is_remote=1")
         logger.info(f"Found {len(remote_users)} remote users to sync content for.")
         for i in range(0, len(remote_users), self.user_batch_size):
@@ -179,6 +202,30 @@ class BiblioMeScanner:
         #    return
 
         try:
+            # Extract createdAt from AT-Proto record
+            created_at = None
+            created_at_raw = getattr(value, 'createdAt', None)
+            if created_at_raw:
+                try:
+                    # Parse the ISO timestamp - use dateutil for robust parsing
+                    from dateutil.parser import parse as dateutil_parse
+                    created_at = dateutil_parse(str(created_at_raw))
+                except ImportError:
+                    # Fallback to manual parsing if dateutil not available
+                    try:
+                        if isinstance(created_at_raw, str):
+                            # Remove microseconds and timezone for basic parsing
+                            clean_string = created_at_raw.split('.')[0]  # Remove microseconds
+                            if '+' in clean_string:
+                                clean_string = clean_string.split('+')[0]  # Remove timezone
+                            created_at = datetime.strptime(clean_string, '%Y-%m-%dT%H:%M:%S')
+                            # Add UTC timezone
+                            created_at = created_at.replace(tzinfo=timezone.utc)
+                    except Exception as e:
+                        logger.warning(f"Failed to parse createdAt '{created_at_raw}' for bookshelf {uri}: {e}")
+                except Exception as e:
+                    logger.warning(f"Failed to parse createdAt '{created_at_raw}' for bookshelf {uri}: {e}")
+
             # Deduplication check
             existing_shelf_list = self.db_tables['bookshelves']("original_atproto_uri=?", (uri,))
             if existing_shelf_list:
@@ -188,6 +235,9 @@ class BiblioMeScanner:
                 shelf.description = getattr(value, 'description', shelf.description)
                 shelf.privacy = getattr(value, 'privacy', shelf.privacy)
                 shelf.last_synced = datetime.now(timezone.utc)
+                # Update created_at if we have it and it's not already set
+                if created_at and not shelf.created_at:
+                    shelf.created_at = created_at
                 self.db_tables['bookshelves'].update(shelf)
                 self.log_sync_activity('bookshelf', uri, 'updated')
             else:
@@ -198,6 +248,7 @@ class BiblioMeScanner:
                     slug=generate_slug(),
                     description=getattr(value, 'description', ''),
                     privacy=getattr(value, 'privacy', 'public'),
+                    created_at=created_at,  # Set the original creation date
                     is_remote=True,
                     remote_owner_did=did,
                     discovered_at=datetime.now(timezone.utc),
