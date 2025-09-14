@@ -110,14 +110,14 @@ class BiblioMeScanner:
         
         logger.info(f"Completed processing discovered users. Successfully processed {processed_count}/{len(discovered_dids)} users.")
         
-        # 3. Sync bookshelves and books for all remote users in batches
-        remote_users = self.db_tables['users']("is_remote=1")
-        logger.info(f"Found {len(remote_users)} remote users to sync content for.")
-        for i in range(0, len(remote_users), self.user_batch_size):
-            batch = remote_users[i:i + self.user_batch_size]
-            logger.info(f"Processing user content batch {i//self.user_batch_size + 1}/{(len(remote_users) + self.user_batch_size - 1)//self.user_batch_size}...")
-            for user in batch:
-                await self.sync_user_content(user.did)
+        # 3. Sync bookshelves and books for all discovered users (both local and remote)
+        # This ensures local users who create content on other instances get it synced back
+        logger.info(f"Syncing content for all {len(discovered_dids)} discovered users (local + remote)...")
+        for i in range(0, len(discovered_dids), self.user_batch_size):
+            batch = discovered_dids[i:i + self.user_batch_size]
+            logger.info(f"Processing user content batch {i//self.user_batch_size + 1}/{(len(discovered_dids) + self.user_batch_size - 1)//self.user_batch_size}...")
+            for did in batch:
+                await self.sync_user_content(did)
             logger.info(f"Completed content sync for batch of {len(batch)} users.")
 
     def _construct_blob_url(self, did: str, cid: str, pds_endpoint: str) -> str:
