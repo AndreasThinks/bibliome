@@ -469,6 +469,7 @@ h1, h2, h3, h4, h5, h6 {
     margin-bottom: 2rem;
     padding: 2rem;
     border-radius: 0.5rem;
+    margin-top: 1rem;
 }
 
 .shelf-title {
@@ -1597,19 +1598,6 @@ h1, h2, h3, h4, h5, h6 {
     color: #000;
 }
 
-/* Contribution Badges */
-.contribution-badge {
-    display: inline-block;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
-    font-size: 0.8rem;
-    font-weight: bold;
-    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-    color: white;
-    margin-left: 0.5rem;
-    box-shadow: 0 1px 3px rgba(40, 167, 69, 0.2);
-    transition: all 0.2s ease;
-}
 
 .contribution-badge:hover {
     transform: translateY(-1px);
@@ -2489,12 +2477,6 @@ h1, h2, h3, h4, h5, h6 {
         padding: 0.3rem 0.6rem;
         height: 28px;
     }
-    
-    .contribution-badge {
-        font-size: 0.75rem;
-        padding: 0.3rem 0.6rem;
-        height: 28px;
-    }
 
     .book-grid {
         display: flex;
@@ -2636,11 +2618,6 @@ h1, h2, h3, h4, h5, h6 {
         gap: 0.25rem;
     }
     
-    .privacy-badge,
-    .contribution-badge {
-        font-size: 0.7rem;
-        padding: 0.2rem 0.4rem;
-    }
 }
 
 /* ===== SELF-JOIN COMPONENT STYLES ===== */
