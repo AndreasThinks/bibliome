@@ -1204,7 +1204,17 @@ def calculate_shelf_activity_score(shelf_id: int, db_tables) -> float:
                     shelf_created = parse(shelf.created_at)
             else:
                 shelf_created = shelf.created_at
-            shelf_age_days = (datetime.now() - shelf_created).days
+            
+            # Ensure both datetimes have consistent timezone handling
+            if shelf_created.tzinfo is not None:
+                # shelf_created is timezone-aware, make datetime.now() timezone-aware too
+                from datetime import timezone
+                current_time = datetime.now(timezone.utc)
+            else:
+                # shelf_created is timezone-naive, use naive datetime.now()
+                current_time = datetime.now()
+            
+            shelf_age_days = (current_time - shelf_created).days
         else:
             shelf_age_days = 365
         age_score = max(0, 60 - shelf_age_days) / 60  # Boost for shelves < 60 days old

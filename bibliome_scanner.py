@@ -18,6 +18,7 @@ from hybrid_discovery import HybridDiscoveryService
 from circuit_breaker import CircuitBreaker
 from rate_limiter import RateLimiter
 from api_clients import BookAPIClient
+from atproto import IdResolver
 
 # Configure logging with service name prefix
 log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -54,6 +55,9 @@ class BiblioMeScanner:
         self.import_public_only = os.getenv('BIBLIOME_IMPORT_PUBLIC_ONLY', 'true').lower() == 'true'
         self.user_batch_size = int(os.getenv('BIBLIOME_USER_BATCH_SIZE', '50'))
         self.running = True
+        
+        # Initialize ID resolver for handle resolution
+        self.id_resolver = IdResolver()
 
         # Apply circuit breaker to methods
         self.run_scan_cycle = self.circuit_breaker(self.run_scan_cycle)
@@ -125,6 +129,45 @@ class BiblioMeScanner:
         base_url = pds_endpoint.rstrip('/xrpc')
         return f"{base_url}/xrpc/com.atproto.sync.getBlob?did={did}&cid={cid}"
 
+    def _resolve_did_to_handle(self, did: str) -> str:
+        """Resolve a DID to its handle using AT Protocol Identity resolver.
+        
+        Args:
+            did: The DID to resolve (e.g., 'did:plc:abc123...')
+            
+        Returns:
+            The resolved handle (e.g., 'alice.bsky.social') or the DID as fallback
+        """
+        try:
+            # Use the IdResolver to get the DID document
+            did_doc = self.id_resolver.did.resolve(did)
+            
+            # Extract handle from alsoKnownAs field
+            if did_doc and hasattr(did_doc, 'also_known_as') and did_doc.also_known_as:
+                for aka in did_doc.also_known_as:
+                    if isinstance(aka, str) and aka.startswith('at://'):
+                        # Extract handle from at:// URI (e.g., 'at://alice.bsky.social' -> 'alice.bsky.social')
+                        handle = aka[5:]  # Remove 'at://' prefix
+                        logger.debug(f"Resolved DID {did} to handle {handle}")
+                        return handle
+            
+            # If no handle found in alsoKnownAs, try to resolve directly
+            # This is a fallback that might work in some cases
+            try:
+                atproto_data = self.id_resolver.did.resolve_atproto_data(did)
+                if atproto_data and hasattr(atproto_data, 'handle') and atproto_data.handle:
+                    logger.debug(f"Resolved DID {did} to handle {atproto_data.handle} via atproto_data")
+                    return atproto_data.handle
+            except Exception as e:
+                logger.debug(f"Failed to resolve handle via atproto_data for {did}: {e}")
+            
+            logger.warning(f"Could not resolve handle for DID {did}, using DID as fallback")
+            return did
+            
+        except Exception as e:
+            logger.warning(f"Error resolving handle for DID {did}: {e}, using DID as fallback")
+            return did
+
     async def sync_user_profile(self, did: str, profile_data: any, pds_endpoint: str):
         """Sync a single user's profile."""
         try:
@@ -136,6 +179,9 @@ class BiblioMeScanner:
             avatar = getattr(profile_data, 'avatar', None)
             avatar_url = self._construct_blob_url(did, str(avatar.ref.link), pds_endpoint) if avatar and hasattr(avatar, 'ref') and hasattr(avatar.ref, 'link') else None
 
+            # Resolve DID to handle
+            resolved_handle = self._resolve_did_to_handle(did)
+
             try:
                 user = self.db_tables['users'][did]
                 # User exists, update if needed
@@ -143,13 +189,14 @@ class BiblioMeScanner:
                 user.last_seen_remote = datetime.now(timezone.utc)
                 user.display_name = display_name
                 user.avatar_url = avatar_url
+                user.handle = resolved_handle  # Update handle with resolved value
                 self.db_tables['users'].update(user)
-                self.log_sync_activity('user', did, 'updated', 'Profile updated')
+                self.log_sync_activity('user', did, 'updated', f'Profile updated, handle resolved to {resolved_handle}')
             except NotFoundError:
                 # New user, insert into DB
                 new_user = User(
                     did=did,
-                    handle=f"{did}", # Placeholder, will be updated
+                    handle=resolved_handle,  # Use resolved handle instead of DID
                     display_name=display_name,
                     avatar_url=avatar_url,
                     is_remote=True,
@@ -158,7 +205,7 @@ class BiblioMeScanner:
                     remote_sync_status='synced'
                 )
                 self.db_tables['users'].insert(new_user)
-                self.log_sync_activity('user', did, 'imported', 'New remote user discovered')
+                self.log_sync_activity('user', did, 'imported', f'New remote user discovered, handle resolved to {resolved_handle}')
 
         except Exception as e:
             logger.error(f"Error syncing profile for {did}: {e}", exc_info=True)
