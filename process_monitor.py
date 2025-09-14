@@ -89,45 +89,60 @@ class ProcessMonitor:
             # Load existing processes
             processes = self.db_tables['process_status']()
             for process_row in processes:
+                # Handle both dictionary and object access patterns
+                def safe_get(row, key, default=None):
+                    if hasattr(row, key):
+                        return getattr(row, key, default)
+                    elif hasattr(row, 'get'):
+                        return row.get(key, default)
+                    elif isinstance(row, dict):
+                        return row.get(key, default)
+                    else:
+                        return default
+                
                 config_data = {}
-                if process_row.config_data:
+                config_data_raw = safe_get(process_row, 'config_data')
+                if config_data_raw:
                     try:
-                        config_data = json.loads(process_row.config_data)
+                        config_data = json.loads(config_data_raw)
                     except json.JSONDecodeError:
                         pass
                 
                 # Check if process is actually running by PID
                 actual_status = ProcessStatus.STOPPED
-                if process_row.pid:
+                pid = safe_get(process_row, 'pid')
+                if pid:
                     try:
-                        if psutil.pid_exists(process_row.pid):
-                            proc = psutil.Process(process_row.pid)
+                        if psutil.pid_exists(pid):
+                            proc = psutil.Process(pid)
                             if proc.is_running() and proc.status() != psutil.STATUS_ZOMBIE:
                                 actual_status = ProcessStatus.RUNNING
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass
                 
                 # Convert string datetime fields back to datetime objects using helper function
-                started_at = self._parse_datetime_field(process_row.started_at)
-                last_heartbeat = self._parse_datetime_field(process_row.last_heartbeat)
-                last_activity = self._parse_datetime_field(process_row.last_activity)
+                started_at = self._parse_datetime_field(safe_get(process_row, 'started_at'))
+                last_heartbeat = self._parse_datetime_field(safe_get(process_row, 'last_heartbeat'))
+                last_activity = self._parse_datetime_field(safe_get(process_row, 'last_activity'))
                 
-                self._processes[process_row.process_name] = ProcessInfo(
-                    name=process_row.process_name,
-                    process_type=process_row.process_type,
+                process_name = safe_get(process_row, 'process_name')
+                self._processes[process_name] = ProcessInfo(
+                    name=process_name,
+                    process_type=safe_get(process_row, 'process_type'),
                     status=actual_status,
-                    pid=process_row.pid if actual_status == ProcessStatus.RUNNING else None,
+                    pid=pid if actual_status == ProcessStatus.RUNNING else None,
                     started_at=started_at,
                     last_heartbeat=last_heartbeat,
                     last_activity=last_activity,
-                    restart_count=process_row.restart_count or 0,
-                    error_message=process_row.error_message,
+                    restart_count=safe_get(process_row, 'restart_count') or 0,
+                    error_message=safe_get(process_row, 'error_message'),
                     config_data=config_data
                 )
                 
                 # Update database with actual status if different
-                if actual_status != ProcessStatus(process_row.status):
-                    self._update_process_status(process_row.process_name, actual_status)
+                current_status = safe_get(process_row, 'status')
+                if actual_status != ProcessStatus(current_status):
+                    self._update_process_status(process_name, actual_status)
                     
         except Exception as e:
             self.logger.error(f"Error loading process status from database: {e}")
@@ -351,17 +366,18 @@ class ProcessMonitor:
         
         try:
             since = datetime.now() - timedelta(hours=hours)
+            since_str = since.strftime('%Y-%m-%d %H:%M:%S')
             
             if metric_name:
                 metrics = self.db_tables['process_metrics'](
                     "process_name=? AND metric_name=? AND recorded_at>=?",
-                    (name, metric_name, since),
+                    (name, metric_name, since_str),
                     order_by="recorded_at ASC"
                 )
             else:
                 metrics = self.db_tables['process_metrics'](
                     "process_name=? AND recorded_at>=?",
-                    (name, since),
+                    (name, since_str),
                     order_by="recorded_at ASC"
                 )
             
