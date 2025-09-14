@@ -498,10 +498,34 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     activities = db.create(Activity, transform=True)
     sync_logs = db.create(SyncLog, transform=True)
     
-    # Add process monitoring tables
-    process_status = db.create(ProcessStatus, pk='process_name', transform=True)
-    process_logs = db.create(ProcessLog, transform=True)
-    process_metrics = db.create(ProcessMetric, transform=True)
+    # Connect to process monitoring tables created by migrations
+    # Use FastLite's object transformation but specify correct table names
+    try:
+        # For process_status, we need to connect to the existing table
+        process_status = db.t.process_status
+        # Wrap it with the ProcessStatus class for object transformation
+        process_status = db.create(ProcessStatus, pk='process_name', transform=True, if_not_exists=True)
+    except Exception:
+        # Fallback: create with correct table name
+        process_status = db["process_status"]
+    
+    try:
+        # For process_logs, connect to existing table
+        process_logs = db.t.process_logs
+        # Wrap it with the ProcessLog class for object transformation
+        process_logs = db.create(ProcessLog, transform=True, if_not_exists=True)
+    except Exception:
+        # Fallback: create with correct table name
+        process_logs = db["process_logs"]
+    
+    try:
+        # For process_metrics, connect to existing table
+        process_metrics = db.t.process_metrics
+        # Wrap it with the ProcessMetric class for object transformation
+        process_metrics = db.create(ProcessMetric, transform=True, if_not_exists=True)
+    except Exception:
+        # Fallback: create with correct table name
+        process_metrics = db["process_metrics"]
     
     return {
         'db': db,
