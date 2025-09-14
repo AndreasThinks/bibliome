@@ -489,14 +489,14 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     
     # Create table objects for FastLite operations
     # These will connect to existing tables created by migrations
-    users = db.create(User, pk='did', transform=True)
-    bookshelves = db.create(Bookshelf, transform=True)
-    books = db.create(Book, transform=True)
-    permissions = db.create(Permission, transform=True)
-    bookshelf_invites = db.create(BookshelfInvite, transform=True)
-    comments = db.create(Comment, transform=True)
-    activities = db.create(Activity, transform=True)
-    sync_logs = db.create(SyncLog, transform=True)
+    users = db.create(User, pk='did', transform=True,  if_not_exists=True)
+    bookshelves = db.create(Bookshelf, transform=True,  if_not_exists=True)
+    books = db.create(Book, transform=True,  if_not_exists=True)
+    permissions = db.create(Permission, transform=True,  if_not_exists=True)
+    bookshelf_invites = db.create(BookshelfInvite, transform=True,  if_not_exists=True)
+    comments = db.create(Comment, transform=True,  if_not_exists=True)
+    activities = db.create(Activity, transform=True,  if_not_exists=True)
+    sync_logs = db.create(SyncLog, transform=True,  if_not_exists=True)
     
     # Connect to process monitoring tables created by migrations
     # Use FastLite's object transformation but specify correct table names
