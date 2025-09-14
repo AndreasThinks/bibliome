@@ -5327,13 +5327,6 @@ section + section {
     gap: 0.5rem;
 }
 
-/* Ensure action row stays at bottom */
-.book-actions-row {
-    margin-top: auto;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--brand-border);
-}
-
 /* Table view user attribution */
 .book-added-by-table {
     font-size: 0.75rem;
