@@ -2702,7 +2702,10 @@ def CommentModal(book, comments, can_comment=False, user_auth_status="anonymous"
                 ),
                 P(comment.content, cls="comment-content"),
                 Div(
-                    Span(comment.created_at.strftime("%B %d, %Y at %I:%M %p") if comment.created_at else "Unknown time"),
+                    Span(
+                        comment.created_at.strftime("%B %d, %Y at %I:%M %p") if comment.created_at and hasattr(comment.created_at, 'strftime') else 
+                        (datetime.fromisoformat(comment.created_at.replace('Z', '+00:00')).strftime("%B %d, %Y at %I:%M %p") if isinstance(comment.created_at, str) and comment.created_at else "Unknown time")
+                    ),
                     comment.is_edited and Span("(edited)", cls="edited-indicator") or None,
                     cls="comment-meta"
                 ),

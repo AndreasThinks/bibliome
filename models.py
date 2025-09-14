@@ -1488,49 +1488,85 @@ def get_book_comments(book_id: int, db_tables, bookshelf_id: int = None, limit: 
     Returns:
         List of comments, filtered by bookshelf if bookshelf_id is provided
     """
-    try:
-        if bookshelf_id is not None:
-            # Filter comments by both book and bookshelf (shelf-specific context)
-            query = """
-                SELECT c.*, u.handle, u.display_name, u.avatar_url
-                FROM comment c
-                JOIN user u ON c.user_did = u.did
-                WHERE c.book_id = ? AND c.bookshelf_id = ?
-                ORDER BY c.created_at ASC
-                LIMIT ?
-            """
-            params = (book_id, bookshelf_id, limit)
-        else:
-            # Show all comments for the book across all bookshelves (general book page)
-            query = """
-                SELECT c.*, u.handle, u.display_name, u.avatar_url
-                FROM comment c
-                JOIN user u ON c.user_did = u.did
-                WHERE c.book_id = ?
-                ORDER BY c.created_at ASC
-                LIMIT ?
-            """
-            params = (book_id, limit)
-        
-        cursor = db_tables['db'].execute(query, params)
-        # Get column descriptions BEFORE calling fetchall()
-        columns = [d[0] for d in cursor.description]
-        rows = cursor.fetchall()
-        
-        comments = []
-        for row in rows:
-            comment_data = dict(zip(columns, row))
-            comment = Comment(**{k: v for k, v in comment_data.items() if k in Comment.__annotations__})
-            comment.user_handle = comment_data.get('handle')
-            comment.user_display_name = comment_data.get('display_name')
-            comment.user_avatar_url = comment_data.get('avatar_url')
-            comments.append(comment)
-        
-        return comments
-        
-    except Exception as e:
-        logger.error(f"Error getting comments for book {book_id} (bookshelf {bookshelf_id}): {e}")
-        return []
+    import time
+    import sqlite3
+    
+    max_retries = 3
+    retry_delay = 0.1  # Start with 100ms delay
+    
+    for attempt in range(max_retries):
+        try:
+            if bookshelf_id is not None:
+                # Filter comments by both book and bookshelf (shelf-specific context)
+                query = """
+                    SELECT c.*, u.handle, u.display_name, u.avatar_url
+                    FROM comment c
+                    JOIN user u ON c.user_did = u.did
+                    WHERE c.book_id = ? AND c.bookshelf_id = ?
+                    ORDER BY c.created_at ASC
+                    LIMIT ?
+                """
+                params = (book_id, bookshelf_id, limit)
+            else:
+                # Show all comments for the book across all bookshelves (general book page)
+                query = """
+                    SELECT c.*, u.handle, u.display_name, u.avatar_url
+                    FROM comment c
+                    JOIN user u ON c.user_did = u.did
+                    WHERE c.book_id = ?
+                    ORDER BY c.created_at ASC
+                    LIMIT ?
+                """
+                params = (book_id, limit)
+            
+            cursor = db_tables['db'].execute(query, params)
+            # Get column descriptions BEFORE calling fetchall()
+            columns = [d[0] for d in cursor.description]
+            rows = cursor.fetchall()
+            
+            comments = []
+            for row in rows:
+                comment_data = dict(zip(columns, row))
+                
+                # Parse datetime fields if they're strings
+                for date_field in ['created_at', 'updated_at']:
+                    if date_field in comment_data and comment_data[date_field]:
+                        if isinstance(comment_data[date_field], str):
+                            try:
+                                from datetime import datetime
+                                comment_data[date_field] = datetime.fromisoformat(comment_data[date_field].replace('Z', '+00:00'))
+                            except ValueError:
+                                # If parsing fails, set to None
+                                comment_data[date_field] = None
+                
+                comment = Comment(**{k: v for k, v in comment_data.items() if k in Comment.__annotations__})
+                comment.user_handle = comment_data.get('handle')
+                comment.user_display_name = comment_data.get('display_name')
+                comment.user_avatar_url = comment_data.get('avatar_url')
+                comments.append(comment)
+            
+            return comments
+            
+        except sqlite3.OperationalError as e:
+            error_msg = str(e).lower()
+            if ('database is locked' in error_msg or 'database is busy' in error_msg) and attempt < max_retries - 1:
+                # Log the retry attempt
+                logger.warning(f"Database busy/locked getting comments for book {book_id} (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay}s")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+                continue
+            else:
+                # Log the final failure or non-retryable error
+                logger.error(f"Database error getting comments for book {book_id} (bookshelf {bookshelf_id}): {e}")
+                return []
+        except Exception as e:
+            # Non-database errors - don't retry
+            logger.error(f"Error getting comments for book {book_id} (bookshelf {bookshelf_id}): {e}")
+            return []
+    
+    # If we get here, all retries failed
+    logger.error(f"Failed to get comments for book {book_id} after {max_retries} attempts due to database contention")
+    return []
 
 def get_book_activity(book_id: int, db_tables, activity_type: str = "all", limit: int = 20):
     """Get activity for a specific book with filtering."""

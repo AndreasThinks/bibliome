@@ -1195,6 +1195,20 @@ def book_detail_page(book_id: int, auth, req, activity_filter: str = "all", from
                 'bookshelf_created': f"created the shelf {act['bookshelf_name']}"
             }.get(act['activity_type'], "performed an action")
             
+            # Parse created_at if it's a string
+            created_at_display = "Unknown time"
+            if act['created_at']:
+                try:
+                    if isinstance(act['created_at'], str):
+                        # Parse ISO format datetime string
+                        created_at_obj = datetime.fromisoformat(act['created_at'].replace('Z', '+00:00'))
+                        created_at_display = created_at_obj.strftime("%B %d, %Y at %I:%M %p")
+                    else:
+                        # Already a datetime object
+                        created_at_display = act['created_at'].strftime("%B %d, %Y at %I:%M %p")
+                except (ValueError, AttributeError):
+                    created_at_display = "Unknown time"
+            
             activity_items.append(
                 Div(
                     Div(
@@ -1212,7 +1226,7 @@ def book_detail_page(book_id: int, auth, req, activity_filter: str = "all", from
                         cls="activity-text"
                     ),
                     Div(
-                        Span(act['created_at'].strftime("%B %d, %Y at %I:%M %p") if act['created_at'] else "Unknown time"),
+                        Span(created_at_display),
                         act['bookshelf_slug'] and A("View Shelf", href=f"/shelf/{act['bookshelf_slug']}", cls="activity-link") or None,
                         cls="activity-meta"
                     ),
