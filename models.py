@@ -342,6 +342,9 @@ class Book:
     page_count: int = 0
     atproto_uri: str = "" # AT-Proto URI of the record
     added_at: datetime = None
+    # Cover caching fields
+    cached_cover_path: str = ""
+    cover_cached_at: datetime = None
     # Remote origin tracking
     is_remote: bool = False
     remote_added_by_did: str = ""
@@ -1702,12 +1705,16 @@ def __ft__(self: Book):
         search_query = f"{self.title} {self.author}".replace(" ", "+")
         google_books_url = f"https://books.google.com/books?q={search_query}"
     
+    # Use cached cover if available, fallback to original URL
+    from cover_cache import cover_cache
+    cover_url = cover_cache.get_cover_url(self.id, self.cover_url) if self.id and self.cover_url else self.cover_url
+    
     cover = Img(
-        src=self.cover_url,
+        src=cover_url,
         alt=f"Cover of {self.title}",
         cls="book-cover",
         loading="lazy"
-    ) if self.cover_url else Div("📖", cls="book-cover-placeholder")
+    ) if cover_url else Div("📖", cls="book-cover-placeholder")
     
     description = P(
         self.description[:100] + "..." if len(self.description) > 100 else self.description,

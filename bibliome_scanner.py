@@ -409,7 +409,29 @@ class BiblioMeScanner:
                     logger.warning(f"Failed to enrich book with cover, proceeding without: {e}")
 
                 new_book = Book(**book_dict)
-                self.db_tables['books'].insert(new_book)
+                created_book = self.db_tables['books'].insert(new_book)
+                
+                # Cache the cover image if available
+                if book_dict.get('cover_url') and book_dict['cover_url'].strip():
+                    try:
+                        from cover_cache import cover_cache
+                        
+                        # Cache the cover asynchronously
+                        cached_path = await cover_cache.download_and_cache_cover(
+                            created_book.id, book_dict['cover_url']
+                        )
+                        
+                        # Update the book record with cache info if successful
+                        if cached_path:
+                            self.db_tables['books'].update({
+                                'cached_cover_path': cached_path,
+                                'cover_cached_at': datetime.now(timezone.utc)
+                            }, created_book.id)
+                            logger.debug(f"Cover cached for book {created_book.id}: {cached_path}")
+                        
+                    except Exception as e:
+                        logger.warning(f"Failed to cache cover for book {created_book.id}: {e}")
+                        # Don't fail the whole sync, just log the error
                 self.log_sync_activity('book', uri, 'imported')
         except Exception as e:
             logger.error(f"Error syncing book {uri}: {e}")

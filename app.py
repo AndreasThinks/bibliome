@@ -96,6 +96,31 @@ app, rt = fast_app(
 def static_files(fname: str, ext: str):
     return FileResponse(f'static/{fname}.{ext}')
 
+# Cover cache serving
+@rt("/data/covers/{filename:path}")
+def serve_cached_cover(filename: str):
+    """Serve cached book cover images with proper headers."""
+    from pathlib import Path
+    import mimetypes
+    
+    cover_path = Path("data/covers") / filename
+    
+    if not cover_path.exists() or not cover_path.is_file():
+        return Response("Cover not found", status_code=404)
+    
+    # Determine MIME type
+    mime_type, _ = mimetypes.guess_type(str(cover_path))
+    if not mime_type:
+        mime_type = "image/jpeg"  # Default fallback
+    
+    # Set caching headers for better performance
+    headers = {
+        "Cache-Control": "public, max-age=86400",  # Cache for 24 hours
+        "Content-Type": mime_type
+    }
+    
+    return FileResponse(str(cover_path), headers=headers)
+
 # Home page
 @rt("/")
 def index(auth, req):
@@ -2519,6 +2544,32 @@ def add_book_api(bookshelf_id: int, title: str, author: str, isbn: str, descript
             )
             
             created_book = db_tables['books'].insert(book)
+            
+            # 3. Cache the cover image if available
+            if cover_url and cover_url.strip():
+                try:
+                    import asyncio
+                    from cover_cache import cover_cache
+                    
+                    # Cache the cover asynchronously
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    cached_path = loop.run_until_complete(
+                        cover_cache.download_and_cache_cover(created_book.id, cover_url)
+                    )
+                    loop.close()
+                    
+                    # Update the book record with cache info if successful
+                    if cached_path:
+                        db_tables['books'].update({
+                            'cached_cover_path': cached_path,
+                            'cover_cached_at': datetime.now()
+                        }, created_book.id)
+                        logger.info(f"Cover cached for book {created_book.id}: {cached_path}")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to cache cover for book {created_book.id}: {e}")
+                    # Don't fail the whole request, just log the error
             
             # Create the initial upvote record from the person who added the book
             upvote = Upvote(

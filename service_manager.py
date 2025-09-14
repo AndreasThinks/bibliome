@@ -65,6 +65,16 @@ class ServiceManager:
                 'last_restart_attempt': None,
                 'enabled': os.getenv('BIBLIOME_SCANNER_ENABLED', 'false').lower() == 'true',
                 'description': 'Bibliome network scanner'
+            },
+            'cover_cache_job': {
+                'script': 'cover_cache_job.py',
+                'process': None,
+                'restart_count': 0,
+                'consecutive_failures': 0,
+                'last_successful_start': None,
+                'last_restart_attempt': None,
+                'enabled': os.getenv('COVER_CACHE_JOB_ENABLED', 'true').lower() == 'true',
+                'description': 'Book cover caching service'
             }
         }
         self.running = True
