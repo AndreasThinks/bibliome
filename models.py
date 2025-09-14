@@ -14,13 +14,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def create_bookshelf_record(client: Client, name: str, description: str, privacy: str) -> str:
+def create_bookshelf_record(client: Client, name: str, description: str, privacy: str, open_to_contributions: bool = False) -> str:
     """Creates a bookshelf record on the user's repo and returns its AT-URI."""
     record = {
         '$type': 'com.bibliome.bookshelf',
         'name': name,
         'description': description,
         'privacy': privacy,
+        'openToContributions': open_to_contributions,
         'createdAt': client.get_current_time_iso()
     }
     response = client.com.atproto.repo.put_record(

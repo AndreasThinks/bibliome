@@ -234,6 +234,7 @@ class BiblioMeScanner:
                 shelf.name = getattr(value, 'name', shelf.name)
                 shelf.description = getattr(value, 'description', shelf.description)
                 shelf.privacy = getattr(value, 'privacy', shelf.privacy)
+                shelf.self_join = getattr(value, 'openToContributions', shelf.self_join)
                 shelf.last_synced = datetime.now(timezone.utc)
                 # Update created_at if we have it and it's not already set
                 if created_at and not shelf.created_at:
@@ -248,6 +249,7 @@ class BiblioMeScanner:
                     slug=generate_slug(),
                     description=getattr(value, 'description', ''),
                     privacy=getattr(value, 'privacy', 'public'),
+                    self_join=getattr(value, 'openToContributions', False),
                     created_at=created_at,  # Set the original creation date
                     is_remote=True,
                     remote_owner_did=did,

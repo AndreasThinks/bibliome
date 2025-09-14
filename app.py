@@ -1444,7 +1444,7 @@ def create_shelf(name: str, description: str, privacy: str, auth, sess, self_joi
         try:
             client = bluesky_auth.get_client_from_session(auth)
             # 1. Write to AT Protocol
-            atproto_uri = create_bookshelf_record(client, name, description, privacy)
+            atproto_uri = create_bookshelf_record(client, name, description, privacy, self_join)
         except Exception as e:
             logger.error(f"Failed to write bookshelf to AT Protocol: {e}", exc_info=True)
             # Don't fail the whole request, just log the error and continue
