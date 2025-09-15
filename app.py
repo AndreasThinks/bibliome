@@ -3662,7 +3662,39 @@ def update_shelf(slug: str, name: str, description: str, privacy: str, auth, ses
             sess['error'] = "You don't have permission to edit this bookshelf."
             return RedirectResponse(f'/shelf/{shelf.slug}', status_code=303)
         
-        # Update the bookshelf
+        # Sync to AT Protocol first (if shelf has atproto_uri)
+        atproto_sync_success = True
+        if shelf.atproto_uri and shelf.atproto_uri.strip():
+            try:
+                client = bluesky_auth.get_client_from_session(auth)
+                from models import update_bookshelf_record
+                
+                # Only update fields that have changed to avoid unnecessary AT-Proto calls
+                atproto_updates = {}
+                if name.strip() != shelf.name:
+                    atproto_updates['name'] = name.strip()
+                if description.strip() != shelf.description:
+                    atproto_updates['description'] = description.strip()
+                if privacy != shelf.privacy:
+                    atproto_updates['privacy'] = privacy
+                if self_join != shelf.self_join:
+                    atproto_updates['open_to_contributions'] = self_join
+                
+                if atproto_updates:
+                    updated_uri = update_bookshelf_record(client, shelf.atproto_uri, **atproto_updates)
+                    if updated_uri:
+                        logger.info(f"Bookshelf '{shelf.name}' synced to AT Protocol: {updated_uri}")
+                    else:
+                        atproto_sync_success = False
+                        logger.warning(f"Failed to sync bookshelf '{shelf.name}' to AT Protocol")
+                else:
+                    logger.info(f"No changes to sync for bookshelf '{shelf.name}' on AT Protocol")
+                    
+            except Exception as e:
+                atproto_sync_success = False
+                logger.error(f"Error syncing bookshelf '{shelf.name}' to AT Protocol: {e}", exc_info=True)
+        
+        # Update the local database
         update_data = {
             'name': name.strip(),
             'description': description.strip(),
@@ -3672,7 +3704,13 @@ def update_shelf(slug: str, name: str, description: str, privacy: str, auth, ses
         }
         
         db_tables['bookshelves'].update(update_data, shelf.id)
-        sess['success'] = "Bookshelf updated successfully!"
+        
+        # Set success message with AT-Proto sync status
+        if atproto_sync_success:
+            sess['success'] = "Bookshelf updated successfully!"
+        else:
+            sess['success'] = "Bookshelf updated locally. AT Protocol sync failed - changes may not appear on other instances immediately."
+        
         return RedirectResponse(f'/shelf/{shelf.slug}/manage', status_code=303)
         
     except Exception as e:

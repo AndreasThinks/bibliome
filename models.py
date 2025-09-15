@@ -8,7 +8,6 @@ import string
 from fasthtml.common import *
 from fastcore.all import patch
 from atproto import Client, models as at_models
-from atproto_client.models.com.atproto.repo.delete_record import Data as DeleteRecordData
 from atproto_client.exceptions import UnauthorizedError, BadRequestError
 import logging
 
@@ -54,6 +53,83 @@ def add_book_record(client: Client, bookshelf_uri: str, title: str, author: str,
     )
     return response.uri
 
+def update_bookshelf_record(client: Client, atproto_uri: str, name: str = None, description: str = None, privacy: str = None, open_to_contributions: bool = None) -> str:
+    """
+    Update a bookshelf record on AT Protocol.
+
+    Args:
+        client: Authenticated AT Protocol client
+        atproto_uri: AT Protocol URI of the bookshelf record to update
+        name: New name for the bookshelf (optional)
+        description: New description for the bookshelf (optional)
+        privacy: New privacy setting for the bookshelf (optional)
+        open_to_contributions: New open to contributions setting (optional)
+
+    Returns:
+        str: Updated AT-URI of the record, empty string if failed
+    """
+    try:
+        # Parse the URI into components
+        if not atproto_uri.startswith('at://'):
+            logger.warning(f"Invalid AT URI format: {atproto_uri}")
+            return ""
+
+        parts = atproto_uri[5:].split('/')
+        if len(parts) != 3:
+            logger.warning(f"Invalid AT URI structure: {atproto_uri}")
+            return ""
+
+        repo, collection, rkey = parts
+
+        # Get the existing record first to preserve other fields
+        existing_record = client.com.atproto.repo.get_record(
+            at_models.ComAtprotoRepoGetRecord.Params(
+                repo=repo,
+                collection=collection,
+                rkey=rkey
+            )
+        )
+
+        # Update the record with new values and editedAt timestamp
+        updated_record = dict(existing_record.value)
+        
+        # Only update fields that were provided
+        if name is not None:
+            updated_record['name'] = name
+        if description is not None:
+            updated_record['description'] = description
+        if privacy is not None:
+            updated_record['privacy'] = privacy
+        if open_to_contributions is not None:
+            updated_record['openToContributions'] = open_to_contributions
+            
+        updated_record['editedAt'] = client.get_current_time_iso()
+
+        response = client.com.atproto.repo.put_record(
+            at_models.ComAtprotoRepoPutRecord.Data(
+                repo=repo,
+                collection=collection,
+                rkey=rkey,
+                record=updated_record
+            )
+        )
+        
+        logger.info(f"Successfully updated bookshelf record: {atproto_uri}")
+        return response.uri
+
+    except BadRequestError as e:
+        if "RecordNotFound" in str(e):
+            logger.warning(f"Bookshelf record not found: {atproto_uri}")
+        else:
+            logger.error(f"Bad request error updating bookshelf {atproto_uri}: {e}")
+        return ""
+    except UnauthorizedError as e:
+        logger.error(f"Unauthorized to update bookshelf record {atproto_uri}: {e}")
+        return ""
+    except Exception as e:
+        logger.error(f"Error updating bookshelf record {atproto_uri}: {e}")
+        return ""
+
 def delete_bookshelf_record(client: Client, atproto_uri: str) -> bool:
     """
     Delete a bookshelf record from AT Protocol.
@@ -78,16 +154,15 @@ def delete_bookshelf_record(client: Client, atproto_uri: str) -> bool:
 
         repo, collection, rkey = parts
 
-        # Create the Data object for the delete_record call
-        delete_data = DeleteRecordData(
-            repo=repo,
-            collection=collection,
-            rkey=rkey
-        )
-
         # Call the delete_record method
         logger.info(f"Deleting bookshelf record: {atproto_uri}")
-        client.com.atproto.repo.delete_record(delete_data)
+        client.com.atproto.repo.delete_record(
+            at_models.ComAtprotoRepoDeleteRecord.Data(
+                repo=repo,
+                collection=collection,
+                rkey=rkey
+            )
+        )
 
         logger.info(f"Successfully deleted bookshelf record: {atproto_uri}")
         return True
@@ -129,16 +204,15 @@ def delete_book_record(client: Client, atproto_uri: str) -> bool:
 
         repo, collection, rkey = parts
 
-        # Create the Data object for the delete_record call
-        delete_data = DeleteRecordData(
-            repo=repo,
-            collection=collection,
-            rkey=rkey
-        )
-
         # Call the delete_record method
         logger.info(f"Deleting book record: {atproto_uri}")
-        client.com.atproto.repo.delete_record(delete_data)
+        client.com.atproto.repo.delete_record(
+            at_models.ComAtprotoRepoDeleteRecord.Data(
+                repo=repo,
+                collection=collection,
+                rkey=rkey
+            )
+        )
 
         logger.info(f"Successfully deleted book record: {atproto_uri}")
         return True
@@ -242,16 +316,15 @@ def delete_comment_record(client: Client, atproto_uri: str) -> bool:
 
         repo, collection, rkey = parts
 
-        # Create the Data object for the delete_record call
-        delete_data = DeleteRecordData(
-            repo=repo,
-            collection=collection,
-            rkey=rkey
-        )
-
         # Call the delete_record method
         logger.info(f"Deleting comment record: {atproto_uri}")
-        client.com.atproto.repo.delete_record(delete_data)
+        client.com.atproto.repo.delete_record(
+            at_models.ComAtprotoRepoDeleteRecord.Data(
+                repo=repo,
+                collection=collection,
+                rkey=rkey
+            )
+        )
 
         logger.info(f"Successfully deleted comment record: {atproto_uri}")
         return True
