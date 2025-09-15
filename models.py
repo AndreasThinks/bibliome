@@ -454,6 +454,31 @@ class ProcessMetric:
     metric_type: str = "counter"
     recorded_at: datetime = None
 
+def validate_primary_key_setup(db, table_name: str, expected_pk_column: str):
+    """Validate that a table has the correct primary key setup."""
+    try:
+        # Check table info
+        table_info = db.execute(f"PRAGMA table_info({table_name})").fetchall()
+        
+        # Find primary key columns
+        pk_columns = [col for col in table_info if col[5] == 1]  # is_pk == 1
+        
+        if len(pk_columns) != 1:
+            raise RuntimeError(f"Table {table_name} should have exactly 1 primary key, found {len(pk_columns)}")
+        
+        if pk_columns[0][1] != expected_pk_column:
+            raise RuntimeError(f"Table {table_name} primary key should be {expected_pk_column}, found {pk_columns[0][1]}")
+        
+        if 'INTEGER' not in pk_columns[0][2].upper():
+            raise RuntimeError(f"Table {table_name} primary key should be INTEGER, found {pk_columns[0][2]}")
+        
+        print(f"✓ Table {table_name} primary key validation passed")
+        return True
+        
+    except Exception as e:
+        print(f"✗ Table {table_name} primary key validation failed: {e}")
+        raise
+
 def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migrations', memory: bool = False):
     """Initialize the database with fastmigrate and all tables."""
     import os
@@ -492,19 +517,19 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     db.execute("PRAGMA temp_store=memory")
     db.execute("PRAGMA mmap_size=268435456")
     
-    # Create table objects for FastLite operations
+    # Create table objects for FastLite operations with explicit primary keys
     # These will connect to existing tables created by migrations
-    users = db.create(User, pk='did', transform=True,  if_not_exists=True)
-    bookshelves = db.create(Bookshelf, transform=True,  if_not_exists=True)
-    books = db.create(Book, transform=True,  if_not_exists=True)
-    permissions = db.create(Permission, transform=True,  if_not_exists=True)
-    bookshelf_invites = db.create(BookshelfInvite, transform=True,  if_not_exists=True)
-    comments = db.create(Comment, transform=True,  if_not_exists=True)
-    activities = db.create(Activity, transform=True,  if_not_exists=True)
-    sync_logs = db.create(SyncLog, transform=True,  if_not_exists=True)
+    users = db.create(User, pk='did', transform=True, if_not_exists=True)
+    bookshelves = db.create(Bookshelf, pk='id', transform=True, if_not_exists=True)
+    books = db.create(Book, pk='id', transform=True, if_not_exists=True)
+    permissions = db.create(Permission, pk='id', transform=True, if_not_exists=True)
+    bookshelf_invites = db.create(BookshelfInvite, pk='id', transform=True, if_not_exists=True)
+    comments = db.create(Comment, pk='id', transform=True, if_not_exists=True)
+    activities = db.create(Activity, pk='id', transform=True, if_not_exists=True)
+    sync_logs = db.create(SyncLog, pk='id', transform=True, if_not_exists=True)
     
-    # Connect to process monitoring tables created by migrations
-    # Use FastLite's object transformation but specify correct table names
+    # Connect to process monitoring tables created by migrations with explicit primary keys
+    # Use FastLite's object transformation but specify correct table names and primary keys
     try:
         # For process_status, we need to connect to the existing table
         process_status = db.t.process_status
@@ -518,7 +543,7 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
         # For process_logs, connect to existing table
         process_logs = db.t.process_logs
         # Wrap it with the ProcessLog class for object transformation
-        process_logs = db.create(ProcessLog, transform=True, if_not_exists=True)
+        process_logs = db.create(ProcessLog, pk='id', transform=True, if_not_exists=True)
     except Exception:
         # Fallback: create with correct table name
         process_logs = db["process_logs"]
@@ -527,10 +552,19 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
         # For process_metrics, connect to existing table
         process_metrics = db.t.process_metrics
         # Wrap it with the ProcessMetric class for object transformation
-        process_metrics = db.create(ProcessMetric, transform=True, if_not_exists=True)
+        process_metrics = db.create(ProcessMetric, pk='id', transform=True, if_not_exists=True)
     except Exception:
         # Fallback: create with correct table name
         process_metrics = db["process_metrics"]
+    
+    # Validate primary keys for critical process monitoring tables
+    try:
+        validate_primary_key_setup(db, 'process_metrics', 'id')
+        validate_primary_key_setup(db, 'process_logs', 'id')
+        print("✓ Process monitoring table primary key validation completed")
+    except Exception as e:
+        print(f"⚠ Warning: Process monitoring table validation failed: {e}")
+        # Don't fail the entire setup, just log the warning
     
     return {
         'db': db,

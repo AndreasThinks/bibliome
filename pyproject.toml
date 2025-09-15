@@ -13,4 +13,5 @@ dependencies = [
     "pytest>=8.4.1",
     "python-dotenv>=1.1.1",
     "python-fasthtml>=0.12.24",
+    "requests>=2.32.5",
 ]
