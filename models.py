@@ -345,6 +345,7 @@ class Book:
     # Cover caching fields
     cached_cover_path: str = ""
     cover_cached_at: datetime = None
+    cover_rate_limited_until: datetime = None
     # Remote origin tracking
     is_remote: bool = False
     remote_added_by_did: str = ""
