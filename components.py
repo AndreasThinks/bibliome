@@ -355,7 +355,7 @@ def EnhancedEmptyState(can_add=False, shelf_id=None, user_auth_status="anonymous
             cls="empty-state-card"
         )
 
-def ShelfHeader(shelf, action_buttons, current_view="grid", can_share=False, user_is_logged_in=False):
+def ShelfHeader(shelf, action_buttons, current_view="grid", can_share=False, user_is_logged_in=False, creator=None):
     """A visually appealing header for the shelf page."""
     # Create both toggle buttons - only one will be visible at a time
     grid_toggle_btn = Button(
@@ -409,13 +409,59 @@ def ShelfHeader(shelf, action_buttons, current_view="grid", can_share=False, use
         all_actions.append(share_btn)
     all_actions.extend(icon_action_buttons)
     
+    # Creator information section
+    creator_info = None
+    if creator:
+        creator_avatar = Img(
+            src=creator.avatar_url,
+            alt=creator.display_name or creator.handle,
+            cls="owner-avatar"
+        ) if creator.avatar_url else Div("👤", cls="owner-avatar-placeholder")
+        
+        creator_info = Div(
+            creator_avatar,
+            A(
+                creator.display_name or creator.handle,
+                href=f"/user/{creator.handle}",
+                cls="shelf-owner-link",
+                title="View creator's profile"
+            ),
+            cls="shelf-owner-info"
+        )
+    
+    # Format creation date as "Created X ago"
+    created_date_text = None
+    if shelf.created_at:
+        try:
+            # Handle both string and datetime objects
+            if isinstance(shelf.created_at, str):
+                from datetime import datetime
+                try:
+                    # Try ISO format first
+                    created_dt = datetime.fromisoformat(shelf.created_at.replace('Z', '+00:00'))
+                except ValueError:
+                    # Fallback for other formats
+                    from dateutil.parser import parse
+                    created_dt = parse(shelf.created_at)
+            else:
+                created_dt = shelf.created_at
+            
+            time_ago = format_time_ago(created_dt)
+            created_date_text = f"📅 Created {time_ago}"
+        except Exception:
+            created_date_text = "📅 Creation date unknown"
+    else:
+        created_date_text = "📅 Creation date unknown"
+    
     return Card(
         H1(shelf.name, cls="shelf-title"),
         P(shelf.description, cls="shelf-description") if shelf.description else None,
+        creator_info,
         Div(
             Div(
                 Span(f"🌍 {shelf.privacy.replace('-', ' ').title()}", cls="privacy-badge"),
                 Span("🤝 Open to contributions", cls="contribution-badge") if getattr(shelf, 'self_join', False) else None,
+                Span(created_date_text, cls="shelf-created-date") if created_date_text else None,
                 cls="shelf-badges"
             ),
             Div(*all_actions, cls="shelf-actions"),
@@ -1822,7 +1868,7 @@ def SearchResultsGrid(shelves, users=None, search_type="all", page: int = 1, que
     
     return Div(*sections, pagination, id="search-results-grid")
 
-def BookListView(books, can_upvote=True, can_remove=False, user_auth_status="anonymous"):
+def BookListView(books, can_upvote=True, can_remove=False, user_auth_status="anonymous", db_tables=None):
     """Render books in a table/list view format."""
     if not books:
         return Div("No books to display", cls="empty-list-message")
@@ -1833,7 +1879,8 @@ def BookListView(books, can_upvote=True, can_remove=False, user_auth_status="ano
         user_has_upvoted=book.user_has_upvoted,
         upvote_count=book.upvote_count,
         can_remove=can_remove,
-        user_auth_status=user_auth_status
+        user_auth_status=user_auth_status,
+        db_tables=db_tables
     ) for book in books]
     
     return Table(
@@ -2563,15 +2610,140 @@ def SharePreview(shelf, share_type, base_url):
     )
 
 def AdminDashboard(stats: Dict[str, Any]):
-    """Admin dashboard component."""
+    """Admin dashboard component with error handling."""
+    # Check if there was an error loading stats
+    if stats.get("error"):
+        error_section = Div(
+            H3("⚠️ Stats Loading Error", style="color: #ffc107;"),
+            P(f"Error: {stats['error']}", style="color: #dc3545;"),
+            P("Basic database connectivity may be impacted. Check the debug page for more information."),
+            A("View Debug Info", href="/admin/debug", cls="btn btn-secondary"),
+            cls="admin-error-section",
+            style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 2rem;"
+        )
+    else:
+        error_section = None
+    
+    # Maintenance & Cleanup section
+    maintenance_section = Section(
+        H2("Maintenance & Cleanup"),
+        P("Manage system maintenance and database cleanup operations."),
+        
+        # Maintenance Mode Card
+        Div(
+            H3("🔧 Maintenance Mode"),
+            P("Stop all background processes for safe database operations."),
+            Div(
+                Div(
+                    Span("Status: ", style="font-weight: bold;"),
+                    Span("Loading...", id="maintenance-status", style="color: #6c757d;"),
+                    cls="maintenance-status-display"
+                ),
+                # Load the maintenance toggle button via HTMX
+                Div(
+                    Span("Loading controls...", style="color: #6c757d;"),
+                    id="maintenance-controls",
+                    hx_get="/admin/maintenance-mode/toggle-button",
+                    hx_trigger="load delay:500ms",
+                    hx_swap="innerHTML"
+                ),
+                cls="maintenance-controls-container"
+            ),
+            cls="admin-maintenance-card",
+            style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 1rem; background: #ffffff;"
+        ),
+        
+        # Log Cleanup Card
+        Div(
+            H3("🧹 Database Cleanup"),
+            P("Remove old log entries to keep the database size manageable."),
+            Div(
+                Div(
+                    Span("Estimated log entries: ", style="font-weight: bold;"),
+                    Span("Loading...", id="log-count-display", style="color: #6c757d;"),
+                    cls="log-count-display"
+                ),
+                Div(
+                    Button(
+                        "Preview Cleanup",
+                        id="cleanup-preview-btn",
+                        hx_get="/admin/cleanup-logs/preview",
+                        hx_target="#cleanup-preview",
+                        hx_swap="innerHTML",
+                        cls="btn btn-secondary",
+                        style="margin-right: 0.5rem;"
+                    ),
+                    Button(
+                        "Clean Old Logs",
+                        id="cleanup-execute-btn",
+                        hx_post="/admin/cleanup-logs",
+                        hx_target="#cleanup-results",
+                        hx_swap="innerHTML",
+                        hx_confirm="Are you sure you want to delete old log entries? This cannot be undone.",
+                        cls="btn btn-danger"
+                    ),
+                    cls="cleanup-buttons"
+                ),
+                Div(id="cleanup-preview", cls="cleanup-preview-container"),
+                Div(id="cleanup-results", cls="cleanup-results-container"),
+                cls="cleanup-controls-container"
+            ),
+            cls="admin-cleanup-card",
+            style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 1rem; background: #ffffff;"
+        ),
+        
+        # Auto-Cleanup Card
+        Div(
+            H3("🤖 Automatic Cleanup"),
+            P("Monitor automatic database cleanup that runs in the background."),
+            Div(
+                Div(
+                    Span("Status: ", style="font-weight: bold;"),
+                    Span("Loading...", id="auto-cleanup-status", style="color: #6c757d;"),
+                    cls="auto-cleanup-status-display"
+                ),
+                cls="auto-cleanup-controls-container"
+            ),
+            cls="admin-auto-cleanup-card",
+            style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 1rem; background: #ffffff;"
+        ),
+        
+        # Auto-load maintenance status, log count, and auto-cleanup status using HTMX
+        Div(
+            hx_get="/admin/maintenance-mode/status-display",
+            hx_target="#maintenance-status",
+            hx_trigger="load",
+            hx_swap="innerHTML"
+        ),
+        Div(
+            hx_get="/admin/cleanup-logs/count-display", 
+            hx_target="#log-count-display",
+            hx_trigger="load",
+            hx_swap="innerHTML"
+        ),
+        Div(
+            hx_get="/admin/auto-cleanup/status-display",
+            hx_target="#auto-cleanup-status",
+            hx_trigger="load",
+            hx_swap="innerHTML"
+        ),
+        
+        style="margin: 2rem 0; padding: 1.5rem; border: 1px solid #dee2e6; border-radius: 0.5rem; background: #f8f9fa;"
+    )
+    
     return Div(
         H1("Admin Dashboard"),
+        error_section,
         Div(
-            AdminStatsCard("Total Users", stats.get("total_users", 0), "fa-users"),
-            AdminStatsCard("Total Bookshelves", stats.get("total_bookshelves", 0), "fa-book-bookmark"),
-            AdminStatsCard("Total Books", stats.get("total_books", 0), "fa-book"),
+            AdminStatsCard("Total Users", stats.get("total_users", "Error"), "fa-users"),
+            AdminStatsCard("Total Bookshelves", stats.get("total_bookshelves", "Error"), "fa-book-bookmark"),
+            AdminStatsCard("Total Books", stats.get("total_books", "Error"), "fa-book"),
+            AdminStatsCard("Total Comments", stats.get("total_comments", "Error"), "fa-comments"),
             cls="admin-stats-grid"
         ),
+        # Activity stats section with time-based data
+        AdminActivitySection(stats) if not stats.get("error") else None,
+        maintenance_section,
         cls="admin-dashboard"
     )
 
@@ -2588,6 +2760,64 @@ def AdminStatsCard(title: str, value, icon: str):
             cls="admin-stats-card-info"
         ),
         cls="admin-stats-card"
+    )
+
+def AdminActivitySection(stats: Dict[str, Any]):
+    """Activity section showing time-based activity counts."""
+    activity_7d = stats.get("activity_7d", {})
+    activity_30d = stats.get("activity_30d", {})
+    
+    if not activity_7d and not activity_30d:
+        return None
+    
+    return Section(
+        H2("Recent Activity"),
+        P("Activity counts for the last 7 and 30 days", cls="activity-section-subtitle"),
+        
+        # 7-day activity cards
+        Div(
+            H3("📅 Last 7 Days", cls="activity-period-title"),
+            Div(
+                AdminActivityCard("Active Users", activity_7d.get("users", 0), "fa-user-clock", "Users who logged in or joined"),
+                AdminActivityCard("New Shelves", activity_7d.get("bookshelves", 0), "fa-plus-circle", "Bookshelves created"),
+                AdminActivityCard("Books Added", activity_7d.get("books", 0), "fa-book-medical", "Books added to shelves"),
+                AdminActivityCard("Comments", activity_7d.get("comments", 0), "fa-comment-dots", "Comments posted"),
+                cls="admin-activity-cards-grid"
+            ),
+            cls="activity-period-section"
+        ),
+        
+        # 30-day activity cards
+        Div(
+            H3("📅 Last 30 Days", cls="activity-period-title"),
+            Div(
+                AdminActivityCard("Active Users", activity_30d.get("users", 0), "fa-user-clock", "Users who logged in or joined"),
+                AdminActivityCard("New Shelves", activity_30d.get("bookshelves", 0), "fa-plus-circle", "Bookshelves created"),
+                AdminActivityCard("Books Added", activity_30d.get("books", 0), "fa-book-medical", "Books added to shelves"),
+                AdminActivityCard("Comments", activity_30d.get("comments", 0), "fa-comment-dots", "Comments posted"),
+                cls="admin-activity-cards-grid"
+            ),
+            cls="activity-period-section"
+        ),
+        
+        cls="admin-activity-section",
+        style="margin: 2rem 0; padding: 1.5rem; border: 1px solid #dee2e6; border-radius: 0.5rem; background: #f8f9fa;"
+    )
+
+def AdminActivityCard(title: str, value: int, icon: str, description: str):
+    """A smaller card for displaying activity stats with descriptions."""
+    return Div(
+        Div(
+            I(cls=f"fas {icon}"),
+            cls="admin-activity-card-icon"
+        ),
+        Div(
+            H4(str(value), cls="admin-activity-card-value"),
+            P(title, cls="admin-activity-card-title"),
+            P(description, cls="admin-activity-card-description"),
+            cls="admin-activity-card-info"
+        ),
+        cls="admin-activity-card"
     )
 
 def AdminDatabaseSection():
@@ -2625,4 +2855,124 @@ def BackupHistoryCard():
         Button("Refresh Backups", hx_get="/admin/list-backups", hx_target="#backup-list", hx_swap="innerHTML"),
         Div(id="backup-list", hx_get="/admin/list-backups", hx_trigger="load", hx_swap="innerHTML"),
         cls="backup-history-card"
+    )
+
+def CommentModal(book, comments, can_comment=False, user_auth_status="anonymous"):
+    """Modal content for viewing and adding comments to a book."""
+    # Book header with cover and title
+    cover = Img(
+        src=book.cover_url,
+        alt=f"Cover of {book.title}",
+        cls="comment-modal-book-cover"
+    ) if book.cover_url else Div("📖", cls="comment-modal-book-cover-placeholder")
+    
+    # Comments list
+    comment_items = []
+    for comment in comments:
+        comment_items.append(
+            Div(
+                Div(
+                    Img(
+                        src=comment.user_avatar_url,
+                        alt=comment.user_display_name or comment.user_handle,
+                        cls="comment-avatar"
+                    ) if comment.user_avatar_url else Div("👤", cls="comment-avatar-placeholder"),
+                    Div(
+                        Strong(comment.user_display_name or comment.user_handle),
+                        Span(f"@{comment.user_handle}", cls="comment-handle"),
+                        cls="comment-user-info"
+                    ),
+                    cls="comment-header"
+                ),
+                P(comment.content, cls="comment-content"),
+                Div(
+                    Span(
+                        comment.created_at.strftime("%B %d, %Y at %I:%M %p") if comment.created_at and hasattr(comment.created_at, 'strftime') else 
+                        (datetime.fromisoformat(comment.created_at.replace('Z', '+00:00')).strftime("%B %d, %Y at %I:%M %p") if isinstance(comment.created_at, str) and comment.created_at else "Unknown time")
+                    ),
+                    comment.is_edited and Span("(edited)", cls="edited-indicator") or None,
+                    cls="comment-meta"
+                ),
+                cls="comment-item",
+                id=f"comment-{comment.id}"
+            )
+        )
+    
+    # Comment form (if user can comment)
+    comment_form = None
+    if can_comment:
+        comment_form = Form(
+            Textarea(
+                name="content",
+                placeholder="Share your thoughts about this book...",
+                required=True,
+                rows=3,
+                cls="comment-modal-textarea"
+            ),
+            Button("Post Comment", type="submit", cls="comment-modal-submit-btn primary"),
+            hx_post=f"/api/book/{book.id}/comment",
+            hx_target="#modal-comments-list",
+            hx_swap="afterbegin",
+            hx_on_after_request="this.reset()",  # Clear form after successful submission
+            cls="comment-modal-form"
+        )
+    elif user_auth_status == "anonymous":
+        comment_form = Div(
+            P("Sign in to comment on this book", cls="comment-auth-message"),
+            A("Sign In", href="/auth/login", cls="primary comment-auth-btn"),
+            cls="comment-auth-section"
+        )
+    else:
+        comment_form = Div(
+            P("Only contributors can comment on books in this shelf", cls="comment-permission-message"),
+            cls="comment-permission-section"
+        )
+    
+    return Div(
+        Div(
+            # Modal header
+            Div(
+                Button(
+                    I(cls="fas fa-times"),
+                    hx_get="/api/close-comment-modal",
+                    hx_target="#comment-modal-container",
+                    hx_swap="innerHTML",
+                    cls="comment-modal-close",
+                    title="Close"
+                ),
+                Div(
+                    cover,
+                    Div(
+                        H2(book.title, cls="comment-modal-book-title"),
+                        P(f"by {book.author}", cls="comment-modal-book-author") if book.author else None,
+                        cls="comment-modal-book-info"
+                    ),
+                    cls="comment-modal-book-header"
+                ),
+                cls="comment-modal-header"
+            ),
+            
+            # Modal body with comments
+            Div(
+                Div(
+                    H3(f"Comments ({len(comments)})", cls="comments-section-title"),
+                    Div(
+                        *comment_items if comment_items else [P("No comments yet. Be the first to share your thoughts!", cls="no-comments-message")],
+                        cls="comments-list",
+                        id="modal-comments-list"
+                    ),
+                    cls="comments-section"
+                ),
+                cls="comment-modal-body"
+            ),
+            
+            # Modal footer with comment form
+            Div(
+                comment_form,
+                cls="comment-modal-footer"
+            ),
+            
+            cls="comment-modal-dialog"
+        ),
+        cls="comment-modal-overlay"
     )

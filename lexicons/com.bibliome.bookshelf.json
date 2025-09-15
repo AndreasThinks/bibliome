@@ -12,6 +12,7 @@
           "name": {"type": "string", "maxLength": 100},
           "description": {"type": "string", "maxLength": 500},
           "privacy": {"type": "string", "knownValues": ["public", "link-only", "private"]},
+          "openToContributions": {"type": "boolean", "default": false},
           "createdAt": {"type": "string", "format": "datetime"}
         }
       }

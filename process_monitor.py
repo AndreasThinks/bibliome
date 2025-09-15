@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
+from alerting import send_alert
 
 class ProcessStatus(Enum):
     STOPPED = "stopped"
@@ -88,45 +89,60 @@ class ProcessMonitor:
             # Load existing processes
             processes = self.db_tables['process_status']()
             for process_row in processes:
+                # Handle both dictionary and object access patterns
+                def safe_get(row, key, default=None):
+                    if hasattr(row, key):
+                        return getattr(row, key, default)
+                    elif hasattr(row, 'get'):
+                        return row.get(key, default)
+                    elif isinstance(row, dict):
+                        return row.get(key, default)
+                    else:
+                        return default
+                
                 config_data = {}
-                if process_row['config_data']:
+                config_data_raw = safe_get(process_row, 'config_data')
+                if config_data_raw:
                     try:
-                        config_data = json.loads(process_row['config_data'])
+                        config_data = json.loads(config_data_raw)
                     except json.JSONDecodeError:
                         pass
                 
                 # Check if process is actually running by PID
                 actual_status = ProcessStatus.STOPPED
-                if process_row['pid']:
+                pid = safe_get(process_row, 'pid')
+                if pid:
                     try:
-                        if psutil.pid_exists(process_row['pid']):
-                            proc = psutil.Process(process_row['pid'])
+                        if psutil.pid_exists(pid):
+                            proc = psutil.Process(pid)
                             if proc.is_running() and proc.status() != psutil.STATUS_ZOMBIE:
                                 actual_status = ProcessStatus.RUNNING
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass
                 
                 # Convert string datetime fields back to datetime objects using helper function
-                started_at = self._parse_datetime_field(process_row['started_at'])
-                last_heartbeat = self._parse_datetime_field(process_row['last_heartbeat'])
-                last_activity = self._parse_datetime_field(process_row['last_activity'])
+                started_at = self._parse_datetime_field(safe_get(process_row, 'started_at'))
+                last_heartbeat = self._parse_datetime_field(safe_get(process_row, 'last_heartbeat'))
+                last_activity = self._parse_datetime_field(safe_get(process_row, 'last_activity'))
                 
-                self._processes[process_row['process_name']] = ProcessInfo(
-                    name=process_row['process_name'],
-                    process_type=process_row['process_type'],
+                process_name = safe_get(process_row, 'process_name')
+                self._processes[process_name] = ProcessInfo(
+                    name=process_name,
+                    process_type=safe_get(process_row, 'process_type'),
                     status=actual_status,
-                    pid=process_row['pid'] if actual_status == ProcessStatus.RUNNING else None,
+                    pid=pid if actual_status == ProcessStatus.RUNNING else None,
                     started_at=started_at,
                     last_heartbeat=last_heartbeat,
                     last_activity=last_activity,
-                    restart_count=process_row['restart_count'] or 0,
-                    error_message=process_row['error_message'],
+                    restart_count=safe_get(process_row, 'restart_count') or 0,
+                    error_message=safe_get(process_row, 'error_message'),
                     config_data=config_data
                 )
                 
                 # Update database with actual status if different
-                if actual_status != ProcessStatus(process_row['status']):
-                    self._update_process_status(process_row['process_name'], actual_status)
+                current_status = safe_get(process_row, 'status')
+                if actual_status != ProcessStatus(current_status):
+                    self._update_process_status(process_name, actual_status)
                     
         except Exception as e:
             self.logger.error(f"Error loading process status from database: {e}")
@@ -159,8 +175,7 @@ class ProcessMonitor:
                 update_data['error_message'] = None
             
             # Update database
-            update_data['process_name'] = process_name
-            self.db_tables['process_status'].update(update_data)
+            self.db_tables['process_status'].update(update_data, process_name)
             
         except Exception as e:
             self.logger.error(f"Error updating process status for {process_name}: {e}")
@@ -173,14 +188,16 @@ class ProcessMonitor:
             return
         
         try:
-            log_entry = {
-                'process_name': process_name,
-                'log_level': log_level.value,
-                'event_type': event_type.value,
-                'message': message,
-                'details': json.dumps(details) if details else None,
-                'timestamp': datetime.now()
-            }
+            # Create ProcessLog object instead of raw dict to ensure proper FastLite handling
+            from models import ProcessLog
+            log_entry = ProcessLog(
+                process_name=process_name,
+                log_level=log_level.value,
+                event_type=event_type.value,
+                message=message,
+                details=json.dumps(details) if details else None,
+                timestamp=datetime.now()
+            )
             
             self.db_tables['process_logs'].insert(log_entry)
             
@@ -192,23 +209,36 @@ class ProcessMonitor:
     
     def record_metric(self, process_name: str, metric_name: str, metric_value: int, 
                      metric_type: str = "counter"):
-        """Record a process metric."""
+        """Record a process metric with improved error handling."""
         if not self.db_tables:
             return
         
-        try:
-            metric_entry = {
-                'process_name': process_name,
-                'metric_name': metric_name,
-                'metric_value': metric_value,
-                'metric_type': metric_type,
-                'recorded_at': datetime.now()
-            }
-            
-            self.db_tables['process_metrics'].insert(metric_entry)
-            
-        except Exception as e:
-            self.logger.error(f"Error recording metric {metric_name} for {process_name}: {e}")
+        # Use retry logic for better reliability under concurrent load
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Use direct dictionary insertion instead of ProcessMetric object
+                # to avoid potential FastLite object creation issues
+                metric_data = {
+                    'process_name': process_name,
+                    'metric_name': metric_name,
+                    'metric_value': metric_value,
+                    'metric_type': metric_type,
+                    'recorded_at': datetime.now()
+                }
+                
+                self.db_tables['process_metrics'].insert(metric_data)
+                return  # Success, exit retry loop
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    # Wait briefly before retry (exponential backoff)
+                    import time
+                    time.sleep(0.01 * (2 ** attempt))
+                    continue
+                else:
+                    # Final attempt failed, log error
+                    self.logger.error(f"Error recording metric {metric_name} for {process_name} (after {max_retries} attempts): {e}")
     
     def register_process(self, name: str, process_type: str, config: Optional[Dict[str, Any]] = None):
         """Register a new process for monitoring."""
@@ -297,8 +327,7 @@ class ProcessMonitor:
                         if activity_info:
                             update_data['last_activity'] = now
                         
-                        update_data['process_name'] = name
-                        self.db_tables['process_status'].update(update_data)
+                        self.db_tables['process_status'].update(update_data, name)
                     except Exception as e:
                         self.logger.error(f"Error updating heartbeat for {name}: {e}")
                 
@@ -337,17 +366,18 @@ class ProcessMonitor:
         
         try:
             since = datetime.now() - timedelta(hours=hours)
+            since_str = since.strftime('%Y-%m-%d %H:%M:%S')
             
             if metric_name:
                 metrics = self.db_tables['process_metrics'](
                     "process_name=? AND metric_name=? AND recorded_at>=?",
-                    (name, metric_name, since),
+                    (name, metric_name, since_str),
                     order_by="recorded_at ASC"
                 )
             else:
                 metrics = self.db_tables['process_metrics'](
                     "process_name=? AND recorded_at>=?",
-                    (name, since),
+                    (name, since_str),
                     order_by="recorded_at ASC"
                 )
             
@@ -444,6 +474,7 @@ class ProcessMonitor:
                     self.logger.warning(f"Process {name} (PID {process.pid}) no longer exists")
                     self.update_process_status(name, ProcessStatus.FAILED, 
                                              error_message="Process terminated unexpectedly")
+                    send_alert(f"Process {name} terminated unexpectedly", "CRITICAL")
                     return
                 
                 proc = psutil.Process(process.pid)
@@ -451,12 +482,14 @@ class ProcessMonitor:
                     self.logger.warning(f"Process {name} (PID {process.pid}) is not running")
                     self.update_process_status(name, ProcessStatus.FAILED,
                                              error_message="Process in non-running state")
+                    send_alert(f"Process {name} is in a non-running state", "CRITICAL")
                     return
                     
             except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
                 self.logger.warning(f"Cannot access process {name} (PID {process.pid}): {e}")
                 self.update_process_status(name, ProcessStatus.FAILED,
                                          error_message=f"Process access error: {e}")
+                send_alert(f"Cannot access process {name}: {e}", "CRITICAL")
                 return
         
         # Check heartbeat age
@@ -473,6 +506,24 @@ class ProcessMonitor:
                 if heartbeat_age > timedelta(minutes=30):
                     self.update_process_status(name, ProcessStatus.FAILED,
                                              error_message=f"No heartbeat for {heartbeat_age}")
+                    send_alert(f"Process {name} has not sent a heartbeat for {heartbeat_age}", "CRITICAL")
+
+    def check_dependencies(self, process_name: str):
+        """Check the health of external dependencies."""
+        # Check database connection
+        try:
+            self.db_tables['db'].execute("SELECT 1")
+        except Exception as e:
+            self.log_event(process_name, LogLevel.ERROR, EventType.ERROR, f"Database connection failed: {e}")
+            self.update_process_status(process_name, ProcessStatus.FAILED, error_message="Database connection failed")
+
+        # Check Bluesky API connection
+        try:
+            import httpx
+            httpx.get("https://bsky.social")
+        except Exception as e:
+            self.log_event(process_name, LogLevel.ERROR, EventType.ERROR, f"Bluesky API connection failed: {e}")
+            self.update_process_status(process_name, ProcessStatus.FAILED, error_message="Bluesky API connection failed")
 
 # Global process monitor instance
 _process_monitor: Optional[ProcessMonitor] = None
@@ -503,6 +554,12 @@ def init_process_monitoring(db_tables):
         "expected_activity_interval": 3600,  # 1 hour
         "restart_policy": "on_failure"
     })
+
+    monitor.register_process("bibliome_scanner", "bibliome_scanner", {
+        "description": "Bibliome network scanner",
+        "expected_activity_interval": 3600 * 6,  # 6 hours
+        "restart_policy": "on_failure"
+    })
     
     # Start monitoring
     monitor.start_monitoring()
@@ -514,10 +571,6 @@ def log_process_event(process_name: str, message: str, level: str = "INFO",
                      event_type: str = "activity", details: Dict[str, Any] = None, db_tables=None):
     """Convenience function to log process events from background processes."""
     try:
-        if not db_tables:
-            from models import get_database
-            db_tables = get_database()
-        
         monitor = get_process_monitor(db_tables)
         
         log_level = LogLevel(level.upper())
@@ -533,10 +586,6 @@ def log_process_event(process_name: str, message: str, level: str = "INFO",
 def record_process_metric(process_name: str, metric_name: str, value: int, metric_type: str = "counter", db_tables=None):
     """Convenience function to record process metrics from background processes."""
     try:
-        if not db_tables:
-            from models import get_database
-            db_tables = get_database()
-        
         monitor = get_process_monitor(db_tables)
         monitor.record_metric(process_name, metric_name, value, metric_type)
         
@@ -547,10 +596,6 @@ def record_process_metric(process_name: str, metric_name: str, value: int, metri
 def process_heartbeat(process_name: str, activity_info: Dict[str, Any] = None, db_tables=None):
     """Send a heartbeat for a process."""
     try:
-        if not db_tables:
-            from models import get_database
-            db_tables = get_database()
-        
         monitor = get_process_monitor(db_tables)
         monitor.heartbeat(process_name, activity_info)
         
@@ -561,10 +606,6 @@ def process_heartbeat(process_name: str, activity_info: Dict[str, Any] = None, d
 def update_process_status(process_name: str, status: str, pid: int = None, error_message: str = None, db_tables=None):
     """Update the status of a process."""
     try:
-        if not db_tables:
-            from models import get_database
-            db_tables = get_database()
-        
         monitor = get_process_monitor(db_tables)
         status_enum = ProcessStatus(status.lower())
         monitor.update_process_status(process_name, status_enum, pid, error_message)

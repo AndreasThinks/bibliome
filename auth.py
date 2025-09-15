@@ -185,7 +185,6 @@ class BlueskyAuth:
     def _get_all_following_paginated(self, user_did: str, session_string: str) -> list[str]:
         """Get all DIDs that a user follows with pagination and caching."""
         try:
-            # Create a fresh client for this operation
             client = AtprotoClient()
             client.login(session_string=session_string)
             
@@ -195,41 +194,53 @@ class BlueskyAuth:
 
             all_following = []
             cursor = None
-            max_pages = 50  # Safety limit: 50 * 100 = 5000 max followers
+            max_pages = 50
             page_count = 0
+            max_retries = 3
+            retry_count = 0
             
             logger.info(f"Starting paginated fetch of followers for user {user_did}")
             
-            while page_count < max_pages:
-                params = {
-                    'actor': user_did,
-                    'limit': 100
-                }
-                if cursor:
-                    params['cursor'] = cursor
-                
+            while page_count < max_pages and retry_count <= max_retries:
                 try:
+                    params = {'actor': user_did, 'limit': 100}
+                    if cursor:
+                        params['cursor'] = cursor
+                    
                     response = client.app.bsky.graph.get_follows(params)
                     
-                    if response and response.follows:
-                        page_followers = [follow.did for follow in response.follows]
-                        all_following.extend(page_followers)
-                        page_count += 1
-                        
-                        logger.debug(f"Page {page_count}: Retrieved {len(page_followers)} followers (total: {len(all_following)})")
-                        
-                        # Check if there are more pages
-                        cursor = getattr(response, 'cursor', None)
-                        if not cursor:
-                            logger.info(f"Reached end of followers list at page {page_count}")
+                    if not response or not response.follows:
+                        if cursor:
+                            logger.warning(f"Stale cursor detected for follows of {user_did}, restarting without cursor")
+                            cursor = None
+                            retry_count += 1
+                            continue
+                        else:
+                            logger.info(f"No more followers found for {user_did}")
                             break
-                    else:
-                        logger.info(f"No more followers found at page {page_count}")
+                    
+                    page_followers = [follow.did for follow in response.follows]
+                    all_following.extend(page_followers)
+                    page_count += 1
+                    
+                    logger.debug(f"Page {page_count}: Retrieved {len(page_followers)} followers (total: {len(all_following)})")
+                    
+                    new_cursor = getattr(response, 'cursor', None)
+                    if not new_cursor or new_cursor == cursor:
+                        logger.info(f"Reached end of followers list at page {page_count}")
                         break
+                    
+                    cursor = new_cursor
                         
                 except Exception as e:
-                    logger.warning(f"Error fetching page {page_count + 1}: {e}")
-                    break
+                    if 'cursor' in str(e).lower() or 'invalid' in str(e).lower():
+                        logger.warning(f"Cursor error for follows of {user_did}: {e}, retrying without cursor")
+                        cursor = None
+                        retry_count += 1
+                        continue
+                    else:
+                        logger.warning(f"Error fetching page {page_count + 1}: {e}")
+                        break
             
             logger.info(f"Retrieved {len(all_following)} total following DIDs across {page_count} pages")
             return all_following

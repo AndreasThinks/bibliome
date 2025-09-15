@@ -7,9 +7,11 @@ requires-python = ">=3.11"
 dependencies = [
     "atproto>=0.0.61",
     "fastmigrate>=0.4.0",
-    "httpx>=0.28.1",
+    "httpx[http2]>=0.28.1",
+    "pillow>=11.3.0",
     "psutil>=7.0.0",
     "pytest>=8.4.1",
     "python-dotenv>=1.1.1",
     "python-fasthtml>=0.12.24",
+    "requests>=2.32.5",
 ]

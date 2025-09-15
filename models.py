@@ -8,14 +8,19 @@ import string
 from fasthtml.common import *
 from fastcore.all import patch
 from atproto import Client, models as at_models
+from atproto_client.exceptions import UnauthorizedError, BadRequestError
+import logging
 
-def create_bookshelf_record(client: Client, name: str, description: str, privacy: str) -> str:
+logger = logging.getLogger(__name__)
+
+def create_bookshelf_record(client: Client, name: str, description: str, privacy: str, open_to_contributions: bool = False) -> str:
     """Creates a bookshelf record on the user's repo and returns its AT-URI."""
     record = {
         '$type': 'com.bibliome.bookshelf',
         'name': name,
         'description': description,
         'privacy': privacy,
+        'openToContributions': open_to_contributions,
         'createdAt': client.get_current_time_iso()
     }
     response = client.com.atproto.repo.put_record(
@@ -47,6 +52,295 @@ def add_book_record(client: Client, bookshelf_uri: str, title: str, author: str,
         )
     )
     return response.uri
+
+def update_bookshelf_record(client: Client, atproto_uri: str, name: str = None, description: str = None, privacy: str = None, open_to_contributions: bool = None) -> str:
+    """
+    Update a bookshelf record on AT Protocol.
+
+    Args:
+        client: Authenticated AT Protocol client
+        atproto_uri: AT Protocol URI of the bookshelf record to update
+        name: New name for the bookshelf (optional)
+        description: New description for the bookshelf (optional)
+        privacy: New privacy setting for the bookshelf (optional)
+        open_to_contributions: New open to contributions setting (optional)
+
+    Returns:
+        str: Updated AT-URI of the record, empty string if failed
+    """
+    try:
+        # Parse the URI into components
+        if not atproto_uri.startswith('at://'):
+            logger.warning(f"Invalid AT URI format: {atproto_uri}")
+            return ""
+
+        parts = atproto_uri[5:].split('/')
+        if len(parts) != 3:
+            logger.warning(f"Invalid AT URI structure: {atproto_uri}")
+            return ""
+
+        repo, collection, rkey = parts
+
+        # Get the existing record first to preserve other fields
+        existing_record = client.com.atproto.repo.get_record(
+            at_models.ComAtprotoRepoGetRecord.Params(
+                repo=repo,
+                collection=collection,
+                rkey=rkey
+            )
+        )
+
+        # Update the record with new values and editedAt timestamp
+        updated_record = dict(existing_record.value)
+        
+        # Only update fields that were provided
+        if name is not None:
+            updated_record['name'] = name
+        if description is not None:
+            updated_record['description'] = description
+        if privacy is not None:
+            updated_record['privacy'] = privacy
+        if open_to_contributions is not None:
+            updated_record['openToContributions'] = open_to_contributions
+            
+        updated_record['editedAt'] = client.get_current_time_iso()
+
+        response = client.com.atproto.repo.put_record(
+            at_models.ComAtprotoRepoPutRecord.Data(
+                repo=repo,
+                collection=collection,
+                rkey=rkey,
+                record=updated_record
+            )
+        )
+        
+        logger.info(f"Successfully updated bookshelf record: {atproto_uri}")
+        return response.uri
+
+    except BadRequestError as e:
+        if "RecordNotFound" in str(e):
+            logger.warning(f"Bookshelf record not found: {atproto_uri}")
+        else:
+            logger.error(f"Bad request error updating bookshelf {atproto_uri}: {e}")
+        return ""
+    except UnauthorizedError as e:
+        logger.error(f"Unauthorized to update bookshelf record {atproto_uri}: {e}")
+        return ""
+    except Exception as e:
+        logger.error(f"Error updating bookshelf record {atproto_uri}: {e}")
+        return ""
+
+def delete_bookshelf_record(client: Client, atproto_uri: str) -> bool:
+    """
+    Delete a bookshelf record from AT Protocol.
+
+    Args:
+        client: Authenticated AT Protocol client
+        atproto_uri: AT Protocol URI of the bookshelf record to delete
+
+    Returns:
+        bool: True if deletion was successful, False otherwise
+    """
+    try:
+        # Parse the URI into components
+        if not atproto_uri.startswith('at://'):
+            logger.warning(f"Invalid AT URI format: {atproto_uri}")
+            return False
+
+        parts = atproto_uri[5:].split('/')
+        if len(parts) != 3:
+            logger.warning(f"Invalid AT URI structure: {atproto_uri}")
+            return False
+
+        repo, collection, rkey = parts
+
+        # Call the delete_record method
+        logger.info(f"Deleting bookshelf record: {atproto_uri}")
+        client.com.atproto.repo.delete_record(
+            at_models.ComAtprotoRepoDeleteRecord.Data(
+                repo=repo,
+                collection=collection,
+                rkey=rkey
+            )
+        )
+
+        logger.info(f"Successfully deleted bookshelf record: {atproto_uri}")
+        return True
+
+    except BadRequestError as e:
+        if "RecordNotFound" in str(e):
+            logger.warning(f"Bookshelf record not found: {atproto_uri}")
+        else:
+            logger.error(f"Bad request error deleting bookshelf {atproto_uri}: {e}")
+        return False
+    except UnauthorizedError as e:
+        logger.error(f"Unauthorized to delete bookshelf record {atproto_uri}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Error deleting bookshelf record {atproto_uri}: {e}")
+        return False
+
+def delete_book_record(client: Client, atproto_uri: str) -> bool:
+    """
+    Delete a book record from AT Protocol.
+
+    Args:
+        client: Authenticated AT Protocol client
+        atproto_uri: AT Protocol URI of the book record to delete
+
+    Returns:
+        bool: True if deletion was successful, False otherwise
+    """
+    try:
+        # Parse the URI into components
+        if not atproto_uri.startswith('at://'):
+            logger.warning(f"Invalid AT URI format: {atproto_uri}")
+            return False
+
+        parts = atproto_uri[5:].split('/')
+        if len(parts) != 3:
+            logger.warning(f"Invalid AT URI structure: {atproto_uri}")
+            return False
+
+        repo, collection, rkey = parts
+
+        # Call the delete_record method
+        logger.info(f"Deleting book record: {atproto_uri}")
+        client.com.atproto.repo.delete_record(
+            at_models.ComAtprotoRepoDeleteRecord.Data(
+                repo=repo,
+                collection=collection,
+                rkey=rkey
+            )
+        )
+
+        logger.info(f"Successfully deleted book record: {atproto_uri}")
+        return True
+
+    except BadRequestError as e:
+        if "RecordNotFound" in str(e):
+            logger.warning(f"Book record not found: {atproto_uri}")
+        else:
+            logger.error(f"Bad request error deleting book {atproto_uri}: {e}")
+        return False
+    except UnauthorizedError as e:
+        logger.error(f"Unauthorized to delete book record {atproto_uri}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Error deleting book record {atproto_uri}: {e}")
+        return False
+
+def create_comment_record(client: Client, book_uri: str, bookshelf_uri: str, content: str) -> str:
+    """Creates a comment record on the user's repo and returns its AT-URI."""
+    record = {
+        '$type': 'com.bibliome.comment',
+        'content': content,
+        'bookRef': book_uri,
+        'bookshelfRef': bookshelf_uri,
+        'createdAt': client.get_current_time_iso()
+    }
+    response = client.com.atproto.repo.put_record(
+        at_models.ComAtprotoRepoPutRecord.Data(
+            repo=client.me.did,
+            collection='com.bibliome.comment',
+            rkey=generate_tid(),
+            record=record
+        )
+    )
+    return response.uri
+
+def update_comment_record(client: Client, comment_uri: str, content: str) -> str:
+    """Updates a comment record on AT Protocol and returns its AT-URI."""
+    try:
+        # Parse the URI into components
+        if not comment_uri.startswith('at://'):
+            logger.warning(f"Invalid AT URI format: {comment_uri}")
+            return ""
+
+        parts = comment_uri[5:].split('/')
+        if len(parts) != 3:
+            logger.warning(f"Invalid AT URI structure: {comment_uri}")
+            return ""
+
+        repo, collection, rkey = parts
+
+        # Get the existing record first to preserve other fields
+        existing_record = client.com.atproto.repo.get_record(
+            at_models.ComAtprotoRepoGetRecord.Params(
+                repo=repo,
+                collection=collection,
+                rkey=rkey
+            )
+        )
+
+        # Update the record with new content and editedAt timestamp
+        updated_record = existing_record.value
+        updated_record['content'] = content
+        updated_record['editedAt'] = client.get_current_time_iso()
+
+        response = client.com.atproto.repo.put_record(
+            at_models.ComAtprotoRepoPutRecord.Data(
+                repo=repo,
+                collection=collection,
+                rkey=rkey,
+                record=updated_record
+            )
+        )
+        return response.uri
+
+    except Exception as e:
+        logger.error(f"Error updating comment record {comment_uri}: {e}")
+        return ""
+
+def delete_comment_record(client: Client, atproto_uri: str) -> bool:
+    """
+    Delete a comment record from AT Protocol.
+
+    Args:
+        client: Authenticated AT Protocol client
+        atproto_uri: AT Protocol URI of the comment record to delete
+
+    Returns:
+        bool: True if deletion was successful, False otherwise
+    """
+    try:
+        # Parse the URI into components
+        if not atproto_uri.startswith('at://'):
+            logger.warning(f"Invalid AT URI format: {atproto_uri}")
+            return False
+
+        parts = atproto_uri[5:].split('/')
+        if len(parts) != 3:
+            logger.warning(f"Invalid AT URI structure: {atproto_uri}")
+            return False
+
+        repo, collection, rkey = parts
+
+        # Call the delete_record method
+        logger.info(f"Deleting comment record: {atproto_uri}")
+        client.com.atproto.repo.delete_record(
+            at_models.ComAtprotoRepoDeleteRecord.Data(
+                repo=repo,
+                collection=collection,
+                rkey=rkey
+            )
+        )
+
+        logger.info(f"Successfully deleted comment record: {atproto_uri}")
+        return True
+
+    except BadRequestError as e:
+        if "RecordNotFound" in str(e):
+            logger.warning(f"Comment record not found: {atproto_uri}")
+        else:
+            logger.error(f"Bad request error deleting comment {atproto_uri}: {e}")
+        return False
+    except UnauthorizedError as e:
+        logger.error(f"Unauthorized to delete comment record {atproto_uri}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Error deleting comment record {atproto_uri}: {e}")
+        return False
 
 def generate_tid():
     """Generate a TID (Timestamp Identifier)."""
@@ -80,6 +374,11 @@ class User:
     avatar_url: str = ""
     created_at: datetime = None
     last_login: datetime = None
+    # Remote origin tracking
+    is_remote: bool = False
+    discovered_at: datetime = None
+    last_seen_remote: datetime = None
+    remote_sync_status: str = "local"
 
 class Bookshelf:
     """Bookshelf model for organizing books."""
@@ -93,6 +392,13 @@ class Bookshelf:
     atproto_uri: str = "" # AT-Proto URI of the record
     created_at: datetime = None
     updated_at: datetime = None
+    # Remote origin tracking
+    is_remote: bool = False
+    remote_owner_did: str = ""
+    discovered_at: datetime = None
+    last_synced: datetime = None
+    remote_sync_status: str = "local"
+    original_atproto_uri: str = ""
 
 class Book:
     """Book model with metadata from external APIs."""
@@ -109,6 +415,16 @@ class Book:
     page_count: int = 0
     atproto_uri: str = "" # AT-Proto URI of the record
     added_at: datetime = None
+    # Cover caching fields
+    cached_cover_path: str = ""
+    cover_cached_at: datetime = None
+    cover_rate_limited_until: datetime = None
+    # Remote origin tracking
+    is_remote: bool = False
+    remote_added_by_did: str = ""
+    discovered_at: datetime = None
+    original_atproto_uri: str = ""
+    remote_sync_status: str = "local"
 
 class Permission:
     """Permission model for role-based access to bookshelves."""
@@ -137,72 +453,191 @@ class BookshelfInvite:
     uses_count: int = 0
     is_active: bool = True
 
-class Upvote:
-    """Track user upvotes on books."""
+
+class Comment:
+    """Comment model for book discussions."""
+    id: int = None  # Auto-incrementing primary key
     book_id: int
+    bookshelf_id: int  # Reference to bookshelf for context/permissions
     user_did: str
+    content: str
+    parent_comment_id: int = None  # For threaded replies
     created_at: datetime = None
+    updated_at: datetime = None
+    is_edited: bool = False
+    # AT Protocol sync fields
+    atproto_uri: str = ""
+    is_remote: bool = False
+    remote_user_did: str = ""
+    discovered_at: datetime = None
+    original_atproto_uri: str = ""
+    remote_sync_status: str = "local"
 
 class Activity:
     """Track user activity for social feed."""
     id: int = None  # Auto-incrementing primary key
     user_did: str
-    activity_type: str  # 'bookshelf_created', 'book_added'
+    activity_type: str  # 'bookshelf_created', 'book_added', 'comment_added'
     bookshelf_id: int = None
     book_id: int = None
     created_at: datetime = None
     # JSON field for additional metadata
     metadata: str = ""  # JSON string for flexible data
 
-# Global database instance to prevent multiple connections
-_db_instance = None
+class SyncLog:
+    """Log synchronization activities."""
+    id: int = None
+    sync_type: str  # 'user', 'bookshelf', 'book'
+    target_id: str  # The ID/DID of the synced record
+    action: str     # 'discovered', 'imported', 'updated', 'failed'
+    details: str = ""  # JSON with additional info
+    timestamp: datetime = None
 
-def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migrations'):
+class ProcessStatus:
+    """Process status model."""
+    process_name: str
+    process_type: str
+    status: str
+    pid: int = None
+    started_at: datetime = None
+    last_heartbeat: datetime = None
+    last_activity: datetime = None
+    restart_count: int = 0
+    error_message: str = ""
+    config_data: str = ""
+    created_at: datetime = None
+    updated_at: datetime = None
+
+class ProcessLog:
+    """Process log model."""
+    id: int = None
+    process_name: str
+    log_level: str
+    event_type: str
+    message: str
+    details: str = ""
+    timestamp: datetime = None
+
+class ProcessMetric:
+    """Process metric model."""
+    id: int = None
+    process_name: str
+    metric_name: str
+    metric_value: int
+    metric_type: str = "counter"
+    recorded_at: datetime = None
+
+def validate_primary_key_setup(db, table_name: str, expected_pk_column: str):
+    """Validate that a table has the correct primary key setup."""
+    try:
+        # Check table info
+        table_info = db.execute(f"PRAGMA table_info({table_name})").fetchall()
+        
+        # Find primary key columns
+        pk_columns = [col for col in table_info if col[5] == 1]  # is_pk == 1
+        
+        if len(pk_columns) != 1:
+            raise RuntimeError(f"Table {table_name} should have exactly 1 primary key, found {len(pk_columns)}")
+        
+        if pk_columns[0][1] != expected_pk_column:
+            raise RuntimeError(f"Table {table_name} primary key should be {expected_pk_column}, found {pk_columns[0][1]}")
+        
+        if 'INTEGER' not in pk_columns[0][2].upper():
+            raise RuntimeError(f"Table {table_name} primary key should be INTEGER, found {pk_columns[0][2]}")
+        
+        print(f"✓ Table {table_name} primary key validation passed")
+        return True
+        
+    except Exception as e:
+        print(f"✗ Table {table_name} primary key validation failed: {e}")
+        raise
+
+def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migrations', memory: bool = False):
     """Initialize the database with fastmigrate and all tables."""
     import os
-    from fastmigrate.core import create_db, run_migrations, get_db_version
-    
-    # Ensure the data directory exists
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    
-    # Initialize fastmigrate managed database
-    # If no db exists, it's created and set to version 0
-    # If a db exists, nothing happens
-    create_db(db_path)
-    
-    # Apply any pending migrations from migrations_dir
-    success = run_migrations(db_path, migrations_dir)
-    if not success:
-        raise RuntimeError("Database migration failed! Application cannot continue.")
-    
-    # Get current database version for logging
-    version = get_db_version(db_path)
-    print(f"Database initialized at version {version}")
-    
-    # Create FastLite database connection with WAL mode
-    db = database(db_path)
+
+    if memory:
+        db_path = ':memory:'
+        print("Setting up in-memory database for testing.")
+        db = database(db_path)
+    else:
+        from fastmigrate.core import create_db, run_migrations, get_db_version
+        
+        # Ensure the data directory exists
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        
+        # Initialize fastmigrate managed database
+        create_db(db_path)
+        
+        # Apply any pending migrations from migrations_dir
+        success = run_migrations(db_path, migrations_dir)
+        if not success:
+            raise RuntimeError("Database migration failed! Application cannot continue.")
+        
+        # Get current database version for logging
+        version = get_db_version(db_path)
+        print(f"Database initialized at version {version}")
+        
+        # Create FastLite database connection
+        db = database(db_path)
     
     # Configure SQLite for better concurrency
     db.execute("PRAGMA journal_mode=WAL")
     db.execute("PRAGMA synchronous=NORMAL") 
     db.execute("PRAGMA wal_autocheckpoint=1000")
     db.execute("PRAGMA busy_timeout=30000")  # 30 second timeout
+    db.execute("PRAGMA cache_size=10000")
+    db.execute("PRAGMA temp_store=memory")
+    db.execute("PRAGMA mmap_size=268435456")
     
-    # Create table objects for FastLite operations
+    # Create table objects for FastLite operations with explicit primary keys
     # These will connect to existing tables created by migrations
-    users = db.create(User, pk='did', transform=True)
-    bookshelves = db.create(Bookshelf, transform=True)
-    books = db.create(Book, transform=True)
-    permissions = db.create(Permission, transform=True)
-    bookshelf_invites = db.create(BookshelfInvite, transform=True)
-    upvotes = db.create(Upvote, pk=['book_id', 'user_did'], transform=True)
-    activities = db.create(Activity, transform=True)
+    users = db.create(User, pk='did', transform=True, if_not_exists=True)
+    bookshelves = db.create(Bookshelf, pk='id', transform=True, if_not_exists=True)
+    books = db.create(Book, pk='id', transform=True, if_not_exists=True)
+    permissions = db.create(Permission, pk='id', transform=True, if_not_exists=True)
+    bookshelf_invites = db.create(BookshelfInvite, pk='id', transform=True, if_not_exists=True)
+    comments = db.create(Comment, pk='id', transform=True, if_not_exists=True)
+    activities = db.create(Activity, pk='id', transform=True, if_not_exists=True)
+    sync_logs = db.create(SyncLog, pk='id', transform=True, if_not_exists=True)
     
-    # Add process monitoring tables
-    from fastlite import Table
-    process_status = Table(db, 'process_status')
-    process_logs = Table(db, 'process_logs')
-    process_metrics = Table(db, 'process_metrics')
+    # Connect to process monitoring tables created by migrations with explicit primary keys
+    # Use FastLite's object transformation but specify correct table names and primary keys
+    try:
+        # For process_status, we need to connect to the existing table
+        process_status = db.t.process_status
+        # Wrap it with the ProcessStatus class for object transformation
+        process_status = db.create(ProcessStatus, pk='process_name', transform=True, if_not_exists=True)
+    except Exception:
+        # Fallback: create with correct table name
+        process_status = db["process_status"]
+    
+    try:
+        # For process_logs, connect to existing table
+        process_logs = db.t.process_logs
+        # Wrap it with the ProcessLog class for object transformation
+        process_logs = db.create(ProcessLog, pk='id', transform=True, if_not_exists=True)
+    except Exception:
+        # Fallback: create with correct table name
+        process_logs = db["process_logs"]
+    
+    try:
+        # For process_metrics, connect to existing table
+        process_metrics = db.t.process_metrics
+        # Wrap it with the ProcessMetric class for object transformation
+        process_metrics = db.create(ProcessMetric, pk='id', transform=True, if_not_exists=True)
+    except Exception:
+        # Fallback: create with correct table name
+        process_metrics = db["process_metrics"]
+    
+    # Validate primary keys for critical process monitoring tables
+    try:
+        validate_primary_key_setup(db, 'process_metrics', 'id')
+        validate_primary_key_setup(db, 'process_logs', 'id')
+        print("✓ Process monitoring table primary key validation completed")
+    except Exception as e:
+        print(f"⚠ Warning: Process monitoring table validation failed: {e}")
+        # Don't fail the entire setup, just log the warning
     
     return {
         'db': db,
@@ -211,19 +646,17 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
         'books': books,
         'permissions': permissions,
         'bookshelf_invites': bookshelf_invites,
-        'upvotes': upvotes,
+        'comments': comments,
         'activities': activities,
+        'sync_logs': sync_logs,
         'process_status': process_status,
         'process_logs': process_logs,
         'process_metrics': process_metrics
     }
 
 def get_database():
-    """Get the shared database instance. Creates it if it doesn't exist."""
-    global _db_instance
-    if _db_instance is None:
-        _db_instance = setup_database()
-    return _db_instance
+    """This function is deprecated. Use database_manager.db_manager instead."""
+    raise DeprecationWarning("get_database() is deprecated. Use database_manager.db_manager instead.")
 
 def generate_invite_code():
     """Generate a secure random invite code."""
@@ -306,6 +739,36 @@ def can_delete_shelf(bookshelf, user_did: str, db_tables) -> bool:
         return False
     return bookshelf.owner_did == user_did
 
+def can_comment_on_books(bookshelf, user_did: str, db_tables) -> bool:
+    """Check if user can comment on books (same as can_add_books)."""
+    if not user_did:
+        return False
+    # Check explicit permissions OR self-join enabled for logged-in users
+    return (check_permission(bookshelf, user_did, ['contributor', 'moderator', 'owner'], db_tables) 
+            or bookshelf.self_join)
+
+def can_edit_comment(comment, user_did: str, db_tables) -> bool:
+    """Check if user can edit a comment (own comments only)."""
+    if not user_did:
+        return False
+    return comment.user_did == user_did
+
+def can_delete_comment(comment, user_did: str, db_tables) -> bool:
+    """Check if user can delete a comment (own comments or moderator/owner)."""
+    if not user_did:
+        return False
+    
+    # Users can delete their own comments
+    if comment.user_did == user_did:
+        return True
+    
+    # Moderators and owners can delete any comments
+    try:
+        bookshelf = db_tables['bookshelves'][comment.bookshelf_id]
+        return check_permission(bookshelf, user_did, ['moderator', 'owner'], db_tables)
+    except:
+        return False
+
 def get_user_role(bookshelf, user_did: str, db_tables) -> str:
     """Get the user's role for a bookshelf."""
     if not user_did:
@@ -355,64 +818,89 @@ def validate_invite(invite_code: str, db_tables) -> Optional[object]:
         return None
 
 def get_books_with_upvotes(bookshelf_id: int, user_did: str = None, db_tables=None):
-    """Get books for a bookshelf with upvote counts, user voting status, and added-by user info."""
+    """Get books for a bookshelf with vote counts based on Book records, user voting status, and added-by user info.
+
+    In the new system, each Book record represents a user's +1 vote for that book.
+    We count Book records grouped by title/author/ISBN to get the vote count.
+    """
     if not db_tables:
         return []
-    
+
     try:
-        # Use SQL query to get books with user info who added them
+        # Query to get unique books with vote counts based on Book records
+        # Group by title, author, and ISBN to identify the same book added by different users
         query = """
-            SELECT b.*, u.handle as added_by_handle, u.display_name as added_by_display_name
+            SELECT
+                b.title,
+                b.author,
+                b.isbn,
+                b.cover_url,
+                b.description,
+                b.publisher,
+                b.published_date,
+                b.page_count,
+                COUNT(*) as upvote_count,
+                MIN(b.id) as representative_id,
+                MIN(b.added_at) as first_added_at,
+                CASE WHEN user_book.id IS NOT NULL THEN 1 ELSE 0 END as user_has_upvoted,
+                first_adder.handle as added_by_handle,
+                first_adder.display_name as added_by_display_name
             FROM book b
-            LEFT JOIN user u ON b.added_by_did = u.did
+            LEFT JOIN book user_book ON b.bookshelf_id = user_book.bookshelf_id 
+                AND b.title = user_book.title 
+                AND b.author = user_book.author 
+                AND COALESCE(b.isbn, '') = COALESCE(user_book.isbn, '')
+                AND user_book.added_by_did = ?
+            LEFT JOIN book first_book ON b.title = first_book.title 
+                AND b.author = first_book.author 
+                AND COALESCE(b.isbn, '') = COALESCE(first_book.isbn, '')
+                AND b.bookshelf_id = first_book.bookshelf_id
+                AND first_book.added_at = (
+                    SELECT MIN(added_at) FROM book 
+                    WHERE bookshelf_id = ? 
+                    AND title = b.title 
+                    AND author = b.author 
+                    AND COALESCE(isbn, '') = COALESCE(b.isbn, '')
+                )
+            LEFT JOIN user first_adder ON first_book.added_by_did = first_adder.did
             WHERE b.bookshelf_id = ?
+            GROUP BY b.title, b.author, COALESCE(b.isbn, '')
+            ORDER BY upvote_count DESC, b.title ASC
         """
-        
-        cursor = db_tables['db'].execute(query, (bookshelf_id,))
-        columns = [d[0] for d in cursor.description]
-        rows = cursor.fetchall()
-        
+
+        # Use FastLite's q() method for efficient raw SQL execution
+        params = [user_did or '', bookshelf_id, bookshelf_id]
+        rows = db_tables['db'].q(query, params)
+
         books_with_votes = []
         for row in rows:
-            book_data = dict(zip(columns, row))
-            
-            # Extract user info before creating Book object
-            added_by_handle = book_data.pop('added_by_handle', None)
-            added_by_display_name = book_data.pop('added_by_display_name', None)
-            
-            # Create Book object
-            book = Book(**{k: v for k, v in book_data.items() if k in Book.__annotations__})
-            
-            # Count upvotes for this book
-            upvote_count = len(db_tables['upvotes']("book_id=?", (book.id,)))
-            
-            # Skip books with no upvotes
-            if upvote_count == 0:
-                continue
-            
-            # Check if current user has upvoted this book
-            user_has_upvoted = False
-            if user_did:
-                try:
-                    user_upvote = db_tables['upvotes']("book_id=? AND user_did=?", (book.id, user_did))[0]
-                    user_has_upvoted = user_upvote is not None
-                except IndexError:
-                    user_has_upvoted = False
-            
-            # Add computed attributes to the book object
-            book.upvote_count = upvote_count
-            book.user_has_upvoted = user_has_upvoted
-            book.added_by_handle = added_by_handle
-            book.added_by_display_name = added_by_display_name
-            
+            # Create a Book object using the representative data
+            book = Book(
+                id=row['representative_id'],
+                bookshelf_id=bookshelf_id,
+                title=row['title'],
+                author=row['author'],
+                isbn=row['isbn'] or '',
+                cover_url=row['cover_url'] or '',
+                description=row['description'] or '',
+                publisher=row['publisher'] or '',
+                published_date=row['published_date'] or '',
+                page_count=row['page_count'] or 0,
+                added_by_did='',  # Not relevant for grouped books
+                added_at=row['first_added_at']
+            )
+
+            # Add computed attributes
+            book.upvote_count = row['upvote_count']
+            book.user_has_upvoted = bool(row['user_has_upvoted'])
+            book.added_by_handle = row['added_by_handle']
+            book.added_by_display_name = row['added_by_display_name']
+
             books_with_votes.append(book)
-        
-        # Sort by upvote count (descending) then by title
-        books_with_votes.sort(key=lambda b: (-b.upvote_count, b.title))
-        
+
         return books_with_votes
     except Exception as e:
-        print(f"Error getting books with upvotes: {e}")
+        logger.error(f"Error getting books with vote counts: {e}")
         return []
 
 def log_activity(user_did: str, activity_type: str, db_tables, bookshelf_id: int = None, book_id: int = None, metadata: str = ""):
@@ -805,14 +1293,14 @@ def calculate_shelf_activity_score(shelf_id: int, db_tables) -> float:
         cursor = db_tables['db'].execute(contributors_query, (shelf_id,))
         contributor_count = cursor.fetchone()[0]
         
-        # Total engagement (upvotes) - weight: 20%
-        upvotes_query = """
-            SELECT COUNT(*) FROM upvote u
-            JOIN book b ON u.book_id = b.id
-            WHERE b.bookshelf_id = ?
+        # Total engagement (book records) - weight: 20%
+        # Count total book records as engagement metric
+        books_query = """
+            SELECT COUNT(*) FROM book 
+            WHERE bookshelf_id = ?
         """
-        cursor = db_tables['db'].execute(upvotes_query, (shelf_id,))
-        total_upvotes = cursor.fetchone()[0]
+        cursor = db_tables['db'].execute(books_query, (shelf_id,))
+        total_books = cursor.fetchone()[0]
         
         # Shelf age boost (newer shelves get bonus) - weight: 10%
         # Handle both datetime objects and string dates
@@ -827,7 +1315,17 @@ def calculate_shelf_activity_score(shelf_id: int, db_tables) -> float:
                     shelf_created = parse(shelf.created_at)
             else:
                 shelf_created = shelf.created_at
-            shelf_age_days = (datetime.now() - shelf_created).days
+            
+            # Ensure both datetimes have consistent timezone handling
+            if shelf_created.tzinfo is not None:
+                # shelf_created is timezone-aware, make datetime.now() timezone-aware too
+                from datetime import timezone
+                current_time = datetime.now(timezone.utc)
+            else:
+                # shelf_created is timezone-naive, use naive datetime.now()
+                current_time = datetime.now()
+            
+            shelf_age_days = (current_time - shelf_created).days
         else:
             shelf_age_days = 365
         age_score = max(0, 60 - shelf_age_days) / 60  # Boost for shelves < 60 days old
@@ -836,7 +1334,7 @@ def calculate_shelf_activity_score(shelf_id: int, db_tables) -> float:
         activity_score = (
             (recent_books_count * 10) * 0.4 +  # Recent activity
             (contributor_count * 5) * 0.3 +    # Collaboration
-            (total_upvotes * 2) * 0.2 +        # Engagement
+            (total_books * 2) * 0.2 +          # Engagement
             (age_score * 20) * 0.1              # Recency
         )
         
@@ -1093,6 +1591,200 @@ def search_users(db_tables, query: str = "", viewer_did: str = None, limit: int 
         print(f"Error searching users: {e}")
         return []
 
+def get_book_by_id(book_id: int, db_tables):
+    """Get a book by its ID, returning None if not found."""
+    try:
+        return db_tables['books'][book_id]
+    except IndexError:
+        return None
+
+def get_book_comments(book_id: int, db_tables, bookshelf_id: int = None, limit: int = 50):
+    """Get comments for a book with user information.
+    
+    Args:
+        book_id: The book to get comments for
+        db_tables: Database tables
+        bookshelf_id: Optional bookshelf ID to filter comments by shelf context
+        limit: Maximum number of comments to return
+    
+    Returns:
+        List of comments, filtered by bookshelf if bookshelf_id is provided
+    """
+    import time
+    import sqlite3
+    
+    max_retries = 3
+    retry_delay = 0.1  # Start with 100ms delay
+    
+    for attempt in range(max_retries):
+        try:
+            if bookshelf_id is not None:
+                # Filter comments by both book and bookshelf (shelf-specific context)
+                query = """
+                    SELECT c.*, u.handle, u.display_name, u.avatar_url
+                    FROM comment c
+                    JOIN user u ON c.user_did = u.did
+                    WHERE c.book_id = ? AND c.bookshelf_id = ?
+                    ORDER BY c.created_at ASC
+                    LIMIT ?
+                """
+                params = (book_id, bookshelf_id, limit)
+            else:
+                # Show all comments for the book across all bookshelves (general book page)
+                query = """
+                    SELECT c.*, u.handle, u.display_name, u.avatar_url
+                    FROM comment c
+                    JOIN user u ON c.user_did = u.did
+                    WHERE c.book_id = ?
+                    ORDER BY c.created_at ASC
+                    LIMIT ?
+                """
+                params = (book_id, limit)
+            
+            cursor = db_tables['db'].execute(query, params)
+            # Get column descriptions BEFORE calling fetchall()
+            columns = [d[0] for d in cursor.description]
+            rows = cursor.fetchall()
+            
+            comments = []
+            for row in rows:
+                comment_data = dict(zip(columns, row))
+                
+                # Parse datetime fields if they're strings
+                for date_field in ['created_at', 'updated_at']:
+                    if date_field in comment_data and comment_data[date_field]:
+                        if isinstance(comment_data[date_field], str):
+                            try:
+                                from datetime import datetime
+                                comment_data[date_field] = datetime.fromisoformat(comment_data[date_field].replace('Z', '+00:00'))
+                            except ValueError:
+                                # If parsing fails, set to None
+                                comment_data[date_field] = None
+                
+                comment = Comment(**{k: v for k, v in comment_data.items() if k in Comment.__annotations__})
+                comment.user_handle = comment_data.get('handle')
+                comment.user_display_name = comment_data.get('display_name')
+                comment.user_avatar_url = comment_data.get('avatar_url')
+                comments.append(comment)
+            
+            return comments
+            
+        except sqlite3.OperationalError as e:
+            error_msg = str(e).lower()
+            if ('database is locked' in error_msg or 'database is busy' in error_msg) and attempt < max_retries - 1:
+                # Log the retry attempt
+                logger.warning(f"Database busy/locked getting comments for book {book_id} (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay}s")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+                continue
+            else:
+                # Log the final failure or non-retryable error
+                logger.error(f"Database error getting comments for book {book_id} (bookshelf {bookshelf_id}): {e}")
+                return []
+        except Exception as e:
+            # Non-database errors - don't retry
+            logger.error(f"Error getting comments for book {book_id} (bookshelf {bookshelf_id}): {e}")
+            return []
+    
+    # If we get here, all retries failed
+    logger.error(f"Failed to get comments for book {book_id} after {max_retries} attempts due to database contention")
+    return []
+
+def get_book_activity(book_id: int, db_tables, activity_type: str = "all", limit: int = 20):
+    """Get activity for a specific book with filtering."""
+    try:
+        query = """
+            SELECT a.*, u.handle, u.display_name, u.avatar_url,
+                   b.name as bookshelf_name, b.slug as bookshelf_slug
+            FROM activity a
+            JOIN user u ON a.user_did = u.did
+            LEFT JOIN bookshelf b ON a.bookshelf_id = b.id
+            WHERE a.book_id = ?
+        """
+        
+        params = [book_id]
+        
+        # Add activity type filter
+        if activity_type != "all":
+            query += " AND a.activity_type = ?"
+            params.append(activity_type)
+        
+        query += " ORDER BY a.created_at DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor = db_tables['db'].execute(query, params)
+        columns = [d[0] for d in cursor.description]
+        rows = cursor.fetchall()
+        
+        activities = []
+        for row in rows:
+            activity_data = dict(zip(columns, row))
+            activity = {
+                'id': activity_data['id'],
+                'user_did': activity_data['user_did'],
+                'activity_type': activity_data['activity_type'],
+                'bookshelf_id': activity_data['bookshelf_id'],
+                'book_id': activity_data['book_id'],
+                'created_at': activity_data['created_at'],
+                'metadata': activity_data['metadata'],
+                'user_handle': activity_data['handle'],
+                'user_display_name': activity_data['display_name'],
+                'user_avatar_url': activity_data['avatar_url'],
+                'bookshelf_name': activity_data['bookshelf_name'],
+                'bookshelf_slug': activity_data['bookshelf_slug']
+            }
+            activities.append(activity)
+        
+        return activities
+        
+    except Exception as e:
+        print(f"Error getting activity for book {book_id}: {e}")
+        return []
+
+def get_book_shelves(book_id: int, db_tables, viewer_did: str = None):
+    """Get all shelves that contain this book (with permission filtering)."""
+    try:
+        # Get the book to find similar books by title/author/ISBN
+        book = get_book_by_id(book_id, db_tables)
+        if not book:
+            return []
+        
+        # Find all shelves containing books with the same title/author/ISBN
+        query = """
+            SELECT DISTINCT bs.*, COUNT(b.id) as vote_count
+            FROM bookshelf bs
+            JOIN book b ON bs.id = b.bookshelf_id
+            LEFT JOIN permission p ON bs.id = p.bookshelf_id AND p.user_did = ? AND p.status = 'active'
+            WHERE b.title = ? AND b.author = ? AND COALESCE(b.isbn, '') = COALESCE(?, '')
+            AND (
+                bs.privacy = 'public' 
+                OR bs.privacy = 'link-only'
+                OR (bs.privacy = 'private' AND bs.owner_did = ?)
+                OR (bs.privacy = 'private' AND p.user_did IS NOT NULL)
+            )
+            GROUP BY bs.id
+            ORDER BY vote_count DESC, bs.updated_at DESC
+        """
+        
+        params = [viewer_did or '', book.title, book.author, book.isbn or '', viewer_did or '']
+        cursor = db_tables['db'].execute(query, params)
+        columns = [d[0] for d in cursor.description]
+        rows = cursor.fetchall()
+        
+        shelves = []
+        for row in rows:
+            shelf_data = dict(zip(columns, row))
+            vote_count = shelf_data.pop('vote_count', 0)
+            shelf = Bookshelf(**{k: v for k, v in shelf_data.items() if k in Bookshelf.__annotations__})
+            shelf.vote_count = vote_count
+            shelves.append(shelf)
+        
+        return shelves
+        
+    except Exception as e:
+        print(f"Error getting shelves for book {book_id}: {e}")
+        return []
+
 # FT rendering methods for models
 @patch
 def __ft__(self: Bookshelf):
@@ -1121,12 +1813,16 @@ def __ft__(self: Book):
         search_query = f"{self.title} {self.author}".replace(" ", "+")
         google_books_url = f"https://books.google.com/books?q={search_query}"
     
+    # Use cached cover if available, fallback to original URL
+    from cover_cache import cover_cache
+    cover_url = cover_cache.get_cover_url(self.id, self.cover_url) if self.id and self.cover_url else self.cover_url
+    
     cover = Img(
-        src=self.cover_url,
+        src=cover_url,
         alt=f"Cover of {self.title}",
         cls="book-cover",
         loading="lazy"
-    ) if self.cover_url else Div("📖", cls="book-cover-placeholder")
+    ) if cover_url else Div("📖", cls="book-cover-placeholder")
     
     description = P(
         self.description[:100] + "..." if len(self.description) > 100 else self.description,
@@ -1156,15 +1852,8 @@ def __ft__(self: Book):
     )
 
 @patch
-def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False, user_auth_status="anonymous"):
-    """Render Book as a card with upvote and remove functionality."""
-    # Generate Google Books URL
-    if self.isbn:
-        google_books_url = f"https://books.google.com/books?isbn={self.isbn}"
-    else:
-        # Fallback to search query if no ISBN
-        search_query = f"{self.title} {self.author}".replace(" ", "+")
-        google_books_url = f"https://books.google.com/books?q={search_query}"
+def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False, user_auth_status="anonymous", db_tables=None):
+    """Render Book as a card with clickable title, +1/-1 toggle, and optional comment preview."""
     
     cover = Img(
         src=self.cover_url,
@@ -1179,74 +1868,90 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
         cls="book-description"
     ) if self.description else None
     
-    # Build voting buttons with better permission-aware states
-    voting_buttons = []
+    # Get a random comment if available
+    comment_preview = None
+    if db_tables:
+        try:
+            comments = get_book_comments(self.id, db_tables, limit=10)
+            if comments:
+                import random
+                random_comment = random.choice(comments)
+                comment_preview = Div(
+                    P(f'"{random_comment.content[:60]}{"..." if len(random_comment.content) > 60 else ""}"', 
+                      cls="comment-preview-text"),
+                    P(f"— {random_comment.user_display_name or random_comment.user_handle}", 
+                      cls="comment-preview-author"),
+                    cls="comment-preview"
+                )
+        except Exception as e:
+            # Silently handle any errors in comment fetching
+            pass
     
+    # Build action row with just +1/-1 toggle and comment button
+    action_icons = []
+    
+    # 1. +1/-1 Toggle Button
     if can_upvote:
-        # User can vote - show active buttons
-        upvote_cls = "vote-btn upvote-btn" + (" voted" if user_has_upvoted else "")
-        voting_buttons.append(Button(
-            "👍",
-            hx_post=f"/book/{self.id}/upvote",
-            hx_target=f"#book-{self.id}",
-            hx_swap="outerHTML",
-            cls=upvote_cls,
-            disabled=user_has_upvoted,
-            title=f"Upvote ({upvote_count})" if not user_has_upvoted else f"Remove upvote ({upvote_count})",
-            onclick="event.stopPropagation()"
-        ))
-        
-        # Downvote button (remove vote if user has upvoted)
-        downvote_cls = "vote-btn downvote-btn" + (" disabled" if not user_has_upvoted else "")
-        downvote_attrs = {
-            "cls": downvote_cls,
-            "disabled": not user_has_upvoted,
-            "title": "Remove vote" if user_has_upvoted else "You haven't upvoted this book",
-            "onclick": "event.stopPropagation()"
-        }
         if user_has_upvoted:
-            downvote_attrs.update({
-                "hx_post": f"/book/{self.id}/upvote",
-                "hx_target": f"#book-{self.id}",
-                "hx_swap": "outerHTML"
-            })
-        
-        voting_buttons.append(Button("👎", **downvote_attrs))
-    else:
-        # User cannot vote - show appropriate disabled state with clear messaging
-        if user_auth_status == "anonymous":
-            # Not logged in
-            voting_buttons.append(Button(
-                "👍", 
-                cls="vote-btn upvote-btn disabled-anonymous", 
-                disabled=True, 
-                title="Sign in to vote on books",
-                onclick="window.location.href='/auth/login'"
+            # User has +1, show -1 option
+            action_icons.append(Button(
+                "-1",
+                hx_post=f"/book/{self.id}/toggle",
+                hx_target=f"#book-{self.id}",
+                hx_swap="outerHTML",
+                cls="action-btn toggle-btn remove-vote",
+                title=f"Remove your +1 (currently {upvote_count} votes)",
+                onclick="event.stopPropagation()"
             ))
-            voting_buttons.append(Button(
-                "👎", 
-                cls="vote-btn downvote-btn disabled-anonymous", 
+        else:
+            # User doesn't have +1, show +1 option
+            action_icons.append(Button(
+                "+1",
+                hx_post=f"/book/{self.id}/toggle",
+                hx_target=f"#book-{self.id}",
+                hx_swap="outerHTML",
+                cls="action-btn toggle-btn add-vote",
+                title=f"Add your +1 (currently {upvote_count} votes)",
+                onclick="event.stopPropagation()"
+            ))
+    else:
+        # User cannot vote - show appropriate disabled state
+        if user_auth_status == "anonymous":
+            action_icons.append(Button(
+                "+1", 
+                cls="action-btn toggle-btn disabled-anonymous", 
                 disabled=True, 
-                title="Sign in to vote on books",
+                title="Sign in to add books to this shelf",
                 onclick="window.location.href='/auth/login'"
             ))
         else:
-            # Logged in but no permission
-            voting_buttons.append(Button(
-                "👍", 
-                cls="vote-btn upvote-btn disabled-no-permission", 
+            action_icons.append(Button(
+                "+1", 
+                cls="action-btn toggle-btn disabled-no-permission", 
                 disabled=True, 
-                title="Only contributors can vote on books in this shelf"
-            ))
-            voting_buttons.append(Button(
-                "👎", 
-                cls="vote-btn downvote-btn disabled-no-permission", 
-                disabled=True, 
-                title="Only contributors can vote on books in this shelf"
+                title="Only contributors can add books to this shelf"
             ))
     
-    # Vote count display
-    vote_count_display = Span(f"{upvote_count}", cls="vote-count")
+    # 2. Comment Icon - HTMX modal trigger
+    # Try to get bookshelf context from the current page URL
+    action_icons.append(Button(
+        "💬",
+        hx_get=f"/api/book/{self.id}/comment-modal",
+        hx_target="#comment-modal-container",
+        hx_swap="innerHTML",
+        cls="action-btn comment-btn",
+        title="View and add comments",
+        onclick="event.stopPropagation()"
+    ))
+    
+    # 3. Add to Shelf Icon
+    action_icons.append(Button(
+        "📚",
+        cls="action-btn add-to-shelf-btn",
+        title="Add to one of your shelves",
+        onclick="event.stopPropagation(); showShelfSelector(this)",
+        **{"data-book-id": self.id, "data-book-title": self.title, "data-book-author": self.author, "data-book-isbn": self.isbn or ""}
+    ))
     
     # Build the card components
     card_children = []
@@ -1261,11 +1966,25 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
             title="Remove book from shelf"
         ))
     
-    # Cover container
-    card_children.append(Div(cover, cls="book-cover-container"))
+    # Create the main clickable area that includes cover and title
+    clickable_content = []
     
-    # Book info section
+    # Cover container with vote count badge overlay
+    cover_container_children = [cover]
+    
+    # Vote count badge (always visible, positioned over cover)
+    if upvote_count > 0:
+        cover_container_children.append(Div(
+            f"{upvote_count}",
+            cls="vote-count-badge",
+            title=f"{upvote_count} votes"
+        ))
+    
+    clickable_content.append(Div(*cover_container_children, cls="book-cover-container"))
+    
+    # Book info section (without action buttons)
     book_info_children = [
+        # Book title (no longer wrapped in separate link)
         H4(self.title, cls="book-title"),
     ]
     
@@ -1275,35 +1994,36 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
     if description:
         book_info_children.append(description)
     
-    # Voting section
-    book_info_children.append(Div(
-        Div(*voting_buttons, cls="voting-buttons"),
-        vote_count_display,
-        cls="book-voting"
+    # Add comment preview if available
+    if comment_preview:
+        book_info_children.append(comment_preview)
+    
+    clickable_content.append(Div(*book_info_children, cls="book-info"))
+    
+    # Wrap cover and title in a single clickable link
+    card_children.append(A(
+        *clickable_content,
+        href=f"/book/{self.id}",
+        cls="book-main-link",
+        title="View book details"
     ))
     
-    # More info link
-    book_info_children.append(A(
-        "More Info",
-        href=google_books_url,
-        target="_blank",
-        rel="noopener noreferrer",
-        cls="more-info-link",
-        title="View on Google Books"
+    # Action row with +1/-1 toggle and comment button (outside the main link)
+    card_children.append(Div(
+        *action_icons,
+        cls="book-actions-row"
     ))
     
-    # Discrete user attribution
+    # Discrete user attribution (outside the main link)
     added_by_handle = getattr(self, 'added_by_handle', None)
     added_by_display_name = getattr(self, 'added_by_display_name', None)
     if added_by_handle:
         user_display = added_by_display_name or added_by_handle
-        book_info_children.append(P(
+        card_children.append(P(
             "Added by ",
             A(f"@{added_by_handle}", href=f"/user/{added_by_handle}", cls="book-added-by-link", title="View profile"),
             cls="book-added-by"
         ))
-    
-    card_children.append(Div(*book_info_children, cls="book-info"))
     
     return Div(
         *card_children,
@@ -1312,30 +2032,25 @@ def as_interactive_card(self: Book, can_upvote=False, user_has_upvoted=False, up
     )
 
 @patch
-def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False, user_auth_status="anonymous"):
-    """Render Book as a table row for list view."""
-    # Generate Google Books URL
-    if self.isbn:
-        google_books_url = f"https://books.google.com/books?isbn={self.isbn}"
-    else:
-        # Fallback to search query if no ISBN
-        search_query = f"{self.title} {self.author}".replace(" ", "+")
-        google_books_url = f"https://books.google.com/books?q={search_query}"
+def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_count=0, can_remove=False, user_auth_status="anonymous", db_tables=None):
+    """Render Book as a table row for list view with full feature parity to grid view."""
     
-    # Small cover thumbnail
+    # Clickable cover thumbnail (links to book detail page)
+    cover_content = Img(
+        src=self.cover_url,
+        alt=f"Cover of {self.title}",
+        cls="book-table-cover",
+        loading="lazy"
+    ) if self.cover_url else Div("📖", cls="book-table-cover-placeholder")
+    
     cover_cell = Td(
-        Img(
-            src=self.cover_url,
-            alt=f"Cover of {self.title}",
-            cls="book-table-cover",
-            loading="lazy"
-        ) if self.cover_url else Div("📖", cls="book-table-cover-placeholder"),
+        A(cover_content, href=f"/book/{self.id}", cls="book-table-cover-link", title="View book details"),
         cls="cover-cell"
     )
     
-    # Title cell
+    # Clickable title cell (links to book detail page) - now matches the card implementation
     title_cell = Td(
-        Strong(self.title, cls="book-table-title"),
+        A(self.title, href=f"/book/{self.id}", cls="book-table-title-link", title="View book details"),
         cls="title-cell"
     )
     
@@ -1345,11 +2060,32 @@ def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_co
         cls="author-cell"
     )
     
-    # Description cell (truncated) with discrete user attribution
+    # Description cell with comment preview and user attribution
     description_parts = []
+    
+    # Main description (truncated)
     description_text = self.description[:60] + "..." if len(self.description) > 60 else self.description
     if description_text:
         description_parts.append(Div(description_text, cls="book-table-description"))
+    
+    # Get a random comment preview if available (matching grid view)
+    if db_tables:
+        try:
+            comments = get_book_comments(self.id, db_tables, limit=10)
+            if comments:
+                import random
+                random_comment = random.choice(comments)
+                comment_preview = Div(
+                    P(f'"{random_comment.content[:40]}{"..." if len(random_comment.content) > 40 else ""}"', 
+                      cls="comment-preview-text"),
+                    P(f"— {random_comment.user_display_name or random_comment.user_handle}", 
+                      cls="comment-preview-author"),
+                    cls="comment-preview table-comment-preview"
+                )
+                description_parts.append(comment_preview)
+        except Exception:
+            # Silently handle any errors in comment fetching
+            pass
     
     # Add discrete user attribution
     added_by_handle = getattr(self, 'added_by_handle', None)
@@ -1365,62 +2101,47 @@ def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_co
         cls="description-cell"
     )
     
-    # Voting cell with permission-aware states
+    # Voting cell with +1/-1 toggle system (matching card view)
     voting_buttons = []
     if can_upvote:
-        upvote_cls = "vote-btn-small upvote-btn" + (" voted" if user_has_upvoted else "")
-        voting_buttons.append(Button(
-            "👍",
-            hx_post=f"/book/{self.id}/upvote",
-            hx_target=f"#book-row-{self.id}",
-            hx_swap="outerHTML",
-            cls=upvote_cls,
-            disabled=user_has_upvoted,
-            title=f"Upvote ({upvote_count})" if not user_has_upvoted else f"Remove upvote ({upvote_count})"
-        ))
-        
-        downvote_cls = "vote-btn-small downvote-btn" + (" disabled" if not user_has_upvoted else "")
-        downvote_attrs = {
-            "cls": downvote_cls,
-            "disabled": not user_has_upvoted,
-            "title": "Remove vote" if user_has_upvoted else "You haven't upvoted this book"
-        }
         if user_has_upvoted:
-            downvote_attrs.update({
-                "hx_post": f"/book/{self.id}/upvote",
-                "hx_target": f"#book-row-{self.id}",
-                "hx_swap": "outerHTML"
-            })
-        voting_buttons.append(Button("👎", **downvote_attrs))
+            # User has +1, show -1 option
+            voting_buttons.append(Button(
+                "-1",
+                hx_post=f"/book/{self.id}/toggle",
+                hx_target=f"#book-row-{self.id}",
+                hx_swap="outerHTML",
+                cls="vote-btn-small toggle-btn remove-vote",
+                title=f"Remove your +1 (currently {upvote_count} votes)",
+                onclick="event.stopPropagation()"
+            ))
+        else:
+            # User doesn't have +1, show +1 option
+            voting_buttons.append(Button(
+                "+1",
+                hx_post=f"/book/{self.id}/toggle",
+                hx_target=f"#book-row-{self.id}",
+                hx_swap="outerHTML",
+                cls="vote-btn-small toggle-btn add-vote",
+                title=f"Add your +1 (currently {upvote_count} votes)",
+                onclick="event.stopPropagation()"
+            ))
     else:
         # Permission-aware disabled states
         if user_auth_status == "anonymous":
             voting_buttons.append(Button(
-                "👍", 
-                cls="vote-btn-small upvote-btn disabled-anonymous", 
+                "+1", 
+                cls="vote-btn-small toggle-btn disabled-anonymous", 
                 disabled=True, 
-                title="Sign in to vote on books",
-                onclick="window.location.href='/auth/login'"
-            ))
-            voting_buttons.append(Button(
-                "👎", 
-                cls="vote-btn-small downvote-btn disabled-anonymous", 
-                disabled=True, 
-                title="Sign in to vote on books",
+                title="Sign in to add books to this shelf",
                 onclick="window.location.href='/auth/login'"
             ))
         else:
             voting_buttons.append(Button(
-                "👍", 
-                cls="vote-btn-small upvote-btn disabled-no-permission", 
+                "+1", 
+                cls="vote-btn-small toggle-btn disabled-no-permission", 
                 disabled=True, 
-                title="Only contributors can vote on books in this shelf"
-            ))
-            voting_buttons.append(Button(
-                "👎", 
-                cls="vote-btn-small downvote-btn disabled-no-permission", 
-                disabled=True, 
-                title="Only contributors can vote on books in this shelf"
+                title="Only contributors can add books to this shelf"
             ))
     
     votes_cell = Td(
@@ -1432,12 +2153,30 @@ def as_table_row(self: Book, can_upvote=False, user_has_upvoted=False, upvote_co
         cls="votes-cell"
     )
     
-    # Actions cell
-    actions = [
-        A("More Info", href=google_books_url, target="_blank", rel="noopener noreferrer", 
-          cls="table-more-info-link", title="View on Google Books")
-    ]
+    # Actions cell with comment and add-to-shelf buttons (matching grid view)
+    actions = []
     
+    # Comment button - HTMX modal trigger (matching grid view)
+    actions.append(Button(
+        "💬",
+        hx_get=f"/api/book/{self.id}/comment-modal",
+        hx_target="#comment-modal-container",
+        hx_swap="innerHTML",
+        cls="action-btn comment-btn table-comment-btn",
+        title="View and add comments",
+        onclick="event.stopPropagation()"
+    ))
+    
+    # Add to Shelf button (matching grid view)
+    actions.append(Button(
+        "📚",
+        cls="action-btn add-to-shelf-btn table-add-to-shelf-btn",
+        title="Add to one of your shelves",
+        onclick="event.stopPropagation(); showShelfSelector(this)",
+        **{"data-book-id": self.id, "data-book-title": self.title, "data-book-author": self.author, "data-book-isbn": self.isbn or ""}
+    ))
+    
+    # Remove button (if user can remove)
     if can_remove:
         escaped_title = self.title.replace("'", "\\'").replace('"', '\\"')
         actions.append(Button(
