@@ -252,6 +252,24 @@ class BiblioMeScanner:
         #    return
 
         try:
+            # Ensure the user exists before creating the bookshelf to prevent foreign key constraint errors
+            try:
+                user = self.db_tables['users'][did]
+            except NotFoundError:
+                # User doesn't exist, create a minimal user record
+                logger.warning(f"User {did} not found when syncing bookshelf {uri}, creating minimal user record")
+                minimal_user = User(
+                    did=did,
+                    handle=self._resolve_did_to_handle(did),
+                    display_name="",
+                    avatar_url="",
+                    is_remote=True,
+                    discovered_at=datetime.now(timezone.utc),
+                    remote_sync_status='partial'
+                )
+                self.db_tables['users'].insert(minimal_user)
+                logger.info(f"Created minimal user record for {did}")
+            
             # Extract createdAt from AT-Proto record
             created_at = None
             created_at_raw = getattr(value, 'createdAt', None)
@@ -367,6 +385,24 @@ class BiblioMeScanner:
             return
 
         try:
+            # Ensure the user exists before creating the book to prevent foreign key constraint errors
+            try:
+                user = self.db_tables['users'][did]
+            except NotFoundError:
+                # User doesn't exist, create a minimal user record
+                logger.warning(f"User {did} not found when syncing book {uri}, creating minimal user record")
+                minimal_user = User(
+                    did=did,
+                    handle=self._resolve_did_to_handle(did),
+                    display_name="",
+                    avatar_url="",
+                    is_remote=True,
+                    discovered_at=datetime.now(timezone.utc),
+                    remote_sync_status='partial'
+                )
+                self.db_tables['users'].insert(minimal_user)
+                logger.info(f"Created minimal user record for {did}")
+            
             # Find the local bookshelf this book belongs to
             parent_shelf_list = self.db_tables['bookshelves']("original_atproto_uri=?", (bookshelf_ref_uri,))
             if not parent_shelf_list:
