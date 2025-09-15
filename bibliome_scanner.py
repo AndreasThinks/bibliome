@@ -417,17 +417,32 @@ class BiblioMeScanner:
                         from cover_cache import cover_cache
                         
                         # Cache the cover asynchronously
-                        cached_path = await cover_cache.download_and_cache_cover(
+                        cache_result = await cover_cache.download_and_cache_cover(
                             created_book.id, book_dict['cover_url']
                         )
                         
-                        # Update the book record with cache info if successful
-                        if cached_path:
+                        # Handle the result based on the new return format
+                        if cache_result['success']:
+                            # Successfully cached
                             self.db_tables['books'].update({
-                                'cached_cover_path': cached_path,
+                                'cached_cover_path': cache_result['cached_path'],
+                                'cover_cached_at': datetime.now(timezone.utc),
+                                'cover_rate_limited_until': None  # Clear any previous rate limit
+                            }, created_book.id)
+                            logger.debug(f"Cover cached for book {created_book.id}: {cache_result['cached_path']}")
+                        elif cache_result['error_type'] == 'rate_limit':
+                            # Rate limited - mark for later retry
+                            self.db_tables['books'].update({
+                                'cover_cached_at': datetime.now(timezone.utc),
+                                'cover_rate_limited_until': cache_result['rate_limited_until']
+                            }, created_book.id)
+                            logger.info(f"Cover download rate limited for book {created_book.id}, will retry after {cache_result['rate_limited_until']}")
+                        else:
+                            # Other error - mark as attempted
+                            self.db_tables['books'].update({
                                 'cover_cached_at': datetime.now(timezone.utc)
                             }, created_book.id)
-                            logger.debug(f"Cover cached for book {created_book.id}: {cached_path}")
+                            logger.debug(f"Cover caching failed for book {created_book.id}: {cache_result['error_type']}")
                         
                     except Exception as e:
                         logger.warning(f"Failed to cache cover for book {created_book.id}: {e}")

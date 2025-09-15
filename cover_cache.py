@@ -4,8 +4,8 @@ import os
 import hashlib
 import logging
 from pathlib import Path
-from typing import Optional, Tuple
-from datetime import datetime
+from typing import Optional, Tuple, Dict, Any
+from datetime import datetime, timedelta
 import httpx
 from PIL import Image
 import io
@@ -55,23 +55,39 @@ class CoverCacheManager:
         return self.get_cached_cover_path(book_id, cover_url) is not None
     
     async def download_and_cache_cover(self, book_id: int, cover_url: str, 
-                                     timeout: float = 10.0) -> Optional[str]:
+                                     timeout: float = 10.0) -> Dict[str, Any]:
         """
         Download a cover image and cache it locally.
         
         Returns:
-            str: Relative path to cached file, or None if failed
+            Dict with keys:
+            - 'success': bool - whether caching succeeded
+            - 'cached_path': str or None - relative path to cached file if successful
+            - 'rate_limited_until': datetime or None - when rate limit expires (for 429 errors)
+            - 'error_type': str - type of error ('rate_limit', 'timeout', 'http_error', 'processing_error', etc.)
+            - 'retry_after': int or None - seconds to wait before retry (from Retry-After header)
         """
+        result = {
+            'success': False,
+            'cached_path': None,
+            'rate_limited_until': None,
+            'error_type': None,
+            'retry_after': None
+        }
+        
         if not cover_url or not cover_url.strip():
             logger.debug(f"No cover URL provided for book {book_id}")
-            return None
+            result['error_type'] = 'no_url'
+            return result
         
         try:
             # Check if already cached
             if self.is_cover_cached(book_id, cover_url):
                 cached_path = self.get_cached_cover_path(book_id, cover_url)
                 logger.debug(f"Cover already cached for book {book_id}: {cached_path}")
-                return str(cached_path.resolve().relative_to(Path.cwd().resolve()))
+                result['success'] = True
+                result['cached_path'] = str(cached_path.resolve().relative_to(Path.cwd().resolve()))
+                return result
             
             logger.info(f"Downloading cover for book {book_id}: {cover_url}")
             
@@ -82,19 +98,78 @@ class CoverCacheManager:
                 
                 if not response.content:
                     logger.warning(f"Empty response for cover URL: {cover_url}")
-                    return None
+                    result['error_type'] = 'empty_response'
+                    return result
                 
                 # Process and save the image
-                return await self._process_and_save_image(
+                cached_path = await self._process_and_save_image(
                     book_id, cover_url, response.content
                 )
                 
+                if cached_path:
+                    result['success'] = True
+                    result['cached_path'] = cached_path
+                else:
+                    result['error_type'] = 'processing_error'
+                
+                return result
+                
         except httpx.TimeoutException:
             logger.warning(f"Timeout downloading cover for book {book_id}: {cover_url}")
+            result['error_type'] = 'timeout'
         except httpx.HTTPStatusError as e:
-            logger.warning(f"HTTP error downloading cover for book {book_id}: {e.response.status_code}")
+            if e.response.status_code == 429:
+                # Handle rate limiting specially
+                logger.warning(f"Rate limited downloading cover for book {book_id}: {cover_url}")
+                result['error_type'] = 'rate_limit'
+                
+                # Parse Retry-After header if available
+                retry_after = self._parse_retry_after_header(e.response)
+                if retry_after:
+                    result['retry_after'] = retry_after
+                    result['rate_limited_until'] = datetime.now() + timedelta(seconds=retry_after)
+                    logger.info(f"Rate limit expires in {retry_after} seconds for book {book_id}")
+                else:
+                    # Default to 24 hours if no Retry-After header
+                    default_hours = int(os.getenv('COVER_CACHE_DEFAULT_RATE_LIMIT_HOURS', '24'))
+                    result['rate_limited_until'] = datetime.now() + timedelta(hours=default_hours)
+                    logger.info(f"Rate limit set to {default_hours} hours (default) for book {book_id}")
+            else:
+                logger.warning(f"HTTP error downloading cover for book {book_id}: {e.response.status_code}")
+                result['error_type'] = 'http_error'
         except Exception as e:
             logger.error(f"Error downloading cover for book {book_id}: {e}", exc_info=True)
+            result['error_type'] = 'unknown_error'
+        
+        return result
+    
+    def _parse_retry_after_header(self, response: httpx.Response) -> Optional[int]:
+        """Parse the Retry-After header from an HTTP response."""
+        try:
+            retry_after = response.headers.get('Retry-After')
+            if retry_after:
+                # Retry-After can be in seconds (integer) or HTTP date
+                try:
+                    # Try parsing as seconds first
+                    return int(retry_after)
+                except ValueError:
+                    # Try parsing as HTTP date
+                    try:
+                        from email.utils import parsedate_to_datetime
+                        retry_date = parsedate_to_datetime(retry_after)
+                        if retry_date:
+                            # Make sure both datetimes are timezone-aware or naive
+                            now = datetime.now()
+                            if retry_date.tzinfo is not None:
+                                # retry_date is timezone-aware, make now timezone-aware too
+                                from datetime import timezone
+                                now = now.replace(tzinfo=timezone.utc)
+                            delta = retry_date - now
+                            return max(0, int(delta.total_seconds()))
+                    except Exception as date_error:
+                        logger.debug(f"Error parsing HTTP date in Retry-After: {date_error}")
+        except Exception as e:
+            logger.debug(f"Error parsing Retry-After header: {e}")
         
         return None
     

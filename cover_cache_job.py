@@ -36,6 +36,7 @@ class CoverCacheJob:
         self.batch_size = int(os.getenv('COVER_CACHE_BATCH_SIZE', '50'))
         self.retry_failed_after_hours = int(os.getenv('COVER_CACHE_RETRY_AFTER_HOURS', '168'))  # 1 week
         self.max_concurrent_downloads = int(os.getenv('COVER_CACHE_MAX_CONCURRENT', '5'))
+        self.rate_limit_recovery_interval_hours = int(os.getenv('COVER_CACHE_RATE_LIMIT_RECOVERY_HOURS', '1'))  # Check hourly
         
     async def run(self):
         """Main loop for the cover cache job."""
@@ -60,16 +61,19 @@ class CoverCacheJob:
         self.db_tables = await db_manager.get_connection()
         
         try:
-            # 1. Cache covers for books without cached covers
+            # 1. Cache covers for books without cached covers (skip rate-limited ones)
             await self.cache_missing_covers()
             
-            # 2. Retry failed cover downloads
+            # 2. Retry failed cover downloads (skip rate-limited ones)
             await self.retry_failed_covers()
             
-            # 3. Clean up orphaned cover files
+            # 3. Recover from rate limits (check if rate limit periods have expired)
+            await self.recover_rate_limited_covers()
+            
+            # 4. Clean up orphaned cover files
             await self.cleanup_orphaned_covers()
             
-            # 4. Log cache statistics
+            # 5. Log cache statistics
             await self.log_cache_stats()
             
             logger.info("Cover cache job cycle completed successfully")
@@ -129,18 +133,31 @@ class CoverCacheJob:
             try:
                 logger.debug(f"Caching cover for book {book_id}: {cover_url}")
                 
-                cached_path = await cover_cache.download_and_cache_cover(book_id, cover_url)
+                cache_result = await cover_cache.download_and_cache_cover(book_id, cover_url)
                 
-                if cached_path:
-                    # Update the book record with cache info
+                if cache_result['success']:
+                    # Successfully cached
                     self.db_tables['books'].update({
-                        'cached_cover_path': cached_path,
+                        'cached_cover_path': cache_result['cached_path'],
+                        'cover_cached_at': datetime.now(),
+                        'cover_rate_limited_until': None  # Clear any previous rate limit
+                    }, book_id)
+                    logger.debug(f"Successfully cached cover for book {book_id}: {cache_result['cached_path']}")
+                    return True
+                elif cache_result['error_type'] == 'rate_limit':
+                    # Rate limited - mark for later retry
+                    self.db_tables['books'].update({
+                        'cover_cached_at': datetime.now(),
+                        'cover_rate_limited_until': cache_result['rate_limited_until']
+                    }, book_id)
+                    logger.info(f"Cover download rate limited for book {book_id}, will retry after {cache_result['rate_limited_until']}")
+                    return False
+                else:
+                    # Other error - mark as attempted
+                    self.db_tables['books'].update({
                         'cover_cached_at': datetime.now()
                     }, book_id)
-                    logger.debug(f"Successfully cached cover for book {book_id}: {cached_path}")
-                    return True
-                else:
-                    logger.warning(f"Failed to cache cover for book {book_id}: {cover_url}")
+                    logger.debug(f"Cover caching failed for book {book_id}: {cache_result['error_type']}")
                     return False
                     
             except Exception as e:
@@ -204,22 +221,31 @@ class CoverCacheJob:
             try:
                 logger.debug(f"Retrying cover cache for book {book_id}: {cover_url}")
                 
-                cached_path = await cover_cache.download_and_cache_cover(book_id, cover_url)
+                cache_result = await cover_cache.download_and_cache_cover(book_id, cover_url)
                 
-                if cached_path:
-                    # Update the book record with cache info
+                if cache_result['success']:
+                    # Successfully cached
                     self.db_tables['books'].update({
-                        'cached_cover_path': cached_path,
-                        'cover_cached_at': datetime.now()
+                        'cached_cover_path': cache_result['cached_path'],
+                        'cover_cached_at': datetime.now(),
+                        'cover_rate_limited_until': None  # Clear any previous rate limit
                     }, book_id)
-                    logger.debug(f"Successfully retried cover cache for book {book_id}: {cached_path}")
+                    logger.debug(f"Successfully retried cover cache for book {book_id}: {cache_result['cached_path']}")
                     return True
+                elif cache_result['error_type'] == 'rate_limit':
+                    # Rate limited again - update the rate limit period
+                    self.db_tables['books'].update({
+                        'cover_cached_at': datetime.now(),
+                        'cover_rate_limited_until': cache_result['rate_limited_until']
+                    }, book_id)
+                    logger.info(f"Cover retry rate limited for book {book_id}, will retry after {cache_result['rate_limited_until']}")
+                    return False
                 else:
-                    # Update the retry timestamp even if failed
+                    # Other error - update the retry timestamp
                     self.db_tables['books'].update({
                         'cover_cached_at': datetime.now()
                     }, book_id)
-                    logger.warning(f"Retry failed for book {book_id}: {cover_url}")
+                    logger.debug(f"Cover retry failed for book {book_id}: {cache_result['error_type']}")
                     return False
                     
             except Exception as e:
@@ -228,6 +254,102 @@ class CoverCacheJob:
                 try:
                     self.db_tables['books'].update({
                         'cover_cached_at': datetime.now()
+                    }, book_id)
+                except:
+                    pass
+                return False
+    
+    async def recover_rate_limited_covers(self):
+        """Recover covers that were rate limited but the rate limit period has expired."""
+        logger.info("Checking for rate limit recovery opportunities...")
+        
+        try:
+            # Find books that were rate limited but the rate limit period has expired
+            current_time = datetime.now()
+            
+            query = """
+                SELECT id, cover_url 
+                FROM book 
+                WHERE cover_url != '' 
+                AND cover_url IS NOT NULL 
+                AND (cached_cover_path = '' OR cached_cover_path IS NULL)
+                AND cover_rate_limited_until IS NOT NULL
+                AND cover_rate_limited_until <= ?
+                ORDER BY cover_rate_limited_until ASC
+                LIMIT ?
+            """
+            
+            cursor = self.db_tables['db'].execute(query, (current_time.isoformat(), self.batch_size // 4))
+            books_to_recover = cursor.fetchall()
+            
+            if not books_to_recover:
+                logger.info("No rate-limited covers ready for recovery")
+                return
+            
+            logger.info(f"Found {len(books_to_recover)} rate-limited covers ready for recovery")
+            
+            # Process recoveries with concurrency control
+            semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
+            tasks = []
+            
+            for book_id, cover_url in books_to_recover:
+                task = self._recover_rate_limited_cover_with_semaphore(semaphore, book_id, cover_url)
+                tasks.append(task)
+            
+            # Wait for all recoveries to complete
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Count successes and failures
+            successes = sum(1 for result in results if result is True)
+            failures = sum(1 for result in results if result is not True)
+            
+            logger.info(f"Rate limit recovery completed: {successes} successful, {failures} failed")
+            
+        except Exception as e:
+            logger.error(f"Error recovering rate limited covers: {e}", exc_info=True)
+    
+    async def _recover_rate_limited_cover_with_semaphore(self, semaphore: asyncio.Semaphore, 
+                                                       book_id: int, cover_url: str) -> bool:
+        """Recover a single rate-limited cover with concurrency control."""
+        async with semaphore:
+            try:
+                logger.debug(f"Recovering rate-limited cover for book {book_id}: {cover_url}")
+                
+                cache_result = await cover_cache.download_and_cache_cover(book_id, cover_url)
+                
+                if cache_result['success']:
+                    # Successfully cached
+                    self.db_tables['books'].update({
+                        'cached_cover_path': cache_result['cached_path'],
+                        'cover_cached_at': datetime.now(),
+                        'cover_rate_limited_until': None  # Clear the rate limit
+                    }, book_id)
+                    logger.info(f"Successfully recovered rate-limited cover for book {book_id}: {cache_result['cached_path']}")
+                    return True
+                elif cache_result['error_type'] == 'rate_limit':
+                    # Still rate limited - update the rate limit period
+                    self.db_tables['books'].update({
+                        'cover_cached_at': datetime.now(),
+                        'cover_rate_limited_until': cache_result['rate_limited_until']
+                    }, book_id)
+                    logger.info(f"Cover still rate limited for book {book_id}, will retry after {cache_result['rate_limited_until']}")
+                    return False
+                else:
+                    # Other error - clear rate limit but mark as failed
+                    self.db_tables['books'].update({
+                        'cover_cached_at': datetime.now(),
+                        'cover_rate_limited_until': None  # Clear rate limit since it's not a rate limit error
+                    }, book_id)
+                    logger.debug(f"Cover recovery failed for book {book_id}: {cache_result['error_type']}")
+                    return False
+                    
+            except Exception as e:
+                logger.error(f"Error recovering rate-limited cover for book {book_id}: {e}")
+                # Clear rate limit on exception
+                try:
+                    self.db_tables['books'].update({
+                        'cover_cached_at': datetime.now(),
+                        'cover_rate_limited_until': None
                     }, book_id)
                 except:
                     pass
