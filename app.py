@@ -7,6 +7,7 @@ from models import (
     get_public_shelves, get_recent_community_books
 )
 from api_clients import BookAPIClient
+from static_utils import get_cached_css_url
 from components import (
     NavBar, LandingPageHero, FeaturesSection, CommunityReadingSection,
     HowItWorksSection, PublicShelvesPreview, UniversalFooter, NetworkActivityFeed,
@@ -86,7 +87,7 @@ app, rt = fast_app(
         Link(rel="preconnect", href="https://fonts.gstatic.com", crossorigin=""),
         Link(rel="stylesheet", href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap"),
         Link(rel="stylesheet", href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"),
-        Link(rel="stylesheet", href="/static/css/styles.css"),
+        Link(rel="stylesheet", href=get_cached_css_url()),
         Script(src="https://unpkg.com/htmx.org@1.9.10")
     )
 )
