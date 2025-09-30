@@ -131,6 +131,18 @@ wheels = [
 ]
 
 [[package]]
+name = "authlib"
+version = "1.6.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ce/bb/73a1f1c64ee527877f64122422dafe5b87a846ccf4ac933fe21bcbb8fee8/authlib-1.6.4.tar.gz", hash = "sha256:104b0442a43061dc8bc23b133d1d06a2b0a9c2e3e33f34c4338929e816287649", size = 164046, upload-time = "2025-09-17T09:59:23.897Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0e/aa/91355b5f539caf1b94f0e66ff1e4ee39373b757fce08204981f7829ede51/authlib-1.6.4-py2.py3-none-any.whl", hash = "sha256:39313d2a2caac3ecf6d8f95fbebdfd30ae6ea6ae6a6db794d976405fdd9aa796", size = 243076, upload-time = "2025-09-17T09:59:22.259Z" },
+]
+
+[[package]]
 name = "beautifulsoup4"
 version = "4.13.4"
 source = { registry = "https://pypi.org/simple" }
@@ -149,6 +161,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "atproto" },
+    { name = "authlib" },
     { name = "fastmigrate" },
     { name = "httpx", extra = ["http2"] },
     { name = "pillow" },
@@ -162,6 +175,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "atproto", specifier = ">=0.0.61" },
+    { name = "authlib", specifier = ">=1.6.4" },
     { name = "fastmigrate", specifier = ">=0.4.0" },
     { name = "httpx", extras = ["http2"], specifier = ">=0.28.1" },
     { name = "pillow", specifier = ">=11.3.0" },

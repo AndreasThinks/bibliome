@@ -1441,6 +1441,160 @@ def logout_handler(sess):
     sess.clear()
     return RedirectResponse('/', status_code=303)
 
+# OAuth Authentication Routes (atproto OAuth)
+@rt("/oauth/login", methods=("GET", "POST"))
+def oauth_login(request, sess):
+    """OAuth login - GET shows form, POST initiates OAuth flow."""
+    from auth_oauth import oauth_auth
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+
+        if not username:
+            sess['error'] = "Please enter a handle or DID"
+            return RedirectResponse('/oauth/login', status_code=303)
+
+        try:
+            # Initiate OAuth flow
+            redirect_url = oauth_auth.initiate_oauth_flow(username, request)
+            return RedirectResponse(redirect_url, status_code=303)
+
+        except Exception as e:
+            logger.error(f"OAuth login failed for {username}: {e}")
+            sess['error'] = f"OAuth login failed: {str(e)}"
+            return RedirectResponse('/oauth/login', status_code=303)
+    else:
+        # Show OAuth login form
+        error_msg = sess.pop('error', None)
+        return oauth_auth.create_oauth_login_form(error_msg)
+
+@rt("/oauth/callback")
+def oauth_callback(request):
+    """Handle OAuth callback from authorization server."""
+    from auth_oauth import oauth_auth
+
+    try:
+        state = request.query_params.get("state")
+        iss = request.query_params.get("iss")
+        code = request.query_params.get("code")
+
+        if not all([state, iss, code]):
+            raise ValueError("Missing required OAuth parameters")
+
+        # Complete OAuth flow
+        user_data = oauth_auth.handle_oauth_callback(state, iss, code, request)
+
+        # Create session for user
+        request.session['auth'] = user_data
+
+        # Redirect to dashboard or pending URL
+        next_url = request.session.pop('next_url', None)
+        redirect_url = next_url if next_url else '/'
+
+        return RedirectResponse(redirect_url, status_code=303)
+
+    except Exception as e:
+        logger.error(f"OAuth callback failed: {e}")
+        request.session['error'] = f"OAuth authentication failed: {str(e)}"
+        return RedirectResponse('/oauth/login', status_code=303)
+
+@rt("/oauth/client-metadata.json")
+def oauth_client_metadata(request):
+    """OAuth client metadata endpoint - this becomes the client_id."""
+    from auth_oauth import oauth_auth
+
+    if not oauth_auth.is_oauth_enabled():
+        return JSONResponse({"error": "OAuth not configured"}, status_code=503)
+
+    # In FastHTML, we need to construct URLs from request info
+    scheme = request.url.scheme
+    host = request.url.hostname
+    port = request.url.port
+
+    # Ensure HTTPS for OAuth (required)
+    if scheme == 'http' and port == 5001:
+        scheme = 'https'  # Assume HTTPS in production
+
+    base_url = f"{scheme}://{host}"
+    if scheme == 'https' and port != 443:
+        base_url += f":{port}"
+    elif scheme == 'http' and port != 80:
+        base_url += f":{port}"
+
+    client_id = f"{base_url}/oauth/client-metadata.json"
+
+    return JSONResponse({
+        "client_id": client_id,
+        "dpop_bound_access_tokens": True,
+        "application_type": "web",
+        "redirect_uris": [f"{base_url}/oauth/callback"],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "scope": "atproto transition:generic",
+        "token_endpoint_auth_method": "private_key_jwt",
+        "token_endpoint_auth_signing_alg": "ES256",
+        "jwks_uri": f"{base_url}/oauth/jwks.json",
+        "client_name": "Bibliome",
+        "client_uri": base_url,
+    })
+
+@rt("/oauth/jwks.json")
+def oauth_jwks():
+    """OAuth JWKS endpoint - exposes public key for client authentication."""
+    from auth_oauth import oauth_auth
+
+    if not oauth_auth.is_oauth_enabled():
+        return JSONResponse({"error": "OAuth not configured"}, status_code=503)
+
+    return JSONResponse({
+        "keys": [oauth_auth.client_pub_jwk]
+    })
+
+@rt("/oauth/refresh")
+def oauth_refresh(auth, request):
+    """Manual OAuth token refresh (for testing)."""
+    if not auth:
+        return RedirectResponse('/oauth/login', status_code=303)
+
+    from auth_oauth import oauth_auth
+
+    try:
+        user_did = auth['did']
+        updated_session = oauth_auth.refresh_user_session(user_did, request)
+
+        # Update session data
+        request.session['auth'] = updated_session
+
+        request.session['success'] = "Tokens refreshed successfully"
+        return RedirectResponse('/', status_code=303)
+
+    except Exception as e:
+        logger.error(f"OAuth refresh failed: {e}")
+        request.session['error'] = f"Token refresh failed: {str(e)}"
+        return RedirectResponse('/', status_code=303)
+
+@rt("/oauth/logout")
+def oauth_logout_handler(auth, request):
+    """OAuth logout - remove OAuth session."""
+    if not auth:
+        return RedirectResponse('/', status_code=303)
+
+    from auth_oauth import oauth_auth
+
+    try:
+        user_did = auth['did']
+        oauth_auth.logout_user(user_did)
+
+        # Clear session
+        request.session.clear()
+
+        return RedirectResponse('/', status_code=303)
+
+    except Exception as e:
+        logger.error(f"OAuth logout failed: {e}")
+        request.session.clear()
+        return RedirectResponse('/', status_code=303)
+
 # Bookshelf routes
 @rt("/shelf/new")
 def new_shelf_page(auth):
