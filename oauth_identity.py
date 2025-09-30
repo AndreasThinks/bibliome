@@ -7,7 +7,7 @@ import logging
 from typing import Optional, Dict, Any, Tuple
 from urllib.parse import urlparse
 
-from atproto_security import (
+from oauth_security import (
     is_safe_url, safe_http_client, validate_atproto_did,
     validate_atproto_handle, sanitize_string
 )

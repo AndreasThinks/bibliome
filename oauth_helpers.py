@@ -14,8 +14,8 @@ from urllib.parse import urlencode
 from authlib.jose import JsonWebKey, jwt
 import httpx
 
-from atproto_security import is_safe_url, safe_http_client
-from atproto_identity import IdentityResolutionError
+from oauth_security import is_safe_url, safe_http_client
+from oauth_identity import IdentityResolutionError
 
 logger = logging.getLogger(__name__)
 
@@ -270,7 +270,7 @@ def initial_token_request(
         # Add client assertion for confidential clients
         if client_secret_jwk:
             # We need to fetch authserver metadata for issuer
-            from atproto_identity import fetch_authserver_meta
+            from oauth_identity import fetch_authserver_meta
             authserver_meta = fetch_authserver_meta(authserver_iss)
 
             client_assertion = create_client_assertion_jwt(
@@ -347,7 +347,7 @@ def refresh_token_request(
         # Add client assertion for confidential clients
         if client_secret_jwk:
             # We need to fetch authserver metadata for issuer
-            from atproto_identity import fetch_authserver_meta
+            from oauth_identity import fetch_authserver_meta
             authserver_meta = fetch_authserver_meta(authserver_iss)
 
             client_assertion = create_client_assertion_jwt(

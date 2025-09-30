@@ -8,15 +8,15 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 from authlib.jose import JsonWebKey
 
-from atproto_identity import (
+from oauth_identity import (
     resolve_identity, is_valid_did, is_valid_handle,
     pds_endpoint, resolve_pds_authserver, fetch_authserver_meta
 )
-from atproto_oauth import (
+from oauth_helpers import (
     send_par_auth_request, retry_par_with_nonce, initial_token_request,
     refresh_token_request, generate_dpop_key, OAuthError
 )
-from atproto_security import is_safe_url
+from oauth_security import is_safe_url
 
 logger = logging.getLogger(__name__)
 
