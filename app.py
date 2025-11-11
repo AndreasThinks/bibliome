@@ -67,8 +67,15 @@ oauth_redirect_uri = os.getenv('OAUTH_REDIRECT_URI', '')
 oauth_scope = os.getenv('OAUTH_SCOPE', 'atproto')
 oauth_client = None
 if oauth_client_id and oauth_redirect_uri:
-    oauth_client = OAuthClient(oauth_client_id, oauth_redirect_uri, oauth_scope)
-    logger.info("OAuth client initialized")
+    try:
+        oauth_client = OAuthClient(oauth_client_id, oauth_redirect_uri, oauth_scope)
+        logger.info("OAuth client initialized successfully")
+    except ATProtoOAuthError as e:
+        logger.warning(f"OAuth client initialization failed: {e}")
+        logger.warning("OAuth authentication will not be available. App password login will still work.")
+    except Exception as e:
+        logger.error(f"Unexpected error initializing OAuth client: {e}")
+        logger.warning("OAuth authentication will not be available. App password login will still work.")
 
 
 # Beforeware function that includes database tables

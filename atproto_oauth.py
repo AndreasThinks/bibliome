@@ -19,9 +19,20 @@ from datetime import datetime, timedelta
 from urllib.parse import urlencode, urlparse
 
 import httpx
-from authlib.jose import JsonWebKey, jwt
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives import serialization
+
+# Try to import OAuth dependencies - gracefully degrade if not available
+try:
+    from authlib.jose import JsonWebKey, jwt
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import serialization
+    OAUTH_AVAILABLE = True
+except ImportError:
+    OAUTH_AVAILABLE = False
+    # Create dummy classes for type hints
+    class JsonWebKey:
+        pass
+    class jwt:
+        pass
 
 
 class ATProtoOAuthError(Exception):
@@ -40,7 +51,16 @@ class OAuthClient:
             client_id: Client identifier (HTTPS URL to client metadata)
             redirect_uri: OAuth redirect URI
             scope: OAuth scope (default: "atproto")
+
+        Raises:
+            ATProtoOAuthError: If OAuth dependencies are not available
         """
+        if not OAUTH_AVAILABLE:
+            raise ATProtoOAuthError(
+                "OAuth dependencies not installed. "
+                "Please install: pip install authlib cryptography"
+            )
+
         self.client_id = client_id
         self.redirect_uri = redirect_uri
         self.scope = scope
@@ -741,3 +761,7 @@ def get_client_metadata(client_id: str, redirect_uri: str, scope: str = "atproto
         "application_type": "web",
         "dpop_bound_access_tokens": True
     }
+
+
+# Export availability flag
+__all__ = ['OAuthClient', 'ATProtoOAuthError', 'generate_state', 'get_client_metadata', 'OAUTH_AVAILABLE']

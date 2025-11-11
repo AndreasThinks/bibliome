@@ -1,0 +1,20 @@
+# Nixpacks configuration for Bibliome
+# Documentation: https://nixpacks.com/docs/configuration/file
+
+[phases.setup]
+nixPkgs = ['python311', 'openssl', 'libffi']
+aptPkgs = ['build-essential', 'libssl-dev', 'libffi-dev']
+
+[phases.install]
+cmds = [
+    'pip install --upgrade pip setuptools wheel',
+    'pip install -r requirements.txt'
+]
+
+[start]
+cmd = 'python main.py'
+
+[variables]
+# Python environment variables
+PYTHONUNBUFFERED = '1'
+PYTHONDONTWRITEBYTECODE = '1'

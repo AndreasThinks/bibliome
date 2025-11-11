@@ -10,6 +10,22 @@ OAuth provides a more secure authentication method compared to app passwords. Wi
 - Support for token refresh and revocation
 - Full compliance with AT Protocol OAuth specification
 
+## Installation
+
+### Dependencies
+
+OAuth requires two additional Python packages:
+```bash
+pip install authlib>=1.3.0 cryptography>=42.0.0
+```
+
+Or with uv:
+```bash
+uv sync
+```
+
+The app will gracefully degrade if these packages are not installed, falling back to app password authentication only.
+
 ## Configuration
 
 ### Environment Variables
