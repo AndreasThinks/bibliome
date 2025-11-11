@@ -4441,6 +4441,105 @@ section + section {
     color: var(--brand-navy);
 }
 
+/* OAuth login styles */
+.oauth-section {
+    margin-bottom: 1.5rem;
+    padding: 1.5rem;
+    background: linear-gradient(135deg, rgba(212, 148, 30, 0.05) 0%, rgba(212, 148, 30, 0.02) 100%);
+    border-radius: 0.75rem;
+    border: 2px solid rgba(212, 148, 30, 0.2);
+}
+
+.oauth-section-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--brand-navy);
+    margin: 0 0 0.5rem 0;
+    text-align: center;
+}
+
+.oauth-section-desc {
+    font-size: 0.9rem;
+    color: var(--brand-muted);
+    margin: 0 0 1rem 0;
+    text-align: center;
+}
+
+.login-btn-oauth {
+    width: 100%;
+    background: var(--brand-amber);
+    color: var(--brand-navy);
+    border: none;
+    padding: 1rem 2rem;
+    border-radius: 0.5rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 1rem;
+}
+
+.login-btn-oauth:hover {
+    background: #c08419;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(212, 148, 30, 0.3);
+}
+
+.login-divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    margin: 1.5rem 0;
+    position: relative;
+}
+
+.login-divider::before,
+.login-divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid var(--brand-border);
+}
+
+.divider-text {
+    padding: 0 1rem;
+    color: var(--brand-muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.app-password-section {
+    margin-bottom: 1.5rem;
+}
+
+.legacy-section-title {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--brand-muted);
+    margin: 0 0 1rem 0;
+    text-align: center;
+}
+
+.login-btn-secondary {
+    width: 100%;
+    background: var(--brand-white);
+    color: var(--brand-navy);
+    border: 2px solid var(--brand-border);
+    padding: 1rem 2rem;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 1rem;
+}
+
+.login-btn-secondary:hover {
+    background: var(--brand-light);
+    border-color: var(--brand-amber);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
 /* Mobile responsive for login */
 @media (max-width: 768px) {
     .login-container {

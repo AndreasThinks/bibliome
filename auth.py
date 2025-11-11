@@ -21,9 +21,9 @@ class BlueskyAuth:
     def __init__(self):
         self.client = AtprotoClient()
     
-    def create_login_form(self, error_msg: str = None):
-        """Create the login form with optional error message."""
-        
+    def create_login_form(self, error_msg: str = None, oauth_enabled: bool = True):
+        """Create the login form with optional error message and OAuth option."""
+
         return (
             Title("Login - Bibliome"),
             Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
@@ -37,47 +37,81 @@ class BlueskyAuth:
                         P("Sign in with your Bluesky account", cls="login-subtitle"),
                         cls="login-header"
                     ),
-                    
+
                     # Error message if present
                     Alert(error_msg, "error") if error_msg else None,
-                    
-                    # Login form with proper autocomplete
-                    Form(
-                        Fieldset(
-                            Label("Bluesky Handle", Input(
-                                name="handle",
-                                id="username",
-                                type="text",
-                                placeholder="your-handle.bsky.social",
-                                autocomplete="username",
-                                required=True,
-                                cls="login-input"
-                            )),
-                            Label("App Password", Input(
-                                name="password",
-                                id="password",
-                                type="password",
-                                placeholder="Your Bluesky app password",
-                                autocomplete="current-password",
-                                required=True,
-                                cls="login-input"
-                            )),
-                            cls="login-fieldset"
+
+                    # OAuth login option (recommended)
+                    (Div(
+                        H3("Recommended: OAuth Login", cls="oauth-section-title"),
+                        P("More secure - no app password needed", cls="oauth-section-desc"),
+                        Form(
+                            Fieldset(
+                                Label("Bluesky Handle", Input(
+                                    name="handle",
+                                    type="text",
+                                    placeholder="your-handle.bsky.social",
+                                    required=True,
+                                    cls="login-input"
+                                )),
+                                cls="login-fieldset"
+                            ),
+                            Button("Sign In with OAuth", type="submit", cls="login-btn-oauth"),
+                            action="/auth/oauth/start",
+                            method="get",
+                            cls="login-form oauth-form"
                         ),
-                        Button("Sign In", type="submit", cls="login-btn-primary"),
-                        action="/auth/login",
-                        method="post",
-                        autocomplete="on",
-                        cls="login-form"
+                        cls="oauth-section"
+                    ) if oauth_enabled else None),
+
+                    # Divider
+                    (Div(
+                        Span("OR", cls="divider-text"),
+                        cls="login-divider"
+                    ) if oauth_enabled else None),
+
+                    # App password login option (legacy)
+                    Div(
+                        (H3("App Password Login", cls="legacy-section-title") if oauth_enabled else None),
+                        # Login form with proper autocomplete
+                        Form(
+                            Fieldset(
+                                Label("Bluesky Handle", Input(
+                                    name="handle",
+                                    id="username",
+                                    type="text",
+                                    placeholder="your-handle.bsky.social",
+                                    autocomplete="username",
+                                    required=True,
+                                    cls="login-input"
+                                )),
+                                Label("App Password", Input(
+                                    name="password",
+                                    id="password",
+                                    type="password",
+                                    placeholder="Your Bluesky app password",
+                                    autocomplete="current-password",
+                                    required=True,
+                                    cls="login-input"
+                                )),
+                                cls="login-fieldset"
+                            ),
+                            Button("Sign In with App Password", type="submit", cls="login-btn-secondary" if oauth_enabled else "login-btn-primary"),
+                            action="/auth/login",
+                            method="post",
+                            autocomplete="on",
+                            cls="login-form"
+                        ),
+                        cls="app-password-section"
                     ),
-                    
+
                     # Help text and links
                     Div(
                         P(
                             "Need an app password? ",
-                            A("Create one in your Bluesky settings", 
-                              href="https://bsky.app/settings/app-passwords", 
-                              target="_blank", 
+                            A("Create one in your Bluesky settings",
+                              href="https://bsky.app/settings/app-passwords",
+                              target="_blank",
                               rel="noopener noreferrer",
                               cls="login-help-link")
                         ),
@@ -87,7 +121,7 @@ class BlueskyAuth:
                         ),
                         cls="login-help"
                     ),
-                    
+
                     cls="login-card"
                 ),
                 cls="login-container"
