@@ -379,6 +379,17 @@ class User:
     discovered_at: datetime = None
     last_seen_remote: datetime = None
     remote_sync_status: str = "local"
+    # OAuth 2.0 fields
+    oauth_access_token: str = ""
+    oauth_refresh_token: str = ""
+    oauth_token_expires_at: datetime = None
+    oauth_dpop_private_jwk: str = ""  # JSON string
+    oauth_dpop_nonce_authserver: str = ""
+    oauth_dpop_nonce_pds: str = ""
+    oauth_issuer: str = ""
+    oauth_pds_url: str = ""
+    oauth_state: str = ""
+    oauth_code_verifier: str = ""
 
 class Bookshelf:
     """Bookshelf model for organizing books."""

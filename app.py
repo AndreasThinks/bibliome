@@ -22,6 +22,8 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from auth import BlueskyAuth, get_current_user_did, auth_beforeware, is_admin, require_admin
+from atproto_oauth import OAuthClient, ATProtoOAuthError, generate_state, get_client_metadata
+import json
 from bluesky_automation import trigger_automation
 from admin_operations import get_database_path, backup_database, upload_database
 from process_monitor import init_process_monitoring, get_process_monitor
@@ -58,6 +60,15 @@ process_monitor = None
 # Initialize external services
 bluesky_auth = BlueskyAuth()
 book_api = BookAPIClient()
+
+# Initialize OAuth client
+oauth_client_id = os.getenv('OAUTH_CLIENT_ID', '')
+oauth_redirect_uri = os.getenv('OAUTH_REDIRECT_URI', '')
+oauth_scope = os.getenv('OAUTH_SCOPE', 'atproto')
+oauth_client = None
+if oauth_client_id and oauth_redirect_uri:
+    oauth_client = OAuthClient(oauth_client_id, oauth_redirect_uri, oauth_scope)
+    logger.info("OAuth client initialized")
 
 
 # Beforeware function that includes database tables
@@ -1370,7 +1381,8 @@ def get_process_card(service_name: str, auth):
 def login_page(sess):
     """Display login form."""
     error_msg = sess.pop('error', None)
-    return bluesky_auth.create_login_form(error_msg)
+    oauth_enabled = oauth_client is not None
+    return bluesky_auth.create_login_form(error_msg, oauth_enabled)
 
 @app.post("/auth/login")
 async def login_handler(handle: str, password: str, sess):
@@ -1440,6 +1452,240 @@ def logout_handler(sess):
     """Handle logout."""
     sess.clear()
     return RedirectResponse('/', status_code=303)
+
+# OAuth routes
+@app.get("/client-metadata.json")
+def client_metadata():
+    """Serve OAuth client metadata."""
+    if not oauth_client:
+        return Response(
+            json.dumps({"error": "OAuth not configured"}),
+            status_code=500,
+            media_type="application/json"
+        )
+
+    metadata = get_client_metadata(oauth_client_id, oauth_redirect_uri, oauth_scope)
+    return Response(
+        json.dumps(metadata, indent=2),
+        media_type="application/json",
+        headers={"Cache-Control": "public, max-age=3600"}
+    )
+
+@app.get("/auth/oauth/start")
+async def oauth_start(handle: str, sess):
+    """Start OAuth flow for a given handle."""
+    if not oauth_client:
+        sess['error'] = "OAuth is not configured. Please use app password login."
+        return RedirectResponse('/auth/login', status_code=303)
+
+    try:
+        # Resolve handle to DID and PDS
+        logger.info(f"Starting OAuth flow for handle: {handle}")
+        resolution = oauth_client.resolve_handle(handle)
+        did = resolution['did']
+        pds_url = resolution['pds']
+
+        # Get authorization server metadata
+        auth_metadata = oauth_client.get_authorization_server_metadata(pds_url)
+        issuer = auth_metadata['issuer']
+
+        # Generate PKCE parameters
+        code_verifier = oauth_client.generate_code_verifier()
+        code_challenge = oauth_client.create_s256_code_challenge(code_verifier)
+        state = generate_state()
+
+        # Generate DPoP keypair
+        dpop_keys = oauth_client.generate_dpop_keypair()
+        dpop_private_jwk = dpop_keys['private_jwk']
+
+        # Send PAR request
+        par_response = oauth_client.send_par_request(
+            auth_metadata=auth_metadata,
+            code_challenge=code_challenge,
+            state=state,
+            dpop_private_jwk=dpop_private_jwk
+        )
+
+        request_uri = par_response['request_uri']
+        dpop_nonce = par_response.get('dpop_nonce', '')
+
+        # Store OAuth state in session
+        sess['oauth_state'] = state
+        sess['oauth_code_verifier'] = code_verifier
+        sess['oauth_dpop_private_jwk'] = json.dumps(dpop_private_jwk)
+        sess['oauth_dpop_nonce'] = dpop_nonce
+        sess['oauth_issuer'] = issuer
+        sess['oauth_pds_url'] = pds_url
+        sess['oauth_did'] = did
+        sess['oauth_handle'] = handle
+
+        # Build authorization URL
+        auth_url = oauth_client.build_authorization_url(auth_metadata, request_uri)
+
+        logger.info(f"Redirecting to authorization server: {issuer}")
+        return RedirectResponse(auth_url, status_code=303)
+
+    except ATProtoOAuthError as e:
+        logger.error(f"OAuth start failed: {e}")
+        sess['error'] = f"OAuth authentication failed: {str(e)}"
+        return RedirectResponse('/auth/login', status_code=303)
+    except Exception as e:
+        logger.error(f"Unexpected error in OAuth start: {e}", exc_info=True)
+        sess['error'] = f"An unexpected error occurred: {str(e)}"
+        return RedirectResponse('/auth/login', status_code=303)
+
+@app.get("/auth/oauth/callback")
+async def oauth_callback(code: str, state: str, sess):
+    """Handle OAuth callback."""
+    if not oauth_client:
+        sess['error'] = "OAuth is not configured."
+        return RedirectResponse('/auth/login', status_code=303)
+
+    try:
+        # Verify state parameter
+        stored_state = sess.get('oauth_state', '')
+        if not stored_state or stored_state != state:
+            raise ATProtoOAuthError("Invalid state parameter")
+
+        # Retrieve OAuth session data
+        code_verifier = sess.get('oauth_code_verifier', '')
+        dpop_private_jwk_json = sess.get('oauth_dpop_private_jwk', '')
+        dpop_nonce = sess.get('oauth_dpop_nonce', '')
+        issuer = sess.get('oauth_issuer', '')
+        pds_url = sess.get('oauth_pds_url', '')
+        did = sess.get('oauth_did', '')
+        handle = sess.get('oauth_handle', '')
+
+        if not all([code_verifier, dpop_private_jwk_json, issuer, pds_url, did]):
+            raise ATProtoOAuthError("Missing OAuth session data")
+
+        dpop_private_jwk = json.loads(dpop_private_jwk_json)
+
+        # Get fresh authorization server metadata
+        auth_metadata = oauth_client.get_authorization_server_metadata(pds_url)
+
+        # Exchange code for tokens
+        logger.info(f"Exchanging authorization code for tokens (DID: {did})")
+        token_response = oauth_client.exchange_code_for_token(
+            auth_metadata=auth_metadata,
+            code=code,
+            code_verifier=code_verifier,
+            dpop_private_jwk=dpop_private_jwk,
+            dpop_nonce=dpop_nonce if dpop_nonce else None
+        )
+
+        access_token = token_response['access_token']
+        refresh_token = token_response.get('refresh_token', '')
+        expires_in = token_response.get('expires_in', 3600)
+        token_expires_at = datetime.now().timestamp() + expires_in
+        new_dpop_nonce = token_response.get('dpop_nonce', dpop_nonce)
+
+        # Get user profile from PDS
+        profile_url = f"{pds_url}/xrpc/com.atproto.repo.describeRepo"
+        profile_resp = oauth_client.make_authenticated_request(
+            method='GET',
+            url=profile_url,
+            access_token=access_token,
+            dpop_private_jwk=dpop_private_jwk,
+            dpop_nonce=new_dpop_nonce if new_dpop_nonce else None,
+            params={'repo': did}
+        )
+
+        # Update nonce if provided
+        if profile_resp.headers.get('DPoP-Nonce'):
+            new_dpop_nonce = profile_resp.headers['DPoP-Nonce']
+
+        profile_resp.raise_for_status()
+        profile_data = profile_resp.json()
+
+        # Get display name and avatar (may require additional request)
+        display_name = profile_data.get('handle', handle)
+        avatar_url = ""
+
+        # Try to get profile details
+        try:
+            actor_profile_url = f"{pds_url}/xrpc/app.bsky.actor.getProfile"
+            actor_resp = oauth_client.make_authenticated_request(
+                method='GET',
+                url=actor_profile_url,
+                access_token=access_token,
+                dpop_private_jwk=dpop_private_jwk,
+                dpop_nonce=new_dpop_nonce if new_dpop_nonce else None,
+                params={'actor': did}
+            )
+            if actor_resp.status_code == 200:
+                actor_data = actor_resp.json()
+                display_name = actor_data.get('displayName', display_name)
+                avatar_url = actor_data.get('avatar', '')
+                if actor_resp.headers.get('DPoP-Nonce'):
+                    new_dpop_nonce = actor_resp.headers['DPoP-Nonce']
+        except Exception as e:
+            logger.warning(f"Could not fetch actor profile: {e}")
+
+        # Prepare user data for database
+        db_user_data = {
+            'did': did,
+            'handle': handle,
+            'display_name': display_name,
+            'avatar_url': avatar_url,
+            'last_login': datetime.now(),
+            'oauth_access_token': access_token,
+            'oauth_refresh_token': refresh_token,
+            'oauth_token_expires_at': datetime.fromtimestamp(token_expires_at),
+            'oauth_dpop_private_jwk': dpop_private_jwk_json,
+            'oauth_dpop_nonce_authserver': new_dpop_nonce,
+            'oauth_dpop_nonce_pds': new_dpop_nonce,
+            'oauth_issuer': issuer,
+            'oauth_pds_url': pds_url
+        }
+
+        # Store or update user in database
+        try:
+            existing_user = db_tables['users'][did]
+            # Update existing user
+            db_tables['users'].update(db_user_data, did)
+            logger.info(f"Updated existing user with OAuth tokens: {handle}")
+        except (IndexError, Exception):
+            # Create new user
+            db_user_data['created_at'] = datetime.now()
+            db_tables['users'].insert(**db_user_data)
+            logger.info(f"Created new user with OAuth tokens: {handle}")
+
+        # Prepare session auth data
+        sess_auth_data = {
+            'did': did,
+            'handle': handle,
+            'display_name': display_name,
+            'avatar_url': avatar_url,
+            'access_token': access_token,
+            'oauth_enabled': True
+        }
+
+        # Store auth in session
+        sess['auth'] = sess_auth_data
+
+        # Clear OAuth temporary session data
+        for key in ['oauth_state', 'oauth_code_verifier', 'oauth_dpop_private_jwk',
+                    'oauth_dpop_nonce', 'oauth_issuer', 'oauth_pds_url', 'oauth_did', 'oauth_handle']:
+            sess.pop(key, None)
+
+        logger.info(f"OAuth authentication successful for user: {handle}")
+
+        # Check for pending redirect
+        next_url = sess.pop('next_url', None)
+        if next_url:
+            return RedirectResponse(next_url, status_code=303)
+        else:
+            return RedirectResponse('/', status_code=303)
+
+    except ATProtoOAuthError as e:
+        logger.error(f"OAuth callback failed: {e}")
+        sess['error'] = f"OAuth authentication failed: {str(e)}"
+        return RedirectResponse('/auth/login', status_code=303)
+    except Exception as e:
+        logger.error(f"Unexpected error in OAuth callback: {e}", exc_info=True)
+        sess['error'] = f"An unexpected error occurred: {str(e)}"
+        return RedirectResponse('/auth/login', status_code=303)
 
 # Bookshelf routes
 @rt("/shelf/new")
