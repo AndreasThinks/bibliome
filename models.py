@@ -383,7 +383,7 @@ class User:
     oauth_access_token: str = ""
     oauth_refresh_token: str = ""
     oauth_token_expires_at: datetime = None
-    oauth_dpop_private_jwk: str = ""  # JSON string
+    oauth_dpop_private_jwk: str = ""  # PEM-encoded private key material
     oauth_dpop_nonce_authserver: str = ""
     oauth_dpop_nonce_pds: str = ""
     oauth_issuer: str = ""

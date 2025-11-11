@@ -1503,14 +1503,14 @@ async def oauth_start(handle: str, sess):
 
         # Generate DPoP keypair
         dpop_keys = oauth_client.generate_dpop_keypair()
-        dpop_private_jwk = dpop_keys['private_jwk']
+        dpop_private_key = dpop_keys['private_key_pem']
 
         # Send PAR request
         par_response = oauth_client.send_par_request(
             auth_metadata=auth_metadata,
             code_challenge=code_challenge,
             state=state,
-            dpop_private_jwk=dpop_private_jwk
+            dpop_private_key=dpop_private_key
         )
 
         request_uri = par_response['request_uri']
@@ -1519,7 +1519,7 @@ async def oauth_start(handle: str, sess):
         # Store OAuth state in session
         sess['oauth_state'] = state
         sess['oauth_code_verifier'] = code_verifier
-        sess['oauth_dpop_private_jwk'] = json.dumps(dpop_private_jwk)
+        sess['oauth_dpop_private_jwk'] = dpop_private_key
         sess['oauth_dpop_nonce'] = dpop_nonce
         sess['oauth_issuer'] = issuer
         sess['oauth_pds_url'] = pds_url
@@ -1556,17 +1556,15 @@ async def oauth_callback(code: str, state: str, sess):
 
         # Retrieve OAuth session data
         code_verifier = sess.get('oauth_code_verifier', '')
-        dpop_private_jwk_json = sess.get('oauth_dpop_private_jwk', '')
+        dpop_private_key_pem = sess.get('oauth_dpop_private_jwk', '')
         dpop_nonce = sess.get('oauth_dpop_nonce', '')
         issuer = sess.get('oauth_issuer', '')
         pds_url = sess.get('oauth_pds_url', '')
         did = sess.get('oauth_did', '')
         handle = sess.get('oauth_handle', '')
 
-        if not all([code_verifier, dpop_private_jwk_json, issuer, pds_url, did]):
+        if not all([code_verifier, dpop_private_key_pem, issuer, pds_url, did]):
             raise ATProtoOAuthError("Missing OAuth session data")
-
-        dpop_private_jwk = json.loads(dpop_private_jwk_json)
 
         # Get fresh authorization server metadata
         auth_metadata = oauth_client.get_authorization_server_metadata(pds_url)
@@ -1577,7 +1575,7 @@ async def oauth_callback(code: str, state: str, sess):
             auth_metadata=auth_metadata,
             code=code,
             code_verifier=code_verifier,
-            dpop_private_jwk=dpop_private_jwk,
+            dpop_private_key=dpop_private_key_pem,
             dpop_nonce=dpop_nonce if dpop_nonce else None
         )
 
@@ -1593,7 +1591,7 @@ async def oauth_callback(code: str, state: str, sess):
             method='GET',
             url=profile_url,
             access_token=access_token,
-            dpop_private_jwk=dpop_private_jwk,
+            dpop_private_key=dpop_private_key_pem,
             dpop_nonce=new_dpop_nonce if new_dpop_nonce else None,
             params={'repo': did}
         )
@@ -1616,7 +1614,7 @@ async def oauth_callback(code: str, state: str, sess):
                 method='GET',
                 url=actor_profile_url,
                 access_token=access_token,
-                dpop_private_jwk=dpop_private_jwk,
+                dpop_private_key=dpop_private_key_pem,
                 dpop_nonce=new_dpop_nonce if new_dpop_nonce else None,
                 params={'actor': did}
             )
@@ -1639,7 +1637,7 @@ async def oauth_callback(code: str, state: str, sess):
             'oauth_access_token': access_token,
             'oauth_refresh_token': refresh_token,
             'oauth_token_expires_at': datetime.fromtimestamp(token_expires_at),
-            'oauth_dpop_private_jwk': dpop_private_jwk_json,
+            'oauth_dpop_private_jwk': dpop_private_key_pem,
             'oauth_dpop_nonce_authserver': new_dpop_nonce,
             'oauth_dpop_nonce_pds': new_dpop_nonce,
             'oauth_issuer': issuer,

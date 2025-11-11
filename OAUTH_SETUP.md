@@ -90,7 +90,7 @@ OAuth tokens are stored in the `user` table with the following fields:
 - `oauth_access_token`: Current access token
 - `oauth_refresh_token`: Refresh token for getting new access tokens
 - `oauth_token_expires_at`: Token expiration timestamp
-- `oauth_dpop_private_jwk`: DPoP signing key (JSON)
+- `oauth_dpop_private_jwk`: DPoP signing key (PEM-encoded string)
 - `oauth_dpop_nonce_authserver`: Authorization server nonce
 - `oauth_dpop_nonce_pds`: PDS nonce
 - `oauth_issuer`: Authorization server URL
