@@ -14,7 +14,7 @@ import hashlib
 import secrets
 import time
 import json
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, Union
 from datetime import datetime, timedelta
 from urllib.parse import urlencode, urlparse
 
@@ -108,18 +108,18 @@ class OAuthClient:
         Generate ES256 keypair for DPoP.
 
         Returns:
-            Dict with 'private_jwk' and 'public_jwk'
+            Dict with 'private_key_pem' and 'public_jwk'
         """
         # Generate EC private key (P-256 curve for ES256)
         private_key = ec.generate_private_key(ec.SECP256R1())
 
         # Export as JWK
-        private_pem = private_key.private_bytes(
+        private_pem_bytes = private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption()
         )
-        private_jwk = JsonWebKey.import_key(private_pem, {'kty': 'EC'})
+        private_pem = private_pem_bytes.decode('utf-8')
 
         # Get public key
         public_key = private_key.public_key()
@@ -130,13 +130,13 @@ class OAuthClient:
         public_jwk = JsonWebKey.import_key(public_pem, {'kty': 'EC'})
 
         return {
-            'private_jwk': private_jwk.as_dict(),
+            'private_key_pem': private_pem,
             'public_jwk': public_jwk.as_dict(is_private=False)
         }
 
     @staticmethod
     def create_dpop_jwt(
-        private_jwk: Dict[str, Any],
+        private_key_data: Union[str, Dict[str, Any]],
         htm: str,
         htu: str,
         nonce: Optional[str] = None,
@@ -146,7 +146,7 @@ class OAuthClient:
         Create a DPoP JWT proof.
 
         Args:
-            private_jwk: Private JWK for signing
+            private_key_data: Private key data (PEM string or JWK dict) for signing
             htm: HTTP method (e.g., "POST", "GET")
             htu: HTTP URL (without query or fragment)
             nonce: Server-provided nonce (optional)
@@ -156,7 +156,10 @@ class OAuthClient:
             DPoP JWT string
         """
         # Import private key
-        key = JsonWebKey.import_key(private_jwk)
+        if isinstance(private_key_data, str):
+            key = JsonWebKey.import_key(private_key_data)
+        else:
+            key = JsonWebKey.import_key(private_key_data)
 
         # Get public JWK for header
         public_jwk = key.as_dict(is_private=False)
@@ -338,7 +341,7 @@ class OAuthClient:
         auth_metadata: Dict[str, Any],
         code_challenge: str,
         state: str,
-        dpop_private_jwk: Dict[str, Any],
+        dpop_private_key: Union[str, Dict[str, Any]],
         dpop_nonce: Optional[str] = None
     ) -> Dict[str, Any]:
         """
@@ -348,7 +351,7 @@ class OAuthClient:
             auth_metadata: Authorization server metadata
             code_challenge: PKCE code challenge
             state: OAuth state parameter
-            dpop_private_jwk: Private JWK for DPoP
+            dpop_private_key: Private key data for DPoP
             dpop_nonce: DPoP nonce (optional)
 
         Returns:
@@ -358,7 +361,7 @@ class OAuthClient:
 
         # Create DPoP proof
         dpop_jwt = self.create_dpop_jwt(
-            private_jwk=dpop_private_jwk,
+            private_key_data=dpop_private_key,
             htm='POST',
             htu=par_endpoint,
             nonce=dpop_nonce
@@ -393,7 +396,7 @@ class OAuthClient:
             if resp.status_code == 400 and new_nonce:
                 # Retry with new nonce
                 dpop_jwt = self.create_dpop_jwt(
-                    private_jwk=dpop_private_jwk,
+                    private_key_data=dpop_private_key,
                     htm='POST',
                     htu=par_endpoint,
                     nonce=new_nonce
@@ -447,7 +450,7 @@ class OAuthClient:
         auth_metadata: Dict[str, Any],
         code: str,
         code_verifier: str,
-        dpop_private_jwk: Dict[str, Any],
+        dpop_private_key: Union[str, Dict[str, Any]],
         dpop_nonce: Optional[str] = None
     ) -> Dict[str, Any]:
         """
@@ -457,7 +460,7 @@ class OAuthClient:
             auth_metadata: Authorization server metadata
             code: Authorization code
             code_verifier: PKCE code verifier
-            dpop_private_jwk: Private JWK for DPoP
+            dpop_private_key: Private key data for DPoP
             dpop_nonce: DPoP nonce (optional)
 
         Returns:
@@ -467,7 +470,7 @@ class OAuthClient:
 
         # Create DPoP proof
         dpop_jwt = self.create_dpop_jwt(
-            private_jwk=dpop_private_jwk,
+            private_key_data=dpop_private_key,
             htm='POST',
             htu=token_endpoint,
             nonce=dpop_nonce
@@ -500,7 +503,7 @@ class OAuthClient:
             if resp.status_code == 400 and new_nonce:
                 # Retry with new nonce
                 dpop_jwt = self.create_dpop_jwt(
-                    private_jwk=dpop_private_jwk,
+                    private_key_data=dpop_private_key,
                     htm='POST',
                     htu=token_endpoint,
                     nonce=new_nonce
@@ -529,7 +532,7 @@ class OAuthClient:
         self,
         auth_metadata: Dict[str, Any],
         refresh_token: str,
-        dpop_private_jwk: Dict[str, Any],
+        dpop_private_key: Union[str, Dict[str, Any]],
         dpop_nonce: Optional[str] = None
     ) -> Dict[str, Any]:
         """
@@ -538,7 +541,7 @@ class OAuthClient:
         Args:
             auth_metadata: Authorization server metadata
             refresh_token: Refresh token
-            dpop_private_jwk: Private JWK for DPoP
+            dpop_private_key: Private key data for DPoP
             dpop_nonce: DPoP nonce (optional)
 
         Returns:
@@ -548,7 +551,7 @@ class OAuthClient:
 
         # Create DPoP proof
         dpop_jwt = self.create_dpop_jwt(
-            private_jwk=dpop_private_jwk,
+            private_key_data=dpop_private_key,
             htm='POST',
             htu=token_endpoint,
             nonce=dpop_nonce
@@ -579,7 +582,7 @@ class OAuthClient:
             if resp.status_code == 400 and new_nonce:
                 # Retry with new nonce
                 dpop_jwt = self.create_dpop_jwt(
-                    private_jwk=dpop_private_jwk,
+                    private_key_data=dpop_private_key,
                     htm='POST',
                     htu=token_endpoint,
                     nonce=new_nonce
@@ -609,7 +612,7 @@ class OAuthClient:
         auth_metadata: Dict[str, Any],
         token: str,
         token_type_hint: str = 'refresh_token',
-        dpop_private_jwk: Optional[Dict[str, Any]] = None,
+        dpop_private_key: Optional[Union[str, Dict[str, Any]]] = None,
         dpop_nonce: Optional[str] = None
     ) -> bool:
         """
@@ -619,7 +622,7 @@ class OAuthClient:
             auth_metadata: Authorization server metadata
             token: Token to revoke
             token_type_hint: 'access_token' or 'refresh_token'
-            dpop_private_jwk: Private JWK for DPoP (optional)
+            dpop_private_key: Private key data for DPoP (optional)
             dpop_nonce: DPoP nonce (optional)
 
         Returns:
@@ -634,9 +637,9 @@ class OAuthClient:
         }
 
         # Add DPoP if provided
-        if dpop_private_jwk:
+        if dpop_private_key:
             dpop_jwt = self.create_dpop_jwt(
-                private_jwk=dpop_private_jwk,
+                private_key_data=dpop_private_key,
                 htm='POST',
                 htu=revocation_endpoint,
                 nonce=dpop_nonce
@@ -666,7 +669,7 @@ class OAuthClient:
         method: str,
         url: str,
         access_token: str,
-        dpop_private_jwk: Dict[str, Any],
+        dpop_private_key: Union[str, Dict[str, Any]],
         dpop_nonce: Optional[str] = None,
         **kwargs
     ) -> httpx.Response:
@@ -677,7 +680,7 @@ class OAuthClient:
             method: HTTP method
             url: Request URL
             access_token: OAuth access token
-            dpop_private_jwk: Private JWK for DPoP
+            dpop_private_key: Private key data for DPoP
             dpop_nonce: DPoP nonce (optional)
             **kwargs: Additional arguments for httpx request
 
@@ -689,7 +692,7 @@ class OAuthClient:
 
         # Create DPoP proof
         dpop_jwt = self.create_dpop_jwt(
-            private_jwk=dpop_private_jwk,
+            private_key_data=dpop_private_key,
             htm=method.upper(),
             htu=url,
             nonce=dpop_nonce,
@@ -714,7 +717,7 @@ class OAuthClient:
         if new_nonce and resp.status_code == 401:
             # Retry with new nonce
             dpop_jwt = self.create_dpop_jwt(
-                private_jwk=dpop_private_jwk,
+                private_key_data=dpop_private_key,
                 htm=method.upper(),
                 htu=url,
                 nonce=new_nonce,
