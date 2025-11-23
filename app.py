@@ -1510,17 +1510,19 @@ async def oauth_start(handle: str, sess):
             auth_metadata=auth_metadata,
             code_challenge=code_challenge,
             state=state,
+            resource=pds_url,
             dpop_private_key=dpop_private_key
         )
 
         request_uri = par_response['request_uri']
-        dpop_nonce = par_response.get('dpop_nonce', '')
+        dpop_nonce_authserver = par_response.get('dpop_nonce', '')
 
         # Store OAuth state in session
         sess['oauth_state'] = state
         sess['oauth_code_verifier'] = code_verifier
         sess['oauth_dpop_private_jwk'] = dpop_private_key
-        sess['oauth_dpop_nonce'] = dpop_nonce
+        sess['oauth_dpop_nonce_authserver'] = dpop_nonce_authserver
+        sess['oauth_dpop_nonce_pds'] = ''
         sess['oauth_issuer'] = issuer
         sess['oauth_pds_url'] = pds_url
         sess['oauth_did'] = did
@@ -1557,7 +1559,8 @@ async def oauth_callback(code: str, state: str, sess):
         # Retrieve OAuth session data
         code_verifier = sess.get('oauth_code_verifier', '')
         dpop_private_key_pem = sess.get('oauth_dpop_private_jwk', '')
-        dpop_nonce = sess.get('oauth_dpop_nonce', '')
+        dpop_nonce_authserver = sess.get('oauth_dpop_nonce_authserver', '')
+        dpop_nonce_pds = sess.get('oauth_dpop_nonce_pds', '')
         issuer = sess.get('oauth_issuer', '')
         pds_url = sess.get('oauth_pds_url', '')
         did = sess.get('oauth_did', '')
@@ -1576,14 +1579,15 @@ async def oauth_callback(code: str, state: str, sess):
             code=code,
             code_verifier=code_verifier,
             dpop_private_key=dpop_private_key_pem,
-            dpop_nonce=dpop_nonce if dpop_nonce else None
+            dpop_nonce=dpop_nonce_authserver if dpop_nonce_authserver else None
         )
 
         access_token = token_response['access_token']
         refresh_token = token_response.get('refresh_token', '')
         expires_in = token_response.get('expires_in', 3600)
         token_expires_at = datetime.now().timestamp() + expires_in
-        new_dpop_nonce = token_response.get('dpop_nonce', dpop_nonce)
+        authserver_dpop_nonce = token_response.get('dpop_nonce', dpop_nonce_authserver)
+        pds_dpop_nonce = dpop_nonce_pds
 
         # Get user profile from PDS
         profile_url = f"{pds_url}/xrpc/com.atproto.repo.describeRepo"
@@ -1592,13 +1596,13 @@ async def oauth_callback(code: str, state: str, sess):
             url=profile_url,
             access_token=access_token,
             dpop_private_key=dpop_private_key_pem,
-            dpop_nonce=new_dpop_nonce if new_dpop_nonce else None,
+            dpop_nonce=pds_dpop_nonce if pds_dpop_nonce else None,
             params={'repo': did}
         )
 
         # Update nonce if provided
         if profile_resp.headers.get('DPoP-Nonce'):
-            new_dpop_nonce = profile_resp.headers['DPoP-Nonce']
+            pds_dpop_nonce = profile_resp.headers['DPoP-Nonce']
 
         profile_resp.raise_for_status()
         profile_data = profile_resp.json()
@@ -1615,7 +1619,7 @@ async def oauth_callback(code: str, state: str, sess):
                 url=actor_profile_url,
                 access_token=access_token,
                 dpop_private_key=dpop_private_key_pem,
-                dpop_nonce=new_dpop_nonce if new_dpop_nonce else None,
+                dpop_nonce=pds_dpop_nonce if pds_dpop_nonce else None,
                 params={'actor': did}
             )
             if actor_resp.status_code == 200:
@@ -1623,7 +1627,7 @@ async def oauth_callback(code: str, state: str, sess):
                 display_name = actor_data.get('displayName', display_name)
                 avatar_url = actor_data.get('avatar', '')
                 if actor_resp.headers.get('DPoP-Nonce'):
-                    new_dpop_nonce = actor_resp.headers['DPoP-Nonce']
+                    pds_dpop_nonce = actor_resp.headers['DPoP-Nonce']
         except Exception as e:
             logger.warning(f"Could not fetch actor profile: {e}")
 
@@ -1638,8 +1642,8 @@ async def oauth_callback(code: str, state: str, sess):
             'oauth_refresh_token': refresh_token,
             'oauth_token_expires_at': datetime.fromtimestamp(token_expires_at),
             'oauth_dpop_private_jwk': dpop_private_key_pem,
-            'oauth_dpop_nonce_authserver': new_dpop_nonce,
-            'oauth_dpop_nonce_pds': new_dpop_nonce,
+            'oauth_dpop_nonce_authserver': authserver_dpop_nonce,
+            'oauth_dpop_nonce_pds': pds_dpop_nonce,
             'oauth_issuer': issuer,
             'oauth_pds_url': pds_url
         }
@@ -1671,7 +1675,8 @@ async def oauth_callback(code: str, state: str, sess):
 
         # Clear OAuth temporary session data
         for key in ['oauth_state', 'oauth_code_verifier', 'oauth_dpop_private_jwk',
-                    'oauth_dpop_nonce', 'oauth_issuer', 'oauth_pds_url', 'oauth_did', 'oauth_handle']:
+                    'oauth_dpop_nonce_authserver', 'oauth_dpop_nonce_pds', 'oauth_issuer',
+                    'oauth_pds_url', 'oauth_did', 'oauth_handle']:
             sess.pop(key, None)
 
         logger.info(f"OAuth authentication successful for user: {handle}")

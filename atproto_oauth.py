@@ -341,6 +341,7 @@ class OAuthClient:
         auth_metadata: Dict[str, Any],
         code_challenge: str,
         state: str,
+        resource: Optional[str],
         dpop_private_key: Union[str, Dict[str, Any]],
         dpop_nonce: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -351,6 +352,7 @@ class OAuthClient:
             auth_metadata: Authorization server metadata
             code_challenge: PKCE code challenge
             state: OAuth state parameter
+            resource: Resource server URL (PDS)
             dpop_private_key: Private key data for DPoP
             dpop_nonce: DPoP nonce (optional)
 
@@ -378,6 +380,9 @@ class OAuthClient:
             'code_challenge_method': 'S256'
         }
 
+        if resource:
+            params['resource'] = resource
+
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded',
             'DPoP': dpop_jwt
@@ -393,7 +398,7 @@ class OAuthClient:
             # Check for DPoP nonce in response
             new_nonce = resp.headers.get('DPoP-Nonce')
 
-            if resp.status_code == 400 and new_nonce:
+            if resp.status_code in (400, 401, 428) and new_nonce:
                 # Retry with new nonce
                 dpop_jwt = self.create_dpop_jwt(
                     private_key_data=dpop_private_key,
@@ -408,6 +413,7 @@ class OAuthClient:
                     data=params,
                     headers=headers
                 )
+                new_nonce = resp.headers.get('DPoP-Nonce', new_nonce)
 
             resp.raise_for_status()
             par_response = resp.json()
@@ -500,7 +506,7 @@ class OAuthClient:
             # Check for DPoP nonce
             new_nonce = resp.headers.get('DPoP-Nonce')
 
-            if resp.status_code == 400 and new_nonce:
+            if resp.status_code in (400, 401, 428) and new_nonce:
                 # Retry with new nonce
                 dpop_jwt = self.create_dpop_jwt(
                     private_key_data=dpop_private_key,
@@ -515,6 +521,7 @@ class OAuthClient:
                     data=data,
                     headers=headers
                 )
+                new_nonce = resp.headers.get('DPoP-Nonce', new_nonce)
 
             resp.raise_for_status()
             token_response = resp.json()
@@ -579,7 +586,7 @@ class OAuthClient:
             # Check for DPoP nonce
             new_nonce = resp.headers.get('DPoP-Nonce')
 
-            if resp.status_code == 400 and new_nonce:
+            if resp.status_code in (400, 401, 428) and new_nonce:
                 # Retry with new nonce
                 dpop_jwt = self.create_dpop_jwt(
                     private_key_data=dpop_private_key,
@@ -594,6 +601,7 @@ class OAuthClient:
                     data=data,
                     headers=headers
                 )
+                new_nonce = resp.headers.get('DPoP-Nonce', new_nonce)
 
             resp.raise_for_status()
             token_response = resp.json()
