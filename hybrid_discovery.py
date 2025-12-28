@@ -62,6 +62,11 @@ class HybridDiscoveryService:
                 r.raise_for_status()
                 return r.json()
             except httpx.HTTPStatusError as e:
+                # Gracefully handle 400 errors (e.g., unsupported endpoints)
+                if e.response.status_code == 400:
+                    logger.warning(f"Bad request to {url}: {e.response.text if hasattr(e.response, 'text') else 'unknown error'}")
+                    return None
+                # Retry on transient errors
                 if e.response.status_code in (429, 500, 502, 503, 504):
                     await asyncio.sleep(delay)
                     delay = min(delay * 2, 6)
