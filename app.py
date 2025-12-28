@@ -92,7 +92,7 @@ async def before_handler(req, sess):
 
 # Initialize FastHTML app with persistent sessions
 app, rt = fast_app(
-    before=Beforeware(before_handler, skip=[r'/static/.*', r'/favicon\.ico', r'/client-metadata\.json']),
+    before=Beforeware(before_handler, skip=[r'/static/.*', r'/favicon\.ico', r'/client-metadata\.json', r'/\.well-known/.*']),
     htmlkw={'data-theme':'light'},
     # Session configuration for persistent login
     max_age=30*24*60*60,  # 30 days in seconds
@@ -114,6 +114,23 @@ app, rt = fast_app(
 @rt("/{fname:path}.{ext:static}")
 def static_files(fname: str, ext: str):
     return FileResponse(f'static/{fname}.{ext}')
+
+# AT Protocol DID verification endpoint
+@rt("/.well-known/atproto-did")
+def atproto_did():
+    """Return the AT Protocol DID for domain handle verification.
+    
+    This endpoint is required for using a custom domain as your Bluesky handle.
+    When you set your handle to your domain (e.g., @bibliome.club), Bluesky
+    verifies ownership by checking this endpoint.
+    """
+    did = os.getenv('ATPROTO_DID', '')
+    if not did:
+        logger.warning("ATPROTO_DID not configured - domain handle verification will fail")
+        return Response("DID not configured", status_code=404)
+    
+    logger.debug(f"Serving AT Protocol DID: {did}")
+    return Response(did, media_type="text/plain")
 
 # Cover cache serving
 @rt("/data/covers/{filename:path}")
