@@ -92,7 +92,7 @@ async def before_handler(req, sess):
 
 # Initialize FastHTML app with persistent sessions
 app, rt = fast_app(
-    before=Beforeware(before_handler, skip=[r'/static/.*', r'/favicon\.ico']),
+    before=Beforeware(before_handler, skip=[r'/static/.*', r'/favicon\.ico', r'/client-metadata\.json']),
     htmlkw={'data-theme':'light'},
     # Session configuration for persistent login
     max_age=30*24*60*60,  # 30 days in seconds
