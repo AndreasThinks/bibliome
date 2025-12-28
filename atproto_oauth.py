@@ -415,7 +415,23 @@ class OAuthClient:
                 )
                 new_nonce = resp.headers.get('DPoP-Nonce', new_nonce)
 
-            resp.raise_for_status()
+            # Check for errors and extract detailed error message
+            if resp.status_code >= 400:
+                error_detail = f"HTTP {resp.status_code}"
+                try:
+                    error_body = resp.json()
+                    error_code = error_body.get('error', 'unknown_error')
+                    error_desc = error_body.get('error_description', '')
+                    if error_desc:
+                        error_detail = f"{error_code}: {error_desc}"
+                    else:
+                        error_detail = error_code
+                except:
+                    # If JSON parsing fails, use raw text
+                    error_detail = resp.text[:200] if resp.text else f"HTTP {resp.status_code}"
+                
+                raise ATProtoOAuthError(f"PAR request failed ({resp.status_code}): {error_detail}")
+
             par_response = resp.json()
 
             # Add nonce to response if present
@@ -424,6 +440,9 @@ class OAuthClient:
 
             return par_response
 
+        except ATProtoOAuthError:
+            # Re-raise our custom errors
+            raise
         except Exception as e:
             raise ATProtoOAuthError(f"PAR request failed: {e}")
 
