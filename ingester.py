@@ -365,7 +365,8 @@ def on_message_handler(message, db_tables):
 
         if not wanted_ops:
             # No relevant creates: send heartbeat periodically without CAR decode overhead
-            if message_count % 100 == 0:
+            # Use 5000 messages interval to reduce database write frequency
+            if message_count % 5000 == 0:
                 queue_process_heartbeat(PROCESS_NAME, {
                     "messages_processed": message_count,
                     "bookshelves_found": bookshelf_count,
@@ -423,8 +424,9 @@ def on_message_handler(message, db_tables):
                 queue_process_log(PROCESS_NAME, f"Error processing operation: {e}", "ERROR", "error", db_tables=db_tables)
                 
 
-        # Heartbeat on activity or every 100 messages
-        if message_count % 100 == 0 or message_processed:
+        # Heartbeat on activity or every 5000 messages
+        # Reduced from 100 to minimize database write contention
+        if message_count % 5000 == 0 or message_processed:
             queue_process_heartbeat(PROCESS_NAME, {
                 "messages_processed": message_count,
                 "bookshelves_found": bookshelf_count,
@@ -432,7 +434,7 @@ def on_message_handler(message, db_tables):
                 "errors_count": error_count
             }, db_tables=db_tables)
             
-            if message_count % 100 == 0:
+            if message_count % 5000 == 0:
                 queue_process_log(PROCESS_NAME, f"Processed {message_count} messages total", "INFO", "activity", db_tables=db_tables)
 
     except Exception as e:

@@ -674,34 +674,13 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     activities = db.create(Activity, pk='id', transform=True, if_not_exists=True)
     sync_logs = db.create(SyncLog, pk='id', transform=True, if_not_exists=True)
     
-    # Connect to process monitoring tables created by migrations with explicit primary keys
-    # Use FastLite's object transformation but specify correct table names and primary keys
-    try:
-        # For process_status, we need to connect to the existing table
-        process_status = db.t.process_status
-        # Wrap it with the ProcessStatus class for object transformation
-        process_status = db.create(ProcessStatus, pk='process_name', transform=True, if_not_exists=True)
-    except Exception:
-        # Fallback: create with correct table name
-        process_status = db["process_status"]
-    
-    try:
-        # For process_logs, connect to existing table
-        process_logs = db.t.process_logs
-        # Wrap it with the ProcessLog class for object transformation
-        process_logs = db.create(ProcessLog, pk='id', transform=True, if_not_exists=True)
-    except Exception:
-        # Fallback: create with correct table name
-        process_logs = db["process_logs"]
-    
-    try:
-        # For process_metrics, connect to existing table
-        process_metrics = db.t.process_metrics
-        # Wrap it with the ProcessMetric class for object transformation
-        process_metrics = db.create(ProcessMetric, pk='id', transform=True, if_not_exists=True)
-    except Exception:
-        # Fallback: create with correct table name
-        process_metrics = db["process_metrics"]
+    # Connect to process monitoring tables created by migrations
+    # These tables are already created by 0003-add-process-monitoring.sql
+    # Just connect to them directly without trying to create them
+    # (db.create() derives table name from class name, causing naming conflicts)
+    process_status = db.t.process_status
+    process_logs = db.t.process_logs
+    process_metrics = db.t.process_metrics
     
     # Validate primary keys for critical process monitoring tables
     try:
