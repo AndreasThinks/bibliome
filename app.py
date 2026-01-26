@@ -33,23 +33,10 @@ from models import get_book_by_id, get_book_comments, get_book_activity, get_boo
 
 load_dotenv()
 
-# Get log level from environment, default to INFO
-log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
-level = getattr(logging, log_level_str, logging.INFO)
-
-# Set up logging
-logging.basicConfig(
-    level=level,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('bibliome.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# Silence the noisy watchfiles logger
-logging.getLogger('watchfiles.main').setLevel(logging.WARNING)
+# Set up logging using shared configuration
+from logging_config import setup_logging, silence_noisy_loggers
+logger = setup_logging("web_app", log_file="bibliome.log")
+silence_noisy_loggers()
 
 # Initialize database with fastmigrate
 db_tables = None

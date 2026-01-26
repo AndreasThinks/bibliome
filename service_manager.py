@@ -16,20 +16,14 @@ from datetime import datetime
 from typing import Dict, Optional
 import psutil
 from dotenv import load_dotenv
+from logging_config import setup_logging, silence_noisy_loggers
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('service_manager.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+# Setup logging with shared configuration
+logger = setup_logging("service_manager", log_file="service_manager.log")
+silence_noisy_loggers()
 
 class ServiceManager:
     """Manages background services for Bibliome."""

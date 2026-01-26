@@ -19,21 +19,10 @@ from db_write_queue import (
 )
 from circuit_breaker import CircuitBreaker
 
-# Configure logging with service name prefix
-log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
-level = getattr(logging, log_level_str, logging.INFO)
-# Create a custom formatter
-formatter = logging.Formatter('[firehose_ingester] %(asctime)s - %(levelname)s - %(message)s')
-# Get the root logger
-logger = logging.getLogger()
-logger.setLevel(level)
-# Remove existing handlers
-for handler in logger.handlers[:]:
-    logger.removeHandler(handler)
-# Create a new handler with the custom formatter
-handler = logging.StreamHandler()
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+# Set up logging using shared configuration
+from logging_config import setup_logging, silence_noisy_loggers
+logger = setup_logging("firehose_ingester")
+silence_noisy_loggers()
 
 from database_manager import db_manager
 from api_clients import BookAPIClient
