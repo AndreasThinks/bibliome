@@ -72,13 +72,15 @@ async def before_handler(req, sess):
     if db_tables is None:
         from database_manager import db_manager
         db_tables = await db_manager.get_connection()
-        
+
         # Initialize process monitoring with the database connection
         if process_monitor is None:
             process_monitor = init_process_monitoring(db_tables)
-    return auth_beforeware(req, sess, db_tables)
+    return auth_beforeware(req, sess, db_tables, oauth_client)
 
 # Initialize FastHTML app with persistent sessions
+# Use HTTPS-only cookies in production (controlled by environment variable)
+sess_https_only = os.getenv('SESSION_HTTPS_ONLY', 'true').lower() == 'true'
 app, rt = fast_app(
     before=Beforeware(before_handler, skip=[r'/static/.*', r'/favicon\.ico', r'/client-metadata\.json', r'/\.well-known/.*']),
     htmlkw={'data-theme':'light'},
@@ -86,7 +88,7 @@ app, rt = fast_app(
     max_age=30*24*60*60,  # 30 days in seconds
     session_cookie='bibliome_session',
     same_site='lax',  # Good balance of security and functionality
-    sess_https_only=False,  # Set to True in production with HTTPS
+    sess_https_only=sess_https_only,  # Defaults to True for production security
     hdrs=(
         picolink,
         Link(rel="preconnect", href="https://fonts.googleapis.com"),
@@ -1486,8 +1488,48 @@ async def login_handler(handle: str, password: str, sess):
         return RedirectResponse('/auth/login', status_code=303)
 
 @rt("/auth/logout")
-def logout_handler(sess):
-    """Handle logout."""
+async def logout_handler(sess):
+    """Handle logout with OAuth token revocation."""
+    auth_data = sess.get('auth', {})
+
+    # Revoke OAuth tokens if this was an OAuth session
+    if auth_data.get('oauth_enabled') and oauth_client:
+        try:
+            user_did = auth_data.get('did')
+            if user_did and db_tables:
+                user = db_tables['users'].get(user_did)
+                if user:
+                    refresh_token = getattr(user, 'oauth_refresh_token', None)
+                    dpop_private_key = getattr(user, 'oauth_dpop_private_jwk', None)
+                    dpop_nonce = getattr(user, 'oauth_dpop_nonce_authserver', None)
+                    pds_url = getattr(user, 'oauth_pds_url', None)
+
+                    if refresh_token and pds_url:
+                        try:
+                            auth_metadata = oauth_client.get_authorization_server_metadata(pds_url)
+                            oauth_client.revoke_token(
+                                auth_metadata=auth_metadata,
+                                token=refresh_token,
+                                token_type_hint='refresh_token',
+                                dpop_private_key=dpop_private_key,
+                                dpop_nonce=dpop_nonce
+                            )
+                            logger.info(f"Successfully revoked OAuth tokens for user: {user.handle}")
+                        except Exception as e:
+                            logger.warning(f"Failed to revoke OAuth tokens: {e}")
+
+                    # Clear OAuth tokens from database
+                    db_tables['users'].update({
+                        'oauth_access_token': None,
+                        'oauth_refresh_token': None,
+                        'oauth_token_expires_at': None,
+                        'oauth_dpop_private_jwk': None,
+                        'oauth_dpop_nonce_authserver': None,
+                        'oauth_dpop_nonce_pds': None
+                    }, user_did)
+        except Exception as e:
+            logger.error(f"Error during OAuth logout cleanup: {e}", exc_info=True)
+
     sess.clear()
     return RedirectResponse('/', status_code=303)
 
