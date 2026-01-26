@@ -398,24 +398,131 @@ For production deployments:
 ## 🔧 Development
 
 ### Project Structure
+
+The codebase is organized into a modular `bibliome/` package with clear separation of concerns:
+
 ```
 Bibliome/
-├── app.py              # Main application
-├── auth.py             # Authentication logic
-├── api_clients.py      # External API integrations
-├── models.py           # Database models
-├── components.py       # UI components
-├── requirements.txt    # Python dependencies
-├── .env.example        # Environment template
-├── static/
-│   └── css/
-│       └── styles.css  # Custom styling
-└── data/               # SQLite database storage
+├── main.py                 # Application entry point (used by Procfile)
+├── app.py                  # Main FastHTML routes and application logic
+│
+├── bibliome/               # Core package with modular structure
+│   ├── __init__.py
+│   │
+│   ├── models/             # Data models and database operations
+│   │   ├── __init__.py     # Re-exports all models
+│   │   ├── entities.py     # User, Bookshelf, Book, Permission dataclasses
+│   │   └── database.py     # Database setup and utility functions
+│   │
+│   ├── services/           # Business logic and permissions
+│   │   ├── __init__.py     # Re-exports all services
+│   │   └── permissions.py  # RBAC permission functions (14 helpers)
+│   │
+│   ├── auth/               # Authentication and authorization
+│   │   ├── __init__.py     # Re-exports all auth components
+│   │   ├── bluesky.py      # BlueskyAuth class for AT-Proto login
+│   │   ├── oauth.py        # OAuth 2.0 with PKCE, DPoP, PAR
+│   │   ├── middleware.py   # auth_beforeware, require_auth, require_admin
+│   │   ├── diagnostics.py  # Auth logging and error formatting
+│   │   └── retry.py        # Network retry with exponential backoff
+│   │
+│   ├── clients/            # External API clients
+│   │   ├── __init__.py     # Re-exports all clients
+│   │   ├── books.py        # BookAPIClient (Google Books & Open Library)
+│   │   └── pds.py          # DirectPDSClient for AT-Proto PDS access
+│   │
+│   ├── components/         # UI components (60+ components)
+│   │   ├── __init__.py     # Re-exports all components
+│   │   ├── navigation.py   # NavBar, AlphaBadge
+│   │   ├── forms.py        # BookSearchForm, CreateBookshelfForm, etc.
+│   │   ├── cards.py        # BookCard, BookshelfCard, MemberCard, etc.
+│   │   ├── modals.py       # ContactModal, ShareModal, CommentModal
+│   │   ├── pages.py        # LandingPageHero, FeaturesSection, etc.
+│   │   ├── admin.py        # AdminDashboard, AdminStatsCard
+│   │   └── utils.py        # Alert, Modal, EmptyState, Pagination
+│   │
+│   ├── atproto/            # AT Protocol record operations
+│   │   ├── __init__.py     # Re-exports all AT-Proto functions
+│   │   └── records.py      # put_record, delete_record for books/shelves
+│   │
+│   └── infrastructure/     # Core infrastructure utilities
+│       ├── __init__.py     # Re-exports infrastructure components
+│       ├── circuit_breaker.py  # CircuitBreaker for fault tolerance
+│       └── rate_limiter.py     # RateLimiter with exponential backoff
+│
+├── # Legacy root files (backward-compatible re-exports)
+├── auth.py                 # → bibliome.auth
+├── api_clients.py          # → bibliome.clients
+├── models.py               # → bibliome.models
+├── components.py           # → bibliome.components
+├── circuit_breaker.py      # → bibliome.infrastructure
+├── rate_limiter.py         # → bibliome.infrastructure
+│
+├── # Application services
+├── database_manager.py     # Async database connection management
+├── service_manager.py      # Background service coordination
+├── process_monitor.py      # Process health monitoring
+├── cover_cache.py          # Book cover caching system
+├── bibliome_scanner.py     # AT-Proto network scanning
+├── ingester.py             # Bluesky firehose content ingestion
+├── bluesky_automation.py   # Automated Bluesky posting
+├── db_write_queue.py       # Concurrent SQLite write handling
+├── logging_config.py       # Centralized logging configuration
+│
+├── migrations/             # Database migration scripts
+│   ├── 0001-initialize.sql
+│   ├── 0002-add-self-join.sql
+│   └── ...
+│
+├── tests/                  # Test suite (143 tests)
+│   ├── conftest.py         # Test fixtures
+│   ├── unit/               # Unit tests
+│   ├── integration/        # Integration tests
+│   └── services/           # Service tests
+│
+├── static/                 # Static assets
+│   └── css/styles.css
+│
+├── lexicons/               # AT-Proto lexicon definitions
+│   ├── com.bibliome.book.json
+│   ├── com.bibliome.bookshelf.json
+│   └── com.bibliome.comment.json
+│
+└── data/                   # SQLite database and cached covers
+```
+
+### Import Examples
+
+**New modular imports (recommended):**
+```python
+from bibliome.auth import BlueskyAuth, require_auth, is_admin
+from bibliome.clients import BookAPIClient, DirectPDSClient
+from bibliome.models import User, Bookshelf, Book, Permission
+from bibliome.services import can_view_bookshelf, can_add_books
+from bibliome.components import NavBar, BookCard, BookshelfCard
+from bibliome.infrastructure import CircuitBreaker, RateLimiter
+from bibliome.atproto import put_book_record, delete_book_record
+```
+
+**Legacy imports (still supported):**
+```python
+from auth import BlueskyAuth  # Works via re-export
+from models import User, Bookshelf  # Works via re-export
+from components import NavBar  # Works via re-export
 ```
 
 ### Running Tests
 ```bash
-python test_basic.py
+# Run all tests
+python -m pytest tests/ -v
+
+# Run specific test categories
+python -m pytest tests/unit/ -v        # Unit tests only
+python -m pytest tests/integration/ -v # Integration tests only
+python -m pytest tests/services/ -v    # Service tests only
+
+# Run with coverage
+python -m pytest tests/ --cov=. --cov-report=html
 ```
 
 ### Contributing
