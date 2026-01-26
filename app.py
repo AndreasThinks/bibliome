@@ -147,16 +147,16 @@ def serve_cached_cover(filename: str):
 
 # Home page
 @rt("/")
-def index(auth, req):
+def index(auth, req, page: int = 1):
     """Homepage - beautiful landing page for visitors, dashboard for logged-in users."""
     if not auth:
         # Show beautiful landing page for anonymous users
         public_shelves = get_public_shelves_with_stats(db_tables, limit=6)
         recent_books = get_recent_community_books(db_tables, limit=15)
-        
+
         # Generate meta tags for homepage
         meta_tags = create_homepage_meta_tags(req)
-        
+
         return (
             Title("Bibliome - Building the very best reading lists, together"),
             *meta_tags,
@@ -170,21 +170,34 @@ def index(auth, req):
             UniversalFooter()
         )
     else:
-        # Show user's dashboard
+        # Show user's dashboard with pagination
+        from models import get_user_shelves_count
+        from components import Pagination
+        
         current_auth_did = get_current_user_did(auth)
         logger.debug(f"Loading dashboard for user DID: {current_auth_did}")
-        user_shelves = get_user_shelves(current_auth_did, db_tables, limit=12)
+        
+        # Pagination setup
+        page = max(1, int(page))
+        limit = 12
+        offset = (page - 1) * limit
+        
+        # Get total count for pagination
+        total_count = get_user_shelves_count(current_auth_did, db_tables)
+        total_pages = max(1, (total_count + limit - 1) // limit)
+        
+        user_shelves = get_user_shelves(current_auth_did, db_tables, limit=limit, offset=offset)
 
         content = [
             Div(
                 style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;"
             )
         ]
-        
+
         # Add network activity preview with background loading
         from components import NetworkActivityPreviewLoading
         content.append(NetworkActivityPreviewLoading())
-        
+
         # Add user's shelves with proper permission checking
         if user_shelves:
             shelf_cards = []
@@ -193,6 +206,10 @@ def index(auth, req):
                 can_edit = can_edit_bookshelf(shelf, current_auth_did, db_tables)
                 shelf_cards.append(BookshelfCard(shelf, is_owner=is_owner, can_edit=can_edit))
             content.append(Div(*shelf_cards, cls="bookshelf-grid"))
+            
+            # Add pagination if needed
+            if total_pages > 1:
+                content.append(Pagination(current_page=page, total_pages=total_pages, base_url="/"))
         else:
             content.append(EmptyState(
                 "You haven't created any bookshelves yet",
@@ -200,10 +217,10 @@ def index(auth, req):
                 "Create Your First Shelf",
                 "/shelf/new"
             ))
-        
+
         # Generate meta tags for dashboard
         meta_tags = create_homepage_meta_tags(req)
-        
+
         return (
             Title("Dashboard - Bibliome"),
             *meta_tags,
