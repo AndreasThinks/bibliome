@@ -13,6 +13,43 @@ from rate_limiter import RateLimiter
 logger = logging.getLogger(__name__)
 
 
+# Custom exception classes for better error categorization
+class PDSError(Exception):
+    """Base exception for PDS-related errors."""
+    pass
+
+
+class NonCompliantPDSError(PDSError):
+    """Raised when a PDS returns non-JSON responses (e.g., HTML redirects).
+    
+    This typically indicates a non-standard or novelty PDS that doesn't 
+    properly implement the AT Protocol XRPC specification.
+    """
+    def __init__(self, pds_endpoint: str, did: str, response_snippet: str = None):
+        self.pds_endpoint = pds_endpoint
+        self.did = did
+        self.response_snippet = response_snippet
+        msg = f"Non-compliant PDS at {pds_endpoint} for {did}"
+        if response_snippet:
+            msg += f" - returned non-JSON response: {response_snippet[:100]}..."
+        super().__init__(msg)
+
+
+class TransientDIDResolutionError(PDSError):
+    """Raised when DID resolution fails due to temporary issues.
+    
+    This can happen due to network issues, rate limiting, or temporary
+    unavailability of the PLC directory.
+    """
+    def __init__(self, did: str, original_error: Exception = None):
+        self.did = did
+        self.original_error = original_error
+        msg = f"Transient error resolving DID {did}"
+        if original_error:
+            msg += f": {original_error}"
+        super().__init__(msg)
+
+
 class PDSClientPool:
     """Simple LRU-based client pool for PDS connections with TTL."""
     
@@ -126,17 +163,25 @@ class DirectPDSClient:
         try:
             did = identifier if identifier.startswith("did:") else self.resolver.handle.resolve(identifier)
             if not isinstance(did, str) or not did.startswith("did:"):
-                raise RuntimeError(f"Failed to resolve handle to DID: {identifier}")
+                raise TransientDIDResolutionError(identifier, RuntimeError(f"Failed to resolve handle to DID: {identifier}"))
 
             did_doc = self.resolver.did.resolve(did)
             if not did_doc:
-                raise RuntimeError(f"Failed to resolve DID document for {did}")
+                raise TransientDIDResolutionError(did, RuntimeError(f"Failed to resolve DID document for {did}"))
 
             pds_xrpc = self._extract_pds_endpoint(did_doc)
             return did, pds_xrpc
+        except (TransientDIDResolutionError, NonCompliantPDSError):
+            raise  # Re-raise our custom exceptions as-is
         except Exception as e:
-            logger.error(f"Error resolving DID and PDS for {identifier}: {e}")
-            raise
+            error_msg = str(e).lower()
+            # Categorize common transient errors
+            if any(keyword in error_msg for keyword in ['timeout', 'connection', 'network', 'dns', 'resolve']):
+                logger.warning(f"Transient error resolving DID for {identifier}: {e}")
+                raise TransientDIDResolutionError(identifier, e)
+            else:
+                logger.error(f"Error resolving DID and PDS for {identifier}: {e}")
+                raise
 
     def _to_list(self, x: Union[str, Iterable[str]]) -> List[str]:
         if isinstance(x, str):
@@ -201,8 +246,25 @@ class DirectPDSClient:
                     results[nsid] = all_recs
 
                 return {"did": did, "pds": pds_xrpc, "collections": results, "missing": missing}
+            except (TransientDIDResolutionError, NonCompliantPDSError):
+                raise  # Re-raise our custom exceptions as-is
             except Exception as e:
-                logger.error(f"Error getting repo records for {identifier}: {e}")
-                raise
+                error_msg = str(e).lower()
+                
+                # Detect non-compliant PDS that returns HTML instead of JSON
+                if 'json' in error_msg and ('expected' in error_msg or 'parse' in error_msg):
+                    # This typically happens when a PDS returns HTML redirects instead of JSON
+                    logger.error(f"Non-compliant PDS for {identifier}: server returned non-JSON response")
+                    raise NonCompliantPDSError(
+                        pds_endpoint=pds_xrpc if 'pds_xrpc' in dir() else 'unknown',
+                        did=identifier,
+                        response_snippet=error_msg[:200]
+                    )
+                elif any(keyword in error_msg for keyword in ['timeout', 'connection', 'network']):
+                    logger.warning(f"Transient error fetching records for {identifier}: {e}")
+                    raise TransientDIDResolutionError(identifier, e)
+                else:
+                    logger.error(f"Error getting repo records for {identifier}: {e}")
+                    raise
         
         return await self.rate_limiter(_get_records())

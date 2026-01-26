@@ -13,6 +13,59 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def safe_execute_query(db, query: str, params: tuple = (), max_retries: int = 3) -> list[dict]:
+    """
+    Safely execute a query and return results as a list of dictionaries.
+
+    This function handles the SQLite cursor invalidation issue that occurs when
+    concurrent requests share the same database connection. The error
+    "Can't get description for statements that have completed execution" happens
+    when another thread/request uses the connection between execute() and
+    accessing cursor.description.
+
+    Args:
+        db: Database connection object
+        query: SQL query to execute
+        params: Query parameters
+        max_retries: Number of retry attempts for cursor errors
+
+    Returns:
+        List of dictionaries with column names as keys
+    """
+    import time
+    import sqlite3
+
+    for attempt in range(max_retries):
+        try:
+            cursor = db.execute(query, params)
+            # Immediately capture description and rows to minimize race window
+            description = cursor.description
+            if description is None:
+                return []
+            columns = [d[0] for d in description]
+            rows = cursor.fetchall()
+            return [dict(zip(columns, row)) for row in rows]
+
+        except sqlite3.ProgrammingError as e:
+            # Handle "Can't get description for statements that have completed execution"
+            error_msg = str(e).lower()
+            if 'completed execution' in error_msg and attempt < max_retries - 1:
+                logger.warning(f"Cursor invalidated (attempt {attempt + 1}/{max_retries}), retrying...")
+                time.sleep(0.05 * (attempt + 1))  # Brief backoff
+                continue
+            raise
+        except sqlite3.OperationalError as e:
+            error_msg = str(e).lower()
+            if ('database is locked' in error_msg or 'busy' in error_msg) and attempt < max_retries - 1:
+                logger.warning(f"Database busy (attempt {attempt + 1}/{max_retries}), retrying...")
+                time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
+                continue
+            raise
+
+    return []
+
+
 def create_bookshelf_record(client: Client, name: str, description: str, privacy: str, open_to_contributions: bool = False) -> str:
     """Creates a bookshelf record on the user's repo and returns its AT-URI."""
     record = {
@@ -1093,37 +1146,35 @@ def get_user_shelves(user_did: str, db_tables, limit: int = 20, offset: int = 0)
     try:
         # Use raw SQL to combine owned shelves and shelves with active permissions
         query = """
-            SELECT DISTINCT b.*, 'owner' as user_relationship 
-            FROM bookshelf b 
+            SELECT DISTINCT b.*, 'owner' as user_relationship
+            FROM bookshelf b
             WHERE b.owner_did = ?
             UNION
             SELECT DISTINCT b.*, p.role as user_relationship
-            FROM bookshelf b 
-            JOIN permission p ON b.id = p.bookshelf_id 
+            FROM bookshelf b
+            JOIN permission p ON b.id = p.bookshelf_id
             WHERE p.user_did = ? AND p.status = 'active'
             ORDER BY updated_at DESC
             LIMIT ? OFFSET ?
         """
-        
-        cursor = db_tables['db'].execute(query, (user_did, user_did, limit, offset))
-        columns = [d[0] for d in cursor.description]
-        rows = cursor.fetchall()
-        
+
+        # Use safe_execute_query to handle cursor invalidation from concurrent requests
+        rows = safe_execute_query(db_tables['db'], query, (user_did, user_did, limit, offset))
+
         # Convert raw results back to Bookshelf objects
         shelves = []
-        for row in rows:
-            shelf_data = dict(zip(columns, row))
+        for shelf_data in rows:
             # Extract the user_relationship before creating Bookshelf object
             user_relationship = shelf_data.pop('user_relationship', 'owner')
             shelf = Bookshelf(**{k: v for k, v in shelf_data.items() if k in Bookshelf.__annotations__})
             # Add the relationship info as an attribute
             shelf.user_relationship = user_relationship
             shelves.append(shelf)
-        
+
         return shelves
-        
+
     except Exception as e:
-        print(f"Error getting user shelves for {user_did}: {e}")
+        logger.error(f"Error getting user shelves for {user_did}: {e}")
         # Fallback to just owned shelves if there's an error
         return db_tables['bookshelves']("owner_did=?", (user_did,), limit=limit, offset=offset, order_by='updated_at DESC')
 
@@ -1214,12 +1265,11 @@ def search_shelves(db_tables, query: str = "", book_title: str = "", book_author
     params.extend([limit, offset])
     
     try:
-        cursor = db_tables['db'].execute(sql_query, params)
-        columns = [d[0] for d in cursor.description]
-        rows = cursor.fetchall()
+        # Use safe_execute_query to handle cursor invalidation from concurrent requests
+        rows = safe_execute_query(db_tables['db'], sql_query, tuple(params))
+
         shelves = []
-        for row in rows:
-            shelf_data = dict(zip(columns, row))
+        for shelf_data in rows:
             # Extract book_count before creating Bookshelf object
             book_count = shelf_data.pop('book_count', 0)
             shelf = Bookshelf(**{k: v for k, v in shelf_data.items() if k in Bookshelf.__annotations__})
@@ -1227,26 +1277,26 @@ def search_shelves(db_tables, query: str = "", book_title: str = "", book_author
             shelf.owner_handle = shelf_data.get('owner_handle')
             shelf.book_count = book_count
             shelves.append(shelf)
-        
+
         # Add book covers and owner info for each shelf (same as get_public_shelves_with_stats)
         for shelf in shelves:
             # Get up to 4 recent book covers
             recent_books = db_tables['books'](
-                "bookshelf_id=?", (shelf.id,), 
-                limit=4, 
+                "bookshelf_id=?", (shelf.id,),
+                limit=4,
                 order_by='added_at DESC'
             )
             shelf.recent_covers = [book.cover_url for book in recent_books if book.cover_url]
-            
+
             # Get owner's profile
             try:
                 shelf.owner = db_tables['users'][shelf.owner_did]
             except IndexError:
                 shelf.owner = None
-        
+
         return shelves
     except Exception as e:
-        print(f"Error searching shelves: {e}")
+        logger.error(f"Error searching shelves: {e}")
         return []
 
 def get_recent_community_books(db_tables, limit: int = 15):
@@ -1259,24 +1309,21 @@ def get_recent_community_books(db_tables, limit: int = 15):
         ORDER BY b.added_at DESC
         LIMIT ?
     """
-    
+
     try:
-        cursor = db_tables['db'].execute(query, (limit,))
-        # Get column descriptions BEFORE calling fetchall()
-        columns = [d[0] for d in cursor.description]
-        rows = cursor.fetchall()
-        
+        # Use safe_execute_query to handle cursor invalidation from concurrent requests
+        rows = safe_execute_query(db_tables['db'], query, (limit,))
+
         # Manually map results to Book objects since it's a raw query
         books = []
-        for row in rows:
-            book_data = dict(zip(columns, row))
+        for book_data in rows:
             book = Book(**{k: v for k, v in book_data.items() if k in Book.__annotations__})
             book.bookshelf_name = book_data.get('bookshelf_name')
             book.bookshelf_slug = book_data.get('bookshelf_slug')
             books.append(book)
         return books
     except Exception as e:
-        print(f"Error fetching recent community books: {e}")
+        logger.error(f"Error fetching recent community books: {e}")
         return []
 
 def calculate_shelf_activity_score(shelf_id: int, db_tables) -> float:
@@ -1580,26 +1627,24 @@ def search_users(db_tables, query: str = "", viewer_did: str = None, limit: int 
         
         # Use wildcards for partial matching
         search_pattern = f"%{search_term}%"
-        params = [search_pattern, search_pattern, limit]
-        
-        cursor = db_tables['db'].execute(sql_query, params)
-        columns = [d[0] for d in cursor.description]
-        rows = cursor.fetchall()
-        
+        params = (search_pattern, search_pattern, limit)
+
+        # Use safe_execute_query to handle cursor invalidation from concurrent requests
+        rows = safe_execute_query(db_tables['db'], sql_query, params)
+
         users = []
-        for row in rows:
-            user_data = dict(zip(columns, row))
+        for user_data in rows:
             user = User(**{k: v for k, v in user_data.items() if k in User.__annotations__})
             user.public_shelves_count = user_data.get('public_shelves_count', 0)
             user.activity_count = user_data.get('activity_count', 0)
             user.recent_shelf_name = user_data.get('recent_shelf_name')
             user.recent_shelf_slug = user_data.get('recent_shelf_slug')
             users.append(user)
-        
+
         return users
-        
+
     except Exception as e:
-        print(f"Error searching users: {e}")
+        logger.error(f"Error searching users: {e}")
         return []
 
 def get_book_by_id(book_id: int, db_tables):
@@ -1611,95 +1656,66 @@ def get_book_by_id(book_id: int, db_tables):
 
 def get_book_comments(book_id: int, db_tables, bookshelf_id: int = None, limit: int = 50):
     """Get comments for a book with user information.
-    
+
     Args:
         book_id: The book to get comments for
         db_tables: Database tables
         bookshelf_id: Optional bookshelf ID to filter comments by shelf context
         limit: Maximum number of comments to return
-    
+
     Returns:
         List of comments, filtered by bookshelf if bookshelf_id is provided
     """
-    import time
-    import sqlite3
-    
-    max_retries = 3
-    retry_delay = 0.1  # Start with 100ms delay
-    
-    for attempt in range(max_retries):
-        try:
-            if bookshelf_id is not None:
-                # Filter comments by both book and bookshelf (shelf-specific context)
-                query = """
-                    SELECT c.*, u.handle, u.display_name, u.avatar_url
-                    FROM comment c
-                    JOIN user u ON c.user_did = u.did
-                    WHERE c.book_id = ? AND c.bookshelf_id = ?
-                    ORDER BY c.created_at ASC
-                    LIMIT ?
-                """
-                params = (book_id, bookshelf_id, limit)
-            else:
-                # Show all comments for the book across all bookshelves (general book page)
-                query = """
-                    SELECT c.*, u.handle, u.display_name, u.avatar_url
-                    FROM comment c
-                    JOIN user u ON c.user_did = u.did
-                    WHERE c.book_id = ?
-                    ORDER BY c.created_at ASC
-                    LIMIT ?
-                """
-                params = (book_id, limit)
-            
-            cursor = db_tables['db'].execute(query, params)
-            # Get column descriptions BEFORE calling fetchall()
-            columns = [d[0] for d in cursor.description]
-            rows = cursor.fetchall()
-            
-            comments = []
-            for row in rows:
-                comment_data = dict(zip(columns, row))
-                
-                # Parse datetime fields if they're strings
-                for date_field in ['created_at', 'updated_at']:
-                    if date_field in comment_data and comment_data[date_field]:
-                        if isinstance(comment_data[date_field], str):
-                            try:
-                                from datetime import datetime
-                                comment_data[date_field] = datetime.fromisoformat(comment_data[date_field].replace('Z', '+00:00'))
-                            except ValueError:
-                                # If parsing fails, set to None
-                                comment_data[date_field] = None
-                
-                comment = Comment(**{k: v for k, v in comment_data.items() if k in Comment.__annotations__})
-                comment.user_handle = comment_data.get('handle')
-                comment.user_display_name = comment_data.get('display_name')
-                comment.user_avatar_url = comment_data.get('avatar_url')
-                comments.append(comment)
-            
-            return comments
-            
-        except sqlite3.OperationalError as e:
-            error_msg = str(e).lower()
-            if ('database is locked' in error_msg or 'database is busy' in error_msg) and attempt < max_retries - 1:
-                # Log the retry attempt
-                logger.warning(f"Database busy/locked getting comments for book {book_id} (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay}s")
-                time.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
-                continue
-            else:
-                # Log the final failure or non-retryable error
-                logger.error(f"Database error getting comments for book {book_id} (bookshelf {bookshelf_id}): {e}")
-                return []
-        except Exception as e:
-            # Non-database errors - don't retry
-            logger.error(f"Error getting comments for book {book_id} (bookshelf {bookshelf_id}): {e}")
-            return []
-    
-    # If we get here, all retries failed
-    logger.error(f"Failed to get comments for book {book_id} after {max_retries} attempts due to database contention")
-    return []
+    try:
+        if bookshelf_id is not None:
+            # Filter comments by both book and bookshelf (shelf-specific context)
+            query = """
+                SELECT c.*, u.handle, u.display_name, u.avatar_url
+                FROM comment c
+                JOIN user u ON c.user_did = u.did
+                WHERE c.book_id = ? AND c.bookshelf_id = ?
+                ORDER BY c.created_at ASC
+                LIMIT ?
+            """
+            params = (book_id, bookshelf_id, limit)
+        else:
+            # Show all comments for the book across all bookshelves (general book page)
+            query = """
+                SELECT c.*, u.handle, u.display_name, u.avatar_url
+                FROM comment c
+                JOIN user u ON c.user_did = u.did
+                WHERE c.book_id = ?
+                ORDER BY c.created_at ASC
+                LIMIT ?
+            """
+            params = (book_id, limit)
+
+        # Use safe_execute_query to handle cursor invalidation from concurrent requests
+        rows = safe_execute_query(db_tables['db'], query, params)
+
+        comments = []
+        for comment_data in rows:
+            # Parse datetime fields if they're strings
+            for date_field in ['created_at', 'updated_at']:
+                if date_field in comment_data and comment_data[date_field]:
+                    if isinstance(comment_data[date_field], str):
+                        try:
+                            comment_data[date_field] = datetime.fromisoformat(comment_data[date_field].replace('Z', '+00:00'))
+                        except ValueError:
+                            # If parsing fails, set to None
+                            comment_data[date_field] = None
+
+            comment = Comment(**{k: v for k, v in comment_data.items() if k in Comment.__annotations__})
+            comment.user_handle = comment_data.get('handle')
+            comment.user_display_name = comment_data.get('display_name')
+            comment.user_avatar_url = comment_data.get('avatar_url')
+            comments.append(comment)
+
+        return comments
+
+    except Exception as e:
+        logger.error(f"Error getting comments for book {book_id} (bookshelf {bookshelf_id}): {e}")
+        return []
 
 def get_book_activity(book_id: int, db_tables, activity_type: str = "all", limit: int = 20):
     """Get activity for a specific book with filtering."""
@@ -1712,24 +1728,22 @@ def get_book_activity(book_id: int, db_tables, activity_type: str = "all", limit
             LEFT JOIN bookshelf b ON a.bookshelf_id = b.id
             WHERE a.book_id = ?
         """
-        
+
         params = [book_id]
-        
+
         # Add activity type filter
         if activity_type != "all":
             query += " AND a.activity_type = ?"
             params.append(activity_type)
-        
+
         query += " ORDER BY a.created_at DESC LIMIT ?"
         params.append(limit)
-        
-        cursor = db_tables['db'].execute(query, params)
-        columns = [d[0] for d in cursor.description]
-        rows = cursor.fetchall()
-        
+
+        # Use safe_execute_query to handle cursor invalidation from concurrent requests
+        rows = safe_execute_query(db_tables['db'], query, tuple(params))
+
         activities = []
-        for row in rows:
-            activity_data = dict(zip(columns, row))
+        for activity_data in rows:
             activity = {
                 'id': activity_data['id'],
                 'user_did': activity_data['user_did'],
@@ -1745,11 +1759,11 @@ def get_book_activity(book_id: int, db_tables, activity_type: str = "all", limit
                 'bookshelf_slug': activity_data['bookshelf_slug']
             }
             activities.append(activity)
-        
+
         return activities
-        
+
     except Exception as e:
-        print(f"Error getting activity for book {book_id}: {e}")
+        logger.error(f"Error getting activity for book {book_id}: {e}")
         return []
 
 def get_book_shelves(book_id: int, db_tables, viewer_did: str = None):
@@ -1759,7 +1773,7 @@ def get_book_shelves(book_id: int, db_tables, viewer_did: str = None):
         book = get_book_by_id(book_id, db_tables)
         if not book:
             return []
-        
+
         # Find all shelves containing books with the same title/author/ISBN
         query = """
             SELECT DISTINCT bs.*, COUNT(b.id) as vote_count
@@ -1768,7 +1782,7 @@ def get_book_shelves(book_id: int, db_tables, viewer_did: str = None):
             LEFT JOIN permission p ON bs.id = p.bookshelf_id AND p.user_did = ? AND p.status = 'active'
             WHERE b.title = ? AND b.author = ? AND COALESCE(b.isbn, '') = COALESCE(?, '')
             AND (
-                bs.privacy = 'public' 
+                bs.privacy = 'public'
                 OR bs.privacy = 'link-only'
                 OR (bs.privacy = 'private' AND bs.owner_did = ?)
                 OR (bs.privacy = 'private' AND p.user_did IS NOT NULL)
@@ -1776,24 +1790,23 @@ def get_book_shelves(book_id: int, db_tables, viewer_did: str = None):
             GROUP BY bs.id
             ORDER BY vote_count DESC, bs.updated_at DESC
         """
-        
-        params = [viewer_did or '', book.title, book.author, book.isbn or '', viewer_did or '']
-        cursor = db_tables['db'].execute(query, params)
-        columns = [d[0] for d in cursor.description]
-        rows = cursor.fetchall()
-        
+
+        params = (viewer_did or '', book.title, book.author, book.isbn or '', viewer_did or '')
+
+        # Use safe_execute_query to handle cursor invalidation from concurrent requests
+        rows = safe_execute_query(db_tables['db'], query, params)
+
         shelves = []
-        for row in rows:
-            shelf_data = dict(zip(columns, row))
+        for shelf_data in rows:
             vote_count = shelf_data.pop('vote_count', 0)
             shelf = Bookshelf(**{k: v for k, v in shelf_data.items() if k in Bookshelf.__annotations__})
             shelf.vote_count = vote_count
             shelves.append(shelf)
-        
+
         return shelves
-        
+
     except Exception as e:
-        print(f"Error getting shelves for book {book_id}: {e}")
+        logger.error(f"Error getting shelves for book {book_id}: {e}")
         return []
 
 # FT rendering methods for models
