@@ -264,7 +264,9 @@ class DatabaseWriteQueue:
         """
         UPSERT operation for process_status table.
         
-        Uses INSERT OR REPLACE to handle both new process registration and updates.
+        Checks if record exists first:
+        - If exists: UPDATE only the provided fields (preserves NOT NULL fields like process_type)
+        - If not exists: INSERT (requires all NOT NULL fields to be present)
         """
         db = self.db_tables.get('db')
         if not db:
@@ -278,15 +280,37 @@ class DatabaseWriteQueue:
             else:
                 processed_data[key] = value
         
-        # Build the UPSERT query
-        columns = list(processed_data.keys())
-        placeholders = ', '.join(['?' for _ in columns])
-        column_names = ', '.join(columns)
+        # Check if record exists
+        cursor = db.execute(
+            "SELECT 1 FROM process_status WHERE process_name = ?",
+            [process_name]
+        )
+        exists = cursor.fetchone() is not None
         
-        query = f"INSERT OR REPLACE INTO process_status ({column_names}) VALUES ({placeholders})"
-        values = [processed_data.get(col) for col in columns]
-        
-        db.execute(query, values)
+        if exists:
+            # UPDATE only the provided fields (preserves process_type and other NOT NULL fields)
+            # Remove process_name from update data since it's the key
+            update_data = {k: v for k, v in processed_data.items() if k != 'process_name'}
+            
+            if update_data:
+                set_clause = ', '.join([f"{col} = ?" for col in update_data.keys()])
+                values = list(update_data.values()) + [process_name]
+                
+                query = f"UPDATE process_status SET {set_clause} WHERE process_name = ?"
+                db.execute(query, values)
+        else:
+            # INSERT - requires all NOT NULL fields (process_name, process_type, status)
+            # Ensure process_name is in the data
+            processed_data['process_name'] = process_name
+            
+            columns = list(processed_data.keys())
+            placeholders = ', '.join(['?' for _ in columns])
+            column_names = ', '.join(columns)
+            
+            query = f"INSERT INTO process_status ({column_names}) VALUES ({placeholders})"
+            values = [processed_data.get(col) for col in columns]
+            
+            db.execute(query, values)
     
     def get_stats(self) -> Dict[str, int]:
         """Get queue statistics."""

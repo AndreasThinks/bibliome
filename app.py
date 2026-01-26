@@ -4006,7 +4006,7 @@ def get_delete_confirmation(slug: str, auth):
                     required=True,
                     hx_post=f"/api/shelf/{slug}/validate-delete",
                     hx_target="#delete-validation",
-                    hx_trigger="keyup changed delay:300ms",
+                    hx_trigger="input delay:300ms",
                     hx_vals=f'{{"expected_name": "{shelf.name}"}}',
                     style="width: 100%; margin-bottom: 1rem;"
                 ),

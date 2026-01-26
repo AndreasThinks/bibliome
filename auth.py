@@ -41,28 +41,20 @@ class BlueskyAuth:
                     # Error message if present
                     Alert(error_msg, "error") if error_msg else None,
 
-                    # OAuth login option (recommended)
-                    (Div(
-                        H3("Recommended: OAuth Login", cls="oauth-section-title"),
-                        P("More secure - no app password needed", cls="oauth-section-desc"),
-                        Form(
-                            Fieldset(
-                                Label("Bluesky Handle", Input(
-                                    name="handle",
-                                    type="text",
-                                    placeholder="your-handle.bsky.social",
-                                    required=True,
-                                    cls="login-input"
-                                )),
-                                cls="login-fieldset"
-                            ),
-                            Button("Sign In with OAuth", type="submit", cls="login-btn-oauth"),
-                            action="/auth/oauth/start",
-                            method="get",
-                            cls="login-form oauth-form"
+                    # OAuth login option (temporarily disabled)
+                    Div(
+                        H3("🔒 OAuth Login", cls="oauth-section-title", style="opacity: 0.6;"),
+                        Div(
+                            P("✨ Coming Soon!", style="font-weight: bold; color: #6366f1; margin-bottom: 0.5rem;"),
+                            P("OAuth authentication is being finalized and will be available shortly.", 
+                              style="font-size: 0.9rem; color: #666;"),
+                            P("For now, please use an App Password to sign in.", 
+                              style="font-size: 0.85rem; color: #888; margin-top: 0.5rem;"),
+                            style="background: #f0f0ff; border: 1px dashed #6366f1; border-radius: 0.5rem; padding: 1rem; text-align: center;"
                         ),
-                        cls="oauth-section"
-                    ) if oauth_enabled else None),
+                        cls="oauth-section",
+                        style="opacity: 0.8;"
+                    ),
 
                     # Divider
                     (Div(
