@@ -16,20 +16,14 @@ from datetime import datetime
 from typing import Dict, Optional
 import psutil
 from dotenv import load_dotenv
+from logging_config import setup_logging, silence_noisy_loggers
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('service_manager.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+# Setup logging with shared configuration
+logger = setup_logging("service_manager", log_file="service_manager.log")
+silence_noisy_loggers()
 
 class ServiceManager:
     """Manages background services for Bibliome."""
@@ -235,12 +229,20 @@ class ServiceManager:
         return status_info
     
     def start_all_services(self):
-        """Start all enabled services."""
+        """Start all enabled services with staggered delays to prevent database contention."""
         logger.info("Starting all enabled services...")
+        
+        # Stagger service startups to prevent SQLite database locking during initialization
+        startup_delay = int(os.getenv('SERVICE_STARTUP_DELAY_SECONDS', '5'))
+        first_service = True
         
         for service_name in self.services:
             if self.services[service_name]['enabled']:
+                if not first_service and startup_delay > 0:
+                    logger.info(f"Waiting {startup_delay}s before starting {service_name} to prevent database contention...")
+                    time.sleep(startup_delay)
                 self.start_service(service_name)
+                first_service = False
             else:
                 logger.info(f"Skipping disabled service: {service_name}")
     

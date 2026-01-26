@@ -3,7 +3,7 @@ import logging
 import os
 import signal
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from atproto_firehose import FirehoseSubscribeReposClient, parse_subscribe_repos_message
 from atproto_core.cid import CID
@@ -13,23 +13,16 @@ from process_monitor import (
     log_process_event, record_process_metric, process_heartbeat, 
     update_process_status
 )
+from db_write_queue import (
+    init_write_queue, shutdown_write_queue,
+    queue_process_heartbeat, queue_process_log, queue_process_metric
+)
 from circuit_breaker import CircuitBreaker
 
-# Configure logging with service name prefix
-log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
-level = getattr(logging, log_level_str, logging.INFO)
-# Create a custom formatter
-formatter = logging.Formatter('[firehose_ingester] %(asctime)s - %(levelname)s - %(message)s')
-# Get the root logger
-logger = logging.getLogger()
-logger.setLevel(level)
-# Remove existing handlers
-for handler in logger.handlers[:]:
-    logger.removeHandler(handler)
-# Create a new handler with the custom formatter
-handler = logging.StreamHandler()
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+# Set up logging using shared configuration
+from logging_config import setup_logging, silence_noisy_loggers
+logger = setup_logging("firehose_ingester")
+silence_noisy_loggers()
 
 from database_manager import db_manager
 from api_clients import BookAPIClient
@@ -84,8 +77,8 @@ def ensure_user_exists(repo_did: str):
             'display_name': f"User {repo_did[-8:]}",
             'avatar_url': '',
             'is_remote': True,
-            'discovered_at': datetime.now(),
-            'last_seen_remote': datetime.now(),
+            'discovered_at': datetime.now(timezone.utc),
+            'last_seen_remote': datetime.now(timezone.utc),
             'remote_sync_status': 'discovered'
         }
         db_tables['users'].insert(user_data)
@@ -111,9 +104,9 @@ def store_bookshelf_from_network(record: dict, repo_did: str, record_uri: str):
 
         # Improved date parsing with better error handling
         def safe_parse_date(date_str, field_name="date"):
-            """Safely parse a date string with fallback to current time."""
+            """Safely parse a date string with fallback to current time (UTC)."""
             if not date_str or str(date_str).strip() == '':
-                return datetime.now()
+                return datetime.now(timezone.utc)
             
             try:
                 # Handle different timezone formats
@@ -123,7 +116,7 @@ def store_bookshelf_from_network(record: dict, repo_did: str, record_uri: str):
                 return datetime.fromisoformat(str(date_str))
             except (ValueError, TypeError) as e:
                 logger.warning(f"Invalid {field_name} format '{date_str}': {e}")
-                return datetime.now()
+                return datetime.now(timezone.utc)
         
         # Parse dates with proper fallback logic
         created_at = safe_parse_date(record.get('createdAt'), 'createdAt')
@@ -145,8 +138,8 @@ def store_bookshelf_from_network(record: dict, repo_did: str, record_uri: str):
             'remote_owner_did': repo_did,
             'original_atproto_uri': record_uri,
             'slug': f"net-{record_uri.split('/')[-1]}",
-            'discovered_at': datetime.now(),
-            'last_synced': datetime.now(),
+            'discovered_at': datetime.now(timezone.utc),
+            'last_synced': datetime.now(timezone.utc),
             'remote_sync_status': 'discovered',
             'created_at': created_at,
             'updated_at': updated_at
@@ -205,7 +198,11 @@ async def enrich_book_with_cover(book_data: dict) -> dict:
         return book_data
 
 def store_book_from_network(record: dict, repo_did: str, record_uri: str):
-    """Stores a book discovered on the network."""
+    """Stores a book discovered on the network.
+    
+    Note: Cover enrichment is deferred to the background cover cache job
+    to avoid event loop issues in the synchronous firehose handler.
+    """
     try:
         logger.info(f"Discovered new book from {repo_did}: {record.get('title')}")
 
@@ -234,27 +231,19 @@ def store_book_from_network(record: dict, repo_did: str, record_uri: str):
             'title': record.get('title', 'Untitled Book'),
             'author': record.get('author', ''),
             'isbn': record.get('isbn', ''),
-            'cover_url': '',  # Will be populated by enrichment
+            'cover_url': '',  # Will be populated by background cover cache job
             'added_by_did': repo_did,
             'is_remote': True,
             'remote_added_by_did': repo_did,
             'original_atproto_uri': record_uri,
-            'discovered_at': datetime.now(),
+            'discovered_at': datetime.now(timezone.utc),
             'remote_sync_status': 'discovered',
-            'added_at': datetime.fromisoformat(record.get('addedAt', datetime.now().isoformat()).replace('Z', '+00:00'))
+            'added_at': datetime.fromisoformat(record.get('addedAt', datetime.now(timezone.utc).isoformat()).replace('Z', '+00:00'))
         }
 
-        # Try to enrich with cover image (but don't fail if it doesn't work)
-        try:
-            import asyncio
-            # Create a new event loop for the async call since we're in a sync context
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            enriched_data = loop.run_until_complete(enrich_book_with_cover(book_data))
-            book_data.update(enriched_data)
-            loop.close()
-        except Exception as e:
-            logger.warning(f"Failed to enrich book with cover, proceeding without: {e}")
+        # Note: Cover enrichment is deferred to avoid event loop anti-pattern.
+        # The background cover_cache_job will handle cover fetching for books
+        # with empty cover_url fields.
 
         result = db_tables['books'].insert(book_data)
         book_id = result.id if hasattr(result, 'id') else result
@@ -316,13 +305,13 @@ def store_comment_from_network(record: dict, repo_did: str, record_uri: str):
             'user_did': repo_did,
             'content': record.get('content', ''),
             'parent_comment_id': None,  # Threading not implemented yet
-            'created_at': datetime.fromisoformat(record.get('createdAt', datetime.now().isoformat()).replace('Z', '+00:00')),
-            'updated_at': datetime.fromisoformat(record.get('editedAt', record.get('createdAt', datetime.now().isoformat())).replace('Z', '+00:00')) if record.get('editedAt') else None,
+            'created_at': datetime.fromisoformat(record.get('createdAt', datetime.now(timezone.utc).isoformat()).replace('Z', '+00:00')),
+            'updated_at': datetime.fromisoformat(record.get('editedAt', record.get('createdAt', datetime.now(timezone.utc).isoformat())).replace('Z', '+00:00')) if record.get('editedAt') else None,
             'is_edited': bool(record.get('editedAt')),
             'atproto_uri': record_uri,
             'is_remote': True,
             'remote_user_did': repo_did,
-            'discovered_at': datetime.now(),
+            'discovered_at': datetime.now(timezone.utc),
             'original_atproto_uri': record_uri,
             'remote_sync_status': 'discovered'
         }
@@ -377,7 +366,7 @@ def on_message_handler(message, db_tables):
         if not wanted_ops:
             # No relevant creates: send heartbeat periodically without CAR decode overhead
             if message_count % 100 == 0:
-                process_heartbeat(PROCESS_NAME, {
+                queue_process_heartbeat(PROCESS_NAME, {
                     "messages_processed": message_count,
                     "bookshelves_found": bookshelf_count,
                     "books_found": book_count,
@@ -390,7 +379,7 @@ def on_message_handler(message, db_tables):
             car = CAR.from_bytes(evt.blocks)
         except Exception as car_error:
             logger.warning(f"CAR decode error for {evt.repo}: {car_error}")
-            log_process_event(PROCESS_NAME, f"CAR decode error: {car_error}", "WARNING", "error", db_tables=db_tables)
+            queue_process_log(PROCESS_NAME, f"CAR decode error: {car_error}", "WARNING", "error", db_tables=db_tables)
             error_count += 1
             return
 
@@ -415,47 +404,41 @@ def on_message_handler(message, db_tables):
                     store_bookshelf_from_network(record, evt.repo, record_uri)
                     bookshelf_count += 1
                     message_processed = True
-                    log_process_event(PROCESS_NAME, f"Processed bookshelf: {record.get('name')}", "INFO", "activity", db_tables=db_tables)
+                    queue_process_log(PROCESS_NAME, f"Processed bookshelf: {record.get('name')}", "INFO", "activity", db_tables=db_tables)
 
                 elif path_collection == "com.bibliome.book":
                     store_book_from_network(record, evt.repo, record_uri)
                     book_count += 1
                     message_processed = True
-                    log_process_event(PROCESS_NAME, f"Processed book: {record.get('title')}", "INFO", "activity", db_tables=db_tables)
+                    queue_process_log(PROCESS_NAME, f"Processed book: {record.get('title')}", "INFO", "activity", db_tables=db_tables)
 
                 elif path_collection == "com.bibliome.comment":
                     store_comment_from_network(record, evt.repo, record_uri)
                     message_processed = True
-                    log_process_event(PROCESS_NAME, f"Processed comment: {record.get('content', '')[:50]}...", "INFO", "activity", db_tables=db_tables)
+                    queue_process_log(PROCESS_NAME, f"Processed comment: {record.get('content', '')[:50]}...", "INFO", "activity", db_tables=db_tables)
 
             except Exception as e:
                 error_count += 1
                 logger.error(f"Error processing op for {evt.repo}: {e}", exc_info=True)
-                log_process_event(PROCESS_NAME, f"Error processing operation: {e}", "ERROR", "error", db_tables=db_tables)
+                queue_process_log(PROCESS_NAME, f"Error processing operation: {e}", "ERROR", "error", db_tables=db_tables)
                 
 
         # Heartbeat on activity or every 100 messages
         if message_count % 100 == 0 or message_processed:
-            try:
-                process_heartbeat(PROCESS_NAME, {
-                    "messages_processed": message_count,
-                    "bookshelves_found": bookshelf_count,
-                    "books_found": book_count,
-                    "errors_count": error_count
-                }, db_tables=db_tables)
-            except Exception as heartbeat_error:
-                logger.warning(f"Failed to send heartbeat: {heartbeat_error}")
+            queue_process_heartbeat(PROCESS_NAME, {
+                "messages_processed": message_count,
+                "bookshelves_found": bookshelf_count,
+                "books_found": book_count,
+                "errors_count": error_count
+            }, db_tables=db_tables)
             
             if message_count % 100 == 0:
-                try:
-                    log_process_event(PROCESS_NAME, f"Processed {message_count} messages total", "INFO", "activity", db_tables=db_tables)
-                except Exception as log_error:
-                    logger.warning(f"Failed to log process event: {log_error}")
+                queue_process_log(PROCESS_NAME, f"Processed {message_count} messages total", "INFO", "activity", db_tables=db_tables)
 
     except Exception as e:
         error_count += 1
         logger.error(f"Error handling firehose message: {e}", exc_info=True)
-        log_process_event(PROCESS_NAME, f"Critical error in message handler: {e}", "ERROR", "error", db_tables=db_tables)
+        queue_process_log(PROCESS_NAME, f"Critical error in message handler: {e}", "ERROR", "error", db_tables=db_tables)
 
 def setup_signal_handlers(db_tables):
     """Setup signal handlers for graceful shutdown."""
@@ -474,10 +457,13 @@ async def main():
     
     db_tables = await db_manager.get_connection()
     
+    # Initialize the write queue for high-frequency database writes
+    init_write_queue(db_tables)
+    
     # Setup signal handlers
     setup_signal_handlers(db_tables)
     
-    # Update process status to starting
+    # Update process status to starting (use direct call for critical startup events)
     update_process_status(PROCESS_NAME, "starting", pid=os.getpid(), db_tables=db_tables)
     log_process_event(PROCESS_NAME, "Firehose ingester starting", "INFO", "start", db_tables=db_tables)
     
@@ -545,11 +531,17 @@ async def main():
     # Final status update
     update_process_status(PROCESS_NAME, "stopped", db_tables=db_tables)
     log_process_event(PROCESS_NAME, "Firehose monitoring terminated", "INFO", "stop", db_tables=db_tables)
+    
+    # Gracefully shutdown the write queue to flush remaining writes
+    shutdown_write_queue()
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Firehose monitoring terminated")
-        update_process_status(PROCESS_NAME, "stopped", db_tables=db_tables)
-        log_process_event(PROCESS_NAME, "Process terminated by interrupt", "INFO", "stop", db_tables=db_tables)
+        if db_tables:
+            update_process_status(PROCESS_NAME, "stopped", db_tables=db_tables)
+            log_process_event(PROCESS_NAME, "Process terminated by interrupt", "INFO", "stop", db_tables=db_tables)
+        # Ensure write queue is flushed on interrupt
+        shutdown_write_queue()

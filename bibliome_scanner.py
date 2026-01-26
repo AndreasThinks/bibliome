@@ -42,6 +42,16 @@ load_dotenv()
 class BiblioMeScanner:
     """Scans the AT-Proto network for Bibliome records and imports them locally."""
     
+    # Singleton instance for on-demand sync access
+    _instance = None
+    
+    @classmethod
+    def get_instance(cls):
+        """Get or create the singleton scanner instance."""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+    
     def __init__(self):
         self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
         rate_limiter = RateLimiter(
@@ -55,6 +65,10 @@ class BiblioMeScanner:
         self.import_public_only = os.getenv('BIBLIOME_IMPORT_PUBLIC_ONLY', 'true').lower() == 'true'
         self.user_batch_size = int(os.getenv('BIBLIOME_USER_BATCH_SIZE', '50'))
         self.running = True
+        
+        # On-demand sync settings
+        self.network_sync_max_users = int(os.getenv('BIBLIOME_NETWORK_SYNC_MAX_USERS', '50'))
+        self.network_sync_cooldown_hours = int(os.getenv('BIBLIOME_NETWORK_SYNC_COOLDOWN_HOURS', '24'))
         
         # Initialize ID resolver for handle resolution
         self.id_resolver = IdResolver()
@@ -501,6 +515,208 @@ class BiblioMeScanner:
             self.db_tables['sync_logs'].insert(log_entry)
         except Exception as e:
             logger.error(f"Failed to log sync activity: {e}")
+
+    async def check_user_has_bibliome_records(self, did: str) -> bool:
+        """Quick check if a user has any com.bibliome.* records without full sync."""
+        try:
+            data = await self.pds_client.get_repo_records(did, ["com.bibliome.bookshelf", "com.bibliome.book"])
+            collections = data.get("collections", {})
+            has_bookshelves = len(collections.get("com.bibliome.bookshelf", [])) > 0
+            has_books = len(collections.get("com.bibliome.book", [])) > 0
+            return has_bookshelves or has_books
+        except Exception as e:
+            logger.debug(f"Error checking bibliome records for {did}: {e}")
+            return False
+
+    def _should_sync_user(self, did: str) -> bool:
+        """Check if a user should be synced based on last sync time."""
+        try:
+            # Check if user exists and when they were last synced
+            user_list = self.db_tables['users']("did=?", (did,))
+            if not user_list:
+                return True  # New user, should sync
+            
+            user = user_list[0]
+            last_seen = getattr(user, 'last_seen_remote', None)
+            
+            if last_seen is None:
+                return True  # Never synced
+            
+            # Parse last_seen if it's a string
+            if isinstance(last_seen, str):
+                try:
+                    last_seen = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
+                except ValueError:
+                    return True  # Can't parse, sync anyway
+            
+            # Make sure both datetimes have timezone info for comparison
+            now = datetime.now(timezone.utc)
+            if last_seen.tzinfo is None:
+                last_seen = last_seen.replace(tzinfo=timezone.utc)
+            
+            # Check if cooldown has passed
+            hours_since_sync = (now - last_seen).total_seconds() / 3600
+            return hours_since_sync >= self.network_sync_cooldown_hours
+            
+        except Exception as e:
+            logger.debug(f"Error checking if user should sync {did}: {e}")
+            return True  # Sync on error to be safe
+
+    async def sync_user_on_login(self, user_did: str) -> dict:
+        """
+        On-demand sync triggered when a user logs in.
+        Syncs the user's own AT Proto records immediately.
+        
+        Returns:
+            dict with sync results
+        """
+        logger.info(f"[ON-DEMAND] Starting login sync for user {user_did}")
+        
+        # Initialize DB connection if needed
+        if self.db_tables is None:
+            self.db_tables = await db_manager.get_connection()
+        
+        results = {
+            'user_did': user_did,
+            'bookshelves_synced': 0,
+            'books_synced': 0,
+            'success': False,
+            'error': None
+        }
+        
+        try:
+            # Sync the user's content
+            await self.sync_user_content(user_did)
+            
+            # Count what was synced
+            user_shelves = self.db_tables['bookshelves']("owner_did=?", (user_did,))
+            user_books = self.db_tables['books']("added_by_did=?", (user_did,))
+            
+            results['bookshelves_synced'] = len(user_shelves)
+            results['books_synced'] = len(user_books)
+            results['success'] = True
+            
+            logger.info(f"[ON-DEMAND] User sync complete: {results['bookshelves_synced']} shelves, {results['books_synced']} books")
+            
+        except Exception as e:
+            logger.error(f"[ON-DEMAND] Error syncing user {user_did}: {e}", exc_info=True)
+            results['error'] = str(e)
+        
+        return results
+
+    async def sync_network_in_background(self, following_dids: List[str], max_users: int = None):
+        """
+        Background sync of users in a network (following list).
+        Runs asynchronously without blocking the login flow.
+        
+        Args:
+            following_dids: List of DIDs the user follows
+            max_users: Maximum number of users to sync (defaults to network_sync_max_users)
+        """
+        if max_users is None:
+            max_users = self.network_sync_max_users
+        
+        logger.info(f"[NETWORK-SYNC] Starting background sync for {len(following_dids)} following DIDs (max: {max_users})")
+        
+        # Initialize DB connection if needed
+        if self.db_tables is None:
+            self.db_tables = await db_manager.get_connection()
+        
+        synced_count = 0
+        checked_count = 0
+        skipped_count = 0
+        bibliome_users = 0
+        
+        try:
+            for did in following_dids:
+                if synced_count >= max_users:
+                    logger.info(f"[NETWORK-SYNC] Reached max users limit ({max_users}), stopping")
+                    break
+                
+                checked_count += 1
+                
+                # Check if we should sync this user (cooldown check)
+                if not self._should_sync_user(did):
+                    skipped_count += 1
+                    continue
+                
+                # Check if user has Bibliome records (quick check before full sync)
+                has_records = await self.check_user_has_bibliome_records(did)
+                if not has_records:
+                    continue
+                
+                bibliome_users += 1
+                
+                # Sync this user's content
+                try:
+                    await self.sync_user_content(did)
+                    synced_count += 1
+                    
+                    # Log progress every 10 users
+                    if synced_count % 10 == 0:
+                        logger.info(f"[NETWORK-SYNC] Progress: synced {synced_count}/{max_users}, checked {checked_count}/{len(following_dids)}")
+                        
+                except Exception as e:
+                    logger.warning(f"[NETWORK-SYNC] Error syncing {did}: {e}")
+                    continue
+                
+                # Small delay between users to avoid overwhelming the network
+                await asyncio.sleep(0.5)
+            
+            logger.info(f"[NETWORK-SYNC] Complete: synced {synced_count} users, "
+                       f"found {bibliome_users} with Bibliome records, "
+                       f"skipped {skipped_count} (recently synced), "
+                       f"checked {checked_count} total")
+            
+        except Exception as e:
+            logger.error(f"[NETWORK-SYNC] Error during background sync: {e}", exc_info=True)
+
+    async def sync_user_and_network(self, user_did: str, following_dids: List[str]) -> dict:
+        """
+        Complete sync: user's own records immediately, then network in background.
+        
+        Args:
+            user_did: The logged-in user's DID
+            following_dids: List of DIDs the user follows
+            
+        Returns:
+            dict with immediate sync results (network sync runs in background)
+        """
+        # Sync user's own records immediately
+        results = await self.sync_user_on_login(user_did)
+        
+        # Start network sync in background (non-blocking)
+        if following_dids:
+            asyncio.create_task(self.sync_network_in_background(following_dids))
+            results['network_sync_started'] = True
+            results['network_users_queued'] = min(len(following_dids), self.network_sync_max_users)
+        else:
+            results['network_sync_started'] = False
+            results['network_users_queued'] = 0
+        
+        return results
+
+
+# Convenience function for triggering sync from app.py
+async def trigger_login_sync(user_did: str, following_dids: List[str] = None) -> dict:
+    """
+    Trigger AT Proto sync for a user on login.
+    This is the main entry point for on-demand sync from the web app.
+    
+    Args:
+        user_did: The logged-in user's DID
+        following_dids: Optional list of DIDs the user follows (for network sync)
+        
+    Returns:
+        dict with sync results
+    """
+    scanner = BiblioMeScanner.get_instance()
+    
+    if following_dids:
+        return await scanner.sync_user_and_network(user_did, following_dids)
+    else:
+        return await scanner.sync_user_on_login(user_did)
+
 
 async def main():
     scanner = BiblioMeScanner()

@@ -1,5 +1,5 @@
 """Bluesky/AT-Proto authentication for BookdIt."""
-import requests
+import httpx
 from atproto import Client as AtprotoClient
 from fasthtml.common import *
 from fastcore.xtras import flexicache, time_policy
@@ -21,9 +21,9 @@ class BlueskyAuth:
     def __init__(self):
         self.client = AtprotoClient()
     
-    def create_login_form(self, error_msg: str = None):
-        """Create the login form with optional error message."""
-        
+    def create_login_form(self, error_msg: str = None, oauth_enabled: bool = True):
+        """Create the login form with optional error message and OAuth option."""
+
         return (
             Title("Login - Bibliome"),
             Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
@@ -37,47 +37,73 @@ class BlueskyAuth:
                         P("Sign in with your Bluesky account", cls="login-subtitle"),
                         cls="login-header"
                     ),
-                    
+
                     # Error message if present
                     Alert(error_msg, "error") if error_msg else None,
-                    
-                    # Login form with proper autocomplete
-                    Form(
-                        Fieldset(
-                            Label("Bluesky Handle", Input(
-                                name="handle",
-                                id="username",
-                                type="text",
-                                placeholder="your-handle.bsky.social",
-                                autocomplete="username",
-                                required=True,
-                                cls="login-input"
-                            )),
-                            Label("App Password", Input(
-                                name="password",
-                                id="password",
-                                type="password",
-                                placeholder="Your Bluesky app password",
-                                autocomplete="current-password",
-                                required=True,
-                                cls="login-input"
-                            )),
-                            cls="login-fieldset"
+
+                    # OAuth login option (temporarily disabled)
+                    Div(
+                        H3("🔒 OAuth Login", cls="oauth-section-title", style="opacity: 0.6;"),
+                        Div(
+                            P("✨ Coming Soon!", style="font-weight: bold; color: #6366f1; margin-bottom: 0.5rem;"),
+                            P("OAuth authentication is being finalized and will be available shortly.", 
+                              style="font-size: 0.9rem; color: #666;"),
+                            P("For now, please use an App Password to sign in.", 
+                              style="font-size: 0.85rem; color: #888; margin-top: 0.5rem;"),
+                            style="background: #f0f0ff; border: 1px dashed #6366f1; border-radius: 0.5rem; padding: 1rem; text-align: center;"
                         ),
-                        Button("Sign In", type="submit", cls="login-btn-primary"),
-                        action="/auth/login",
-                        method="post",
-                        autocomplete="on",
-                        cls="login-form"
+                        cls="oauth-section",
+                        style="opacity: 0.8;"
                     ),
-                    
+
+                    # Divider
+                    (Div(
+                        Span("OR", cls="divider-text"),
+                        cls="login-divider"
+                    ) if oauth_enabled else None),
+
+                    # App password login option (legacy)
+                    Div(
+                        (H3("App Password Login", cls="legacy-section-title") if oauth_enabled else None),
+                        # Login form with proper autocomplete
+                        Form(
+                            Fieldset(
+                                Label("Bluesky Handle", Input(
+                                    name="handle",
+                                    id="username",
+                                    type="text",
+                                    placeholder="your-handle.bsky.social",
+                                    autocomplete="username",
+                                    required=True,
+                                    cls="login-input"
+                                )),
+                                Label("App Password", Input(
+                                    name="password",
+                                    id="password",
+                                    type="password",
+                                    placeholder="Your Bluesky app password",
+                                    autocomplete="current-password",
+                                    required=True,
+                                    cls="login-input"
+                                )),
+                                cls="login-fieldset"
+                            ),
+                            Button("Sign In with App Password", type="submit", cls="login-btn-secondary" if oauth_enabled else "login-btn-primary"),
+                            action="/auth/login",
+                            method="post",
+                            autocomplete="on",
+                            cls="login-form"
+                        ),
+                        cls="app-password-section"
+                    ),
+
                     # Help text and links
                     Div(
                         P(
                             "Need an app password? ",
-                            A("Create one in your Bluesky settings", 
-                              href="https://bsky.app/settings/app-passwords", 
-                              target="_blank", 
+                            A("Create one in your Bluesky settings",
+                              href="https://bsky.app/settings/app-passwords",
+                              target="_blank",
                               rel="noopener noreferrer",
                               cls="login-help-link")
                         ),
@@ -87,7 +113,7 @@ class BlueskyAuth:
                         ),
                         cls="login-help"
                     ),
-                    
+
                     cls="login-card"
                 ),
                 cls="login-container"
@@ -168,9 +194,14 @@ class BlueskyAuth:
                 return None
 
     def get_service_from_handle(self, handle: str) -> str:
+        """Resolve handle to PDS service endpoint using synchronous httpx."""
         did = self.client.com.atproto.identity.resolve_handle({"handle": handle})
         logger.debug(f"Resolved identity: {did.did}")
-        did_doc = requests.get(f"https://plc.directory/{did.did}").json()
+        # Use httpx synchronous client for non-async context
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(f"https://plc.directory/{did.did}")
+            response.raise_for_status()
+            did_doc = response.json()
         service = did_doc['service'][0]['serviceEndpoint']
         logger.debug(f"Resolved service endpoint: {service}")
         return service
@@ -339,9 +370,14 @@ def auth_beforeware(req, sess, db_tables):
     try:
         user = db_tables['users'][auth_data['did']]
         # Update last login if it's been more than an hour
-        from datetime import datetime, timedelta
-        if datetime.now() - user.last_login > timedelta(hours=1):
-            db_tables['users'].update({'last_login': datetime.now()}, auth_data['did'])
+        from datetime import datetime, timedelta, timezone
+        now_utc = datetime.now(timezone.utc)
+        # Handle both timezone-aware and naive datetimes for backward compatibility
+        last_login = user.last_login
+        if last_login.tzinfo is None:
+            last_login = last_login.replace(tzinfo=timezone.utc)
+        if now_utc - last_login > timedelta(hours=1):
+            db_tables['users'].update({'last_login': now_utc}, auth_data['did'])
     except:
         pass  # User might not exist in DB yet
     

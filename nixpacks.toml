@@ -1,0 +1,13 @@
+# Nixpacks configuration for Bibliome
+# Documentation: https://nixpacks.com/docs/configuration/file
+
+# Let Nixpacks auto-detect Python and install from requirements.txt
+# We only need to specify the start command and variables
+
+[start]
+cmd = 'python main.py'
+
+[variables]
+# Python environment variables
+PYTHONUNBUFFERED = '1'
+PYTHONDONTWRITEBYTECODE = '1'

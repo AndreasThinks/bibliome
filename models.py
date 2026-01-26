@@ -1,7 +1,7 @@
 """Database models for BookdIt using FastLite."""
 
 from fastlite import *
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import secrets
 import string
@@ -379,6 +379,17 @@ class User:
     discovered_at: datetime = None
     last_seen_remote: datetime = None
     remote_sync_status: str = "local"
+    # OAuth 2.0 fields
+    oauth_access_token: str = ""
+    oauth_refresh_token: str = ""
+    oauth_token_expires_at: datetime = None
+    oauth_dpop_private_jwk: str = ""  # PEM-encoded private key material
+    oauth_dpop_nonce_authserver: str = ""
+    oauth_dpop_nonce_pds: str = ""
+    oauth_issuer: str = ""
+    oauth_pds_url: str = ""
+    oauth_state: str = ""
+    oauth_code_verifier: str = ""
 
 class Bookshelf:
     """Bookshelf model for organizing books."""
@@ -911,7 +922,7 @@ def log_activity(user_did: str, activity_type: str, db_tables, bookshelf_id: int
             activity_type=activity_type,
             bookshelf_id=bookshelf_id,
             book_id=book_id,
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
             metadata=metadata
         )
         db_tables['activities'].insert(activity)
@@ -1271,13 +1282,13 @@ def get_recent_community_books(db_tables, limit: int = 15):
 def calculate_shelf_activity_score(shelf_id: int, db_tables) -> float:
     """Calculate an activity score for a bookshelf based on various metrics."""
     try:
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone as tz
         
         # Get shelf info
         shelf = db_tables['bookshelves'][shelf_id]
         
         # Recent book additions (last 30 days) - weight: 40%
-        thirty_days_ago = datetime.now() - timedelta(days=30)
+        thirty_days_ago = datetime.now(tz.utc) - timedelta(days=30)
         recent_books_query = """
             SELECT COUNT(*) FROM book 
             WHERE bookshelf_id = ? AND added_at >= ?
