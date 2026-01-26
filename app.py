@@ -25,6 +25,7 @@ from auth import BlueskyAuth, get_current_user_did, auth_beforeware, is_admin, r
 from atproto_oauth import OAuthClient, ATProtoOAuthError, generate_state, get_client_metadata
 import json
 from bluesky_automation import trigger_automation
+from bibliome_scanner import trigger_login_sync
 from admin_operations import get_database_path, backup_database, upload_database
 from process_monitor import init_process_monitoring, get_process_monitor
 from dependency_graph import get_dependencies
@@ -1435,6 +1436,15 @@ async def login_handler(handle: str, password: str, sess):
         
         # Store full auth data (including JWTs) in session
         sess['auth'] = user_data
+        
+        # Trigger AT Proto sync for user's books and network in background
+        try:
+            import asyncio
+            following_dids = bluesky_auth.get_following_list(user_data)
+            asyncio.create_task(trigger_login_sync(user_data['did'], following_dids))
+            logger.info(f"Triggered login sync for {user_data['handle']} with {len(following_dids)} following")
+        except Exception as e:
+            logger.warning(f"Could not trigger login sync for {user_data['handle']}: {e}")
         
         # Check for pending redirect (like invite links)
         next_url = sess.pop('next_url', None)
