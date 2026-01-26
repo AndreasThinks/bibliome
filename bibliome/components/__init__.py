@@ -1,30 +1,28 @@
 """
-Reusable UI components for Bibliome.
+Bibliome UI Components Package.
 
-DEPRECATED: This module re-exports from bibliome.components for backward compatibility.
-New code should import directly from bibliome.components:
+This package contains all reusable UI components for the Bibliome application,
+organized by category for better maintainability.
 
+All components are re-exported here for easy importing:
     from bibliome.components import NavBar, BookshelfCard, ShareModal
-
-Or from specific submodules:
-    from bibliome.components.navigation import NavBar
-    from bibliome.components.cards import BookshelfCard
-    from bibliome.components.modals import ShareModal
 """
 
-# Re-export everything from the new package structure for backward compatibility
-from bibliome.components import (
-    # Navigation
-    AlphaBadge,
-    NavBar,
-    # Utils
+# Navigation components
+from .navigation import AlphaBadge, NavBar
+
+# Utility components and helpers
+from .utils import (
     format_time_ago,
     Alert,
     Modal,
     EmptyState,
     LoadingSpinner,
     Pagination,
-    # Forms
+)
+
+# Form components
+from .forms import (
     AddBooksToggle,
     BookSearchForm,
     SearchResultCard,
@@ -36,7 +34,10 @@ from bibliome.components import (
     SearchForm,
     SelfJoinButton,
     SelfJoinSuccess,
-    # Cards
+)
+
+# Card components
+from .cards import (
     BookshelfCard,
     BookCard,
     MemberCard,
@@ -55,13 +56,19 @@ from bibliome.components import (
     UserSearchResultCard,
     BookScrollCard,
     InviteCard,
-    # Modals
+)
+
+# Modal components
+from .modals import (
     ContactModal,
     ShareModal,
     ShareLinkResult,
     SharePreview,
     CommentModal,
-    # Pages
+)
+
+# Page section components
+from .pages import (
     get_base_url,
     EnhancedEmptyState,
     ShelfHeader,
@@ -90,7 +97,10 @@ from bibliome.components import (
     NetworkActivityFilters,
     FullNetworkActivityFeed,
     EmptyNetworkStateFullPage,
-    # Admin
+)
+
+# Admin components
+from .admin import (
     AdminDashboard,
     AdminStatsCard,
     AdminActivitySection,

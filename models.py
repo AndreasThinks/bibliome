@@ -14,7 +14,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def safe_execute_query(db, query: str, params: tuple = (), max_retries: int = 3) -> list[dict]:
+def safe_execute_query(db, query: str, params: tuple = (), max_retries: int = 5) -> list[dict]:
     """
     Safely execute a query and return results as a list of dictionaries.
 
@@ -28,7 +28,7 @@ def safe_execute_query(db, query: str, params: tuple = (), max_retries: int = 3)
         db: Database connection object
         query: SQL query to execute
         params: Query parameters
-        max_retries: Number of retry attempts for cursor errors
+        max_retries: Number of retry attempts for cursor errors (default: 5)
 
     Returns:
         List of dictionaries with column names as keys
@@ -50,17 +50,26 @@ def safe_execute_query(db, query: str, params: tuple = (), max_retries: int = 3)
         except sqlite3.ProgrammingError as e:
             # Handle "Can't get description for statements that have completed execution"
             error_msg = str(e).lower()
-            if 'completed execution' in error_msg and attempt < max_retries - 1:
-                logger.warning(f"Cursor invalidated (attempt {attempt + 1}/{max_retries}), retrying...")
-                time.sleep(0.05 * (attempt + 1))  # Brief backoff
-                continue
+            if 'completed execution' in error_msg:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Cursor invalidated (attempt {attempt + 1}/{max_retries}), retrying...")
+                    time.sleep(0.1 * (attempt + 1))  # Increased backoff
+                    continue
+                else:
+                    # On final attempt, log and return empty rather than raising
+                    logger.error(f"Cursor invalidation persisted after {max_retries} attempts, returning empty result")
+                    return []
             raise
         except sqlite3.OperationalError as e:
             error_msg = str(e).lower()
-            if ('database is locked' in error_msg or 'busy' in error_msg) and attempt < max_retries - 1:
-                logger.warning(f"Database busy (attempt {attempt + 1}/{max_retries}), retrying...")
-                time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
-                continue
+            if ('database is locked' in error_msg or 'busy' in error_msg):
+                if attempt < max_retries - 1:
+                    logger.warning(f"Database busy (attempt {attempt + 1}/{max_retries}), retrying...")
+                    time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
+                    continue
+                else:
+                    logger.error(f"Database remained busy after {max_retries} attempts, returning empty result")
+                    return []
             raise
 
     return []
@@ -665,34 +674,13 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     activities = db.create(Activity, pk='id', transform=True, if_not_exists=True)
     sync_logs = db.create(SyncLog, pk='id', transform=True, if_not_exists=True)
     
-    # Connect to process monitoring tables created by migrations with explicit primary keys
-    # Use FastLite's object transformation but specify correct table names and primary keys
-    try:
-        # For process_status, we need to connect to the existing table
-        process_status = db.t.process_status
-        # Wrap it with the ProcessStatus class for object transformation
-        process_status = db.create(ProcessStatus, pk='process_name', transform=True, if_not_exists=True)
-    except Exception:
-        # Fallback: create with correct table name
-        process_status = db["process_status"]
-    
-    try:
-        # For process_logs, connect to existing table
-        process_logs = db.t.process_logs
-        # Wrap it with the ProcessLog class for object transformation
-        process_logs = db.create(ProcessLog, pk='id', transform=True, if_not_exists=True)
-    except Exception:
-        # Fallback: create with correct table name
-        process_logs = db["process_logs"]
-    
-    try:
-        # For process_metrics, connect to existing table
-        process_metrics = db.t.process_metrics
-        # Wrap it with the ProcessMetric class for object transformation
-        process_metrics = db.create(ProcessMetric, pk='id', transform=True, if_not_exists=True)
-    except Exception:
-        # Fallback: create with correct table name
-        process_metrics = db["process_metrics"]
+    # Connect to process monitoring tables created by migrations
+    # These tables are already created by 0003-add-process-monitoring.sql
+    # Just connect to them directly without trying to create them
+    # (db.create() derives table name from class name, causing naming conflicts)
+    process_status = db.t.process_status
+    process_logs = db.t.process_logs
+    process_metrics = db.t.process_metrics
     
     # Validate primary keys for critical process monitoring tables
     try:
@@ -1141,6 +1129,115 @@ def get_public_shelves(db_tables, limit: int = 20, offset: int = 0):
     """Fetch a paginated list of public bookshelves."""
     return db_tables['bookshelves'](where="privacy='public'", limit=limit, offset=offset, order_by='created_at DESC')
 
+
+def get_public_shelves_count(db_tables, include_empty: bool = False) -> int:
+    """Get total count of public bookshelves for pagination.
+    
+    Args:
+        db_tables: Database tables
+        include_empty: If False (default), only count shelves with at least 1 book
+    """
+    try:
+        if include_empty:
+            query = "SELECT COUNT(*) as total FROM bookshelf WHERE privacy = 'public'"
+            rows = safe_execute_query(db_tables['db'], query, ())
+        else:
+            query = """
+                SELECT COUNT(DISTINCT bs.id) as total 
+                FROM bookshelf bs
+                JOIN book b ON bs.id = b.bookshelf_id
+                WHERE bs.privacy = 'public'
+            """
+            rows = safe_execute_query(db_tables['db'], query, ())
+        
+        if rows:
+            return rows[0].get('total', 0)
+        return 0
+    except Exception as e:
+        logger.error(f"Error getting public shelves count: {e}")
+        return 0
+
+
+def search_shelves_count(db_tables, query: str = "", book_title: str = "", book_author: str = "", book_isbn: str = "", privacy: str = "public", open_to_contributions: bool = None, include_empty: bool = False) -> int:
+    """Get total count of search results for pagination."""
+    try:
+        # Base count query
+        sql_query = """
+            SELECT COUNT(DISTINCT bs.id) as total
+            FROM bookshelf bs
+            JOIN user u ON bs.owner_did = u.did
+            LEFT JOIN book b ON bs.id = b.bookshelf_id
+        """
+        
+        conditions = []
+        params = []
+        
+        # General text search
+        if query:
+            conditions.append("(bs.name LIKE ? OR bs.description LIKE ? OR b.title LIKE ? OR b.author LIKE ?)")
+            params.extend([f"%{query}%", f"%{query}%", f"%{query}%", f"%{query}%"])
+        
+        # Advanced book search
+        if book_title:
+            conditions.append("b.title LIKE ?")
+            params.append(f"%{book_title}%")
+        if book_author:
+            conditions.append("b.author LIKE ?")
+            params.append(f"%{book_author}%")
+        if book_isbn:
+            conditions.append("b.isbn = ?")
+            params.append(book_isbn)
+        
+        # Privacy filter
+        if privacy != "all":
+            conditions.append("bs.privacy = ?")
+            params.append(privacy)
+        
+        # Open to contributions filter
+        if open_to_contributions is not None:
+            conditions.append("bs.self_join = ?")
+            params.append(1 if open_to_contributions else 0)
+        
+        # Exclude empty shelves unless include_empty is True
+        if not include_empty:
+            conditions.append("b.id IS NOT NULL")
+        
+        if conditions:
+            sql_query += " WHERE " + " AND ".join(conditions)
+        
+        rows = safe_execute_query(db_tables['db'], sql_query, tuple(params))
+        
+        if rows:
+            return rows[0].get('total', 0)
+        return 0
+    except Exception as e:
+        logger.error(f"Error getting search count: {e}")
+        return 0
+
+def get_user_shelves_count(user_did: str, db_tables) -> int:
+    """Get total count of a user's bookshelves (owned + member shelves) for pagination."""
+    try:
+        query = """
+            SELECT COUNT(*) as total FROM (
+                SELECT DISTINCT b.id
+                FROM bookshelf b
+                WHERE b.owner_did = ?
+                UNION
+                SELECT DISTINCT b.id
+                FROM bookshelf b
+                JOIN permission p ON b.id = p.bookshelf_id
+                WHERE p.user_did = ? AND p.status = 'active'
+            )
+        """
+        rows = safe_execute_query(db_tables['db'], query, (user_did, user_did))
+        if rows:
+            return rows[0].get('total', 0)
+        return 0
+    except Exception as e:
+        logger.error(f"Error getting user shelves count for {user_did}: {e}")
+        return 0
+
+
 def get_user_shelves(user_did: str, db_tables, limit: int = 20, offset: int = 0):
     """Fetch a paginated list of a user's bookshelves (owned + member shelves)."""
     try:
@@ -1178,13 +1275,27 @@ def get_user_shelves(user_did: str, db_tables, limit: int = 20, offset: int = 0)
         # Fallback to just owned shelves if there's an error
         return db_tables['bookshelves']("owner_did=?", (user_did,), limit=limit, offset=offset, order_by='updated_at DESC')
 
-def get_public_shelves_with_stats(db_tables, limit: int = 20, offset: int = 0):
-    """Get public shelves with book counts and recent book covers for display."""
-    public_shelves = get_public_shelves(db_tables, limit=limit, offset=offset)
+def get_public_shelves_with_stats(db_tables, limit: int = 20, offset: int = 0, include_empty: bool = False):
+    """Get public shelves with book counts and recent book covers for display.
     
+    Args:
+        db_tables: Database tables
+        limit: Maximum number of shelves to return
+        offset: Offset for pagination
+        include_empty: If False (default), filter out shelves with 0 books
+    """
+    # Get more shelves than requested to account for filtering out empty ones
+    fetch_limit = limit * 2 if not include_empty else limit
+    public_shelves = get_public_shelves(db_tables, limit=fetch_limit, offset=offset)
+    
+    shelves_with_stats = []
     for shelf in public_shelves:
         # Get total book count for the shelf
         shelf.book_count = len(db_tables['books']("bookshelf_id=?", (shelf.id,)))
+        
+        # Skip empty shelves unless include_empty is True
+        if not include_empty and shelf.book_count == 0:
+            continue
         
         # Get up to 4 recent book covers
         recent_books = db_tables['books'](
@@ -1199,11 +1310,21 @@ def get_public_shelves_with_stats(db_tables, limit: int = 20, offset: int = 0):
             shelf.owner = db_tables['users'][shelf.owner_did]
         except IndexError:
             shelf.owner = None
+        
+        shelves_with_stats.append(shelf)
+        
+        # Stop once we have enough shelves
+        if len(shelves_with_stats) >= limit:
+            break
             
-    return public_shelves
+    return shelves_with_stats
 
-def search_shelves(db_tables, query: str = "", book_title: str = "", book_author: str = "", book_isbn: str = "", user_did: str = None, privacy: str = "public", sort_by: str = "updated_at", limit: int = 20, offset: int = 0, open_to_contributions: bool = None):
-    """Search for bookshelves based on various criteria, including contained books."""
+def search_shelves(db_tables, query: str = "", book_title: str = "", book_author: str = "", book_isbn: str = "", user_did: str = None, privacy: str = "public", sort_by: str = "updated_at", limit: int = 20, offset: int = 0, open_to_contributions: bool = None, include_empty: bool = False):
+    """Search for bookshelves based on various criteria, including contained books.
+    
+    Args:
+        include_empty: If False (default), filter out shelves with 0 books
+    """
     # Base query with proper book count aggregation
     sql_query = """
         SELECT bs.*, u.display_name as owner_name, u.handle as owner_handle,
