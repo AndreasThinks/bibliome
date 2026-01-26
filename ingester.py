@@ -3,7 +3,7 @@ import logging
 import os
 import signal
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from atproto_firehose import FirehoseSubscribeReposClient, parse_subscribe_repos_message
 from atproto_core.cid import CID
@@ -77,8 +77,8 @@ def ensure_user_exists(repo_did: str):
             'display_name': f"User {repo_did[-8:]}",
             'avatar_url': '',
             'is_remote': True,
-            'discovered_at': datetime.now(),
-            'last_seen_remote': datetime.now(),
+            'discovered_at': datetime.now(timezone.utc),
+            'last_seen_remote': datetime.now(timezone.utc),
             'remote_sync_status': 'discovered'
         }
         db_tables['users'].insert(user_data)
@@ -104,9 +104,9 @@ def store_bookshelf_from_network(record: dict, repo_did: str, record_uri: str):
 
         # Improved date parsing with better error handling
         def safe_parse_date(date_str, field_name="date"):
-            """Safely parse a date string with fallback to current time."""
+            """Safely parse a date string with fallback to current time (UTC)."""
             if not date_str or str(date_str).strip() == '':
-                return datetime.now()
+                return datetime.now(timezone.utc)
             
             try:
                 # Handle different timezone formats
@@ -116,7 +116,7 @@ def store_bookshelf_from_network(record: dict, repo_did: str, record_uri: str):
                 return datetime.fromisoformat(str(date_str))
             except (ValueError, TypeError) as e:
                 logger.warning(f"Invalid {field_name} format '{date_str}': {e}")
-                return datetime.now()
+                return datetime.now(timezone.utc)
         
         # Parse dates with proper fallback logic
         created_at = safe_parse_date(record.get('createdAt'), 'createdAt')
@@ -138,8 +138,8 @@ def store_bookshelf_from_network(record: dict, repo_did: str, record_uri: str):
             'remote_owner_did': repo_did,
             'original_atproto_uri': record_uri,
             'slug': f"net-{record_uri.split('/')[-1]}",
-            'discovered_at': datetime.now(),
-            'last_synced': datetime.now(),
+            'discovered_at': datetime.now(timezone.utc),
+            'last_synced': datetime.now(timezone.utc),
             'remote_sync_status': 'discovered',
             'created_at': created_at,
             'updated_at': updated_at
@@ -198,7 +198,11 @@ async def enrich_book_with_cover(book_data: dict) -> dict:
         return book_data
 
 def store_book_from_network(record: dict, repo_did: str, record_uri: str):
-    """Stores a book discovered on the network."""
+    """Stores a book discovered on the network.
+    
+    Note: Cover enrichment is deferred to the background cover cache job
+    to avoid event loop issues in the synchronous firehose handler.
+    """
     try:
         logger.info(f"Discovered new book from {repo_did}: {record.get('title')}")
 
@@ -227,27 +231,19 @@ def store_book_from_network(record: dict, repo_did: str, record_uri: str):
             'title': record.get('title', 'Untitled Book'),
             'author': record.get('author', ''),
             'isbn': record.get('isbn', ''),
-            'cover_url': '',  # Will be populated by enrichment
+            'cover_url': '',  # Will be populated by background cover cache job
             'added_by_did': repo_did,
             'is_remote': True,
             'remote_added_by_did': repo_did,
             'original_atproto_uri': record_uri,
-            'discovered_at': datetime.now(),
+            'discovered_at': datetime.now(timezone.utc),
             'remote_sync_status': 'discovered',
-            'added_at': datetime.fromisoformat(record.get('addedAt', datetime.now().isoformat()).replace('Z', '+00:00'))
+            'added_at': datetime.fromisoformat(record.get('addedAt', datetime.now(timezone.utc).isoformat()).replace('Z', '+00:00'))
         }
 
-        # Try to enrich with cover image (but don't fail if it doesn't work)
-        try:
-            import asyncio
-            # Create a new event loop for the async call since we're in a sync context
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            enriched_data = loop.run_until_complete(enrich_book_with_cover(book_data))
-            book_data.update(enriched_data)
-            loop.close()
-        except Exception as e:
-            logger.warning(f"Failed to enrich book with cover, proceeding without: {e}")
+        # Note: Cover enrichment is deferred to avoid event loop anti-pattern.
+        # The background cover_cache_job will handle cover fetching for books
+        # with empty cover_url fields.
 
         result = db_tables['books'].insert(book_data)
         book_id = result.id if hasattr(result, 'id') else result
@@ -309,13 +305,13 @@ def store_comment_from_network(record: dict, repo_did: str, record_uri: str):
             'user_did': repo_did,
             'content': record.get('content', ''),
             'parent_comment_id': None,  # Threading not implemented yet
-            'created_at': datetime.fromisoformat(record.get('createdAt', datetime.now().isoformat()).replace('Z', '+00:00')),
-            'updated_at': datetime.fromisoformat(record.get('editedAt', record.get('createdAt', datetime.now().isoformat())).replace('Z', '+00:00')) if record.get('editedAt') else None,
+            'created_at': datetime.fromisoformat(record.get('createdAt', datetime.now(timezone.utc).isoformat()).replace('Z', '+00:00')),
+            'updated_at': datetime.fromisoformat(record.get('editedAt', record.get('createdAt', datetime.now(timezone.utc).isoformat())).replace('Z', '+00:00')) if record.get('editedAt') else None,
             'is_edited': bool(record.get('editedAt')),
             'atproto_uri': record_uri,
             'is_remote': True,
             'remote_user_did': repo_did,
-            'discovered_at': datetime.now(),
+            'discovered_at': datetime.now(timezone.utc),
             'original_atproto_uri': record_uri,
             'remote_sync_status': 'discovered'
         }

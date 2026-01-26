@@ -1,5 +1,5 @@
 """Bluesky/AT-Proto authentication for BookdIt."""
-import requests
+import httpx
 from atproto import Client as AtprotoClient
 from fasthtml.common import *
 from fastcore.xtras import flexicache, time_policy
@@ -194,9 +194,14 @@ class BlueskyAuth:
                 return None
 
     def get_service_from_handle(self, handle: str) -> str:
+        """Resolve handle to PDS service endpoint using synchronous httpx."""
         did = self.client.com.atproto.identity.resolve_handle({"handle": handle})
         logger.debug(f"Resolved identity: {did.did}")
-        did_doc = requests.get(f"https://plc.directory/{did.did}").json()
+        # Use httpx synchronous client for non-async context
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(f"https://plc.directory/{did.did}")
+            response.raise_for_status()
+            did_doc = response.json()
         service = did_doc['service'][0]['serviceEndpoint']
         logger.debug(f"Resolved service endpoint: {service}")
         return service
@@ -365,9 +370,14 @@ def auth_beforeware(req, sess, db_tables):
     try:
         user = db_tables['users'][auth_data['did']]
         # Update last login if it's been more than an hour
-        from datetime import datetime, timedelta
-        if datetime.now() - user.last_login > timedelta(hours=1):
-            db_tables['users'].update({'last_login': datetime.now()}, auth_data['did'])
+        from datetime import datetime, timedelta, timezone
+        now_utc = datetime.now(timezone.utc)
+        # Handle both timezone-aware and naive datetimes for backward compatibility
+        last_login = user.last_login
+        if last_login.tzinfo is None:
+            last_login = last_login.replace(tzinfo=timezone.utc)
+        if now_utc - last_login > timedelta(hours=1):
+            db_tables['users'].update({'last_login': now_utc}, auth_data['did'])
     except:
         pass  # User might not exist in DB yet
     

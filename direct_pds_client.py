@@ -2,6 +2,8 @@
 AT-Proto client for fetching Bibliome records directly from user PDS.
 """
 import logging
+import time
+from functools import lru_cache
 from typing import Iterable, Union, Dict, List, Any, Tuple
 from atproto import Client, IdResolver
 from circuit_breaker import CircuitBreaker
@@ -10,6 +12,82 @@ from rate_limiter import RateLimiter
 # Configure logging
 logger = logging.getLogger(__name__)
 
+
+class PDSClientPool:
+    """Simple LRU-based client pool for PDS connections with TTL."""
+    
+    def __init__(self, max_size: int = 50, ttl_seconds: int = 300):
+        """
+        Initialize client pool.
+        
+        Args:
+            max_size: Maximum number of clients to cache
+            ttl_seconds: Time-to-live for cached clients (default: 5 minutes)
+        """
+        self.max_size = max_size
+        self.ttl_seconds = ttl_seconds
+        self._cache: Dict[str, Tuple[Client, float]] = {}
+        self._access_order: List[str] = []
+    
+    def get_client(self, pds_xrpc: str) -> Client:
+        """
+        Get or create a client for the given PDS endpoint.
+        
+        Args:
+            pds_xrpc: PDS XRPC endpoint URL
+            
+        Returns:
+            AT Protocol Client instance
+        """
+        current_time = time.time()
+        
+        # Check if we have a cached client
+        if pds_xrpc in self._cache:
+            client, cached_time = self._cache[pds_xrpc]
+            
+            # Check TTL
+            if current_time - cached_time < self.ttl_seconds:
+                # Move to end of access order (most recently used)
+                if pds_xrpc in self._access_order:
+                    self._access_order.remove(pds_xrpc)
+                self._access_order.append(pds_xrpc)
+                logger.debug(f"Reusing cached client for {pds_xrpc}")
+                return client
+            else:
+                # TTL expired, remove from cache
+                del self._cache[pds_xrpc]
+                if pds_xrpc in self._access_order:
+                    self._access_order.remove(pds_xrpc)
+                logger.debug(f"Cache expired for {pds_xrpc}")
+        
+        # Create new client
+        client = Client(pds_xrpc)
+        
+        # Evict oldest clients if at capacity
+        while len(self._cache) >= self.max_size and self._access_order:
+            oldest_key = self._access_order.pop(0)
+            if oldest_key in self._cache:
+                del self._cache[oldest_key]
+                logger.debug(f"Evicted oldest client: {oldest_key}")
+        
+        # Cache the new client
+        self._cache[pds_xrpc] = (client, current_time)
+        self._access_order.append(pds_xrpc)
+        logger.debug(f"Created and cached new client for {pds_xrpc}")
+        
+        return client
+    
+    def clear(self):
+        """Clear all cached clients."""
+        self._cache.clear()
+        self._access_order.clear()
+        logger.debug("Client pool cleared")
+    
+    def __len__(self) -> int:
+        """Return number of cached clients."""
+        return len(self._cache)
+
+
 class DirectPDSClient:
     """Client for fetching Bibliome records directly from user PDS."""
 
@@ -17,6 +95,8 @@ class DirectPDSClient:
         self.resolver = IdResolver()
         self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
         self.rate_limiter = rate_limiter or RateLimiter(tokens_per_second=10, max_tokens=100)
+        # Use pooled client connections
+        self._client_pool = PDSClientPool(max_size=50, ttl_seconds=300)
 
     def _ensure_xrpc(self, url: str) -> str:
         url = url.rstrip("/")
@@ -73,11 +153,13 @@ class DirectPDSClient:
     ) -> Dict[str, Any]:
         """
         Fetch *all* records for one repo (handle or DID) across one or more collections.
+        Uses pooled client connections to reduce overhead.
         """
         async def _get_records():
             try:
                 did, pds_xrpc = self._resolve_did_and_pds(identifier)
-                pds = _client or Client(pds_xrpc)
+                # Use client pool for connection reuse
+                pds = _client or self._client_pool.get_client(pds_xrpc)
 
                 desc = pds.com.atproto.repo.describe_repo({"repo": did})
                 available = set(desc.collections or [])
