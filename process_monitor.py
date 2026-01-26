@@ -188,18 +188,18 @@ class ProcessMonitor:
             return
         
         try:
-            # Create ProcessLog object instead of raw dict to ensure proper FastLite handling
-            from models import ProcessLog
-            log_entry = ProcessLog(
-                process_name=process_name,
-                log_level=log_level.value,
-                event_type=event_type.value,
-                message=message,
-                details=json.dumps(details) if details else None,
-                timestamp=datetime.now()
-            )
+            # Use raw dictionary for insertion since process_logs is connected
+            # directly via db.t.process_logs (not a FastLite-enhanced class)
+            log_data = {
+                'process_name': process_name,
+                'log_level': log_level.value,
+                'event_type': event_type.value,
+                'message': message,
+                'details': json.dumps(details) if details else None,
+                'timestamp': datetime.now()
+            }
             
-            self.db_tables['process_logs'].insert(log_entry)
+            self.db_tables['process_logs'].insert(log_data)
             
             # Also log to regular logger
             self.logger.log(getattr(logging, log_level.value), f"[{process_name}] {message}")
