@@ -210,7 +210,7 @@ class BiblioMeScanner:
                 self.db_tables['users'].update(user)
                 self.log_sync_activity('user', did, 'updated', f'Profile updated, handle resolved to {resolved_handle}')
             except NotFoundError:
-                # New user, insert into DB
+                # New user, try to insert into DB
                 new_user = User(
                     did=did,
                     handle=resolved_handle,  # Use resolved handle instead of DID
@@ -221,8 +221,23 @@ class BiblioMeScanner:
                     last_seen_remote=datetime.now(timezone.utc),
                     remote_sync_status='synced'
                 )
-                self.db_tables['users'].insert(new_user)
-                self.log_sync_activity('user', did, 'imported', f'New remote user discovered, handle resolved to {resolved_handle}')
+                try:
+                    self.db_tables['users'].insert(new_user)
+                    self.log_sync_activity('user', did, 'imported', f'New remote user discovered, handle resolved to {resolved_handle}')
+                except Exception as insert_error:
+                    # Race condition: another process inserted this user, update instead
+                    if 'UNIQUE constraint failed' in str(insert_error):
+                        logger.debug(f"User {did} was inserted by another process, updating instead")
+                        user = self.db_tables['users'][did]
+                        user.is_remote = True
+                        user.last_seen_remote = datetime.now(timezone.utc)
+                        user.display_name = display_name
+                        user.avatar_url = avatar_url
+                        user.handle = resolved_handle
+                        self.db_tables['users'].update(user)
+                        self.log_sync_activity('user', did, 'updated', f'Profile updated (race condition recovery), handle: {resolved_handle}')
+                    else:
+                        raise  # Re-raise other errors
 
         except Exception as e:
             logger.error(f"Error syncing profile for {did}: {e}", exc_info=True)
@@ -281,8 +296,14 @@ class BiblioMeScanner:
                     discovered_at=datetime.now(timezone.utc),
                     remote_sync_status='partial'
                 )
-                self.db_tables['users'].insert(minimal_user)
-                logger.info(f"Created minimal user record for {did}")
+                try:
+                    self.db_tables['users'].insert(minimal_user)
+                    logger.info(f"Created minimal user record for {did}")
+                except Exception as insert_error:
+                    if 'UNIQUE constraint failed' in str(insert_error):
+                        logger.debug(f"User {did} was inserted by another process (bookshelf sync)")
+                    else:
+                        raise
             
             # Extract createdAt from AT-Proto record
             created_at = None
@@ -414,8 +435,14 @@ class BiblioMeScanner:
                     discovered_at=datetime.now(timezone.utc),
                     remote_sync_status='partial'
                 )
-                self.db_tables['users'].insert(minimal_user)
-                logger.info(f"Created minimal user record for {did}")
+                try:
+                    self.db_tables['users'].insert(minimal_user)
+                    logger.info(f"Created minimal user record for {did}")
+                except Exception as insert_error:
+                    if 'UNIQUE constraint failed' in str(insert_error):
+                        logger.debug(f"User {did} was inserted by another process (book sync)")
+                    else:
+                        raise
             
             # Find the local bookshelf this book belongs to
             parent_shelf_list = self.db_tables['bookshelves']("original_atproto_uri=?", (bookshelf_ref_uri,))
