@@ -13,6 +13,10 @@ from process_monitor import (
     log_process_event, record_process_metric, process_heartbeat, 
     update_process_status
 )
+from db_write_queue import (
+    init_write_queue, shutdown_write_queue,
+    queue_process_heartbeat, queue_process_log, queue_process_metric
+)
 from circuit_breaker import CircuitBreaker
 
 # Configure logging with service name prefix
@@ -377,7 +381,7 @@ def on_message_handler(message, db_tables):
         if not wanted_ops:
             # No relevant creates: send heartbeat periodically without CAR decode overhead
             if message_count % 100 == 0:
-                process_heartbeat(PROCESS_NAME, {
+                queue_process_heartbeat(PROCESS_NAME, {
                     "messages_processed": message_count,
                     "bookshelves_found": bookshelf_count,
                     "books_found": book_count,
@@ -390,7 +394,7 @@ def on_message_handler(message, db_tables):
             car = CAR.from_bytes(evt.blocks)
         except Exception as car_error:
             logger.warning(f"CAR decode error for {evt.repo}: {car_error}")
-            log_process_event(PROCESS_NAME, f"CAR decode error: {car_error}", "WARNING", "error", db_tables=db_tables)
+            queue_process_log(PROCESS_NAME, f"CAR decode error: {car_error}", "WARNING", "error", db_tables=db_tables)
             error_count += 1
             return
 
@@ -415,47 +419,41 @@ def on_message_handler(message, db_tables):
                     store_bookshelf_from_network(record, evt.repo, record_uri)
                     bookshelf_count += 1
                     message_processed = True
-                    log_process_event(PROCESS_NAME, f"Processed bookshelf: {record.get('name')}", "INFO", "activity", db_tables=db_tables)
+                    queue_process_log(PROCESS_NAME, f"Processed bookshelf: {record.get('name')}", "INFO", "activity", db_tables=db_tables)
 
                 elif path_collection == "com.bibliome.book":
                     store_book_from_network(record, evt.repo, record_uri)
                     book_count += 1
                     message_processed = True
-                    log_process_event(PROCESS_NAME, f"Processed book: {record.get('title')}", "INFO", "activity", db_tables=db_tables)
+                    queue_process_log(PROCESS_NAME, f"Processed book: {record.get('title')}", "INFO", "activity", db_tables=db_tables)
 
                 elif path_collection == "com.bibliome.comment":
                     store_comment_from_network(record, evt.repo, record_uri)
                     message_processed = True
-                    log_process_event(PROCESS_NAME, f"Processed comment: {record.get('content', '')[:50]}...", "INFO", "activity", db_tables=db_tables)
+                    queue_process_log(PROCESS_NAME, f"Processed comment: {record.get('content', '')[:50]}...", "INFO", "activity", db_tables=db_tables)
 
             except Exception as e:
                 error_count += 1
                 logger.error(f"Error processing op for {evt.repo}: {e}", exc_info=True)
-                log_process_event(PROCESS_NAME, f"Error processing operation: {e}", "ERROR", "error", db_tables=db_tables)
+                queue_process_log(PROCESS_NAME, f"Error processing operation: {e}", "ERROR", "error", db_tables=db_tables)
                 
 
         # Heartbeat on activity or every 100 messages
         if message_count % 100 == 0 or message_processed:
-            try:
-                process_heartbeat(PROCESS_NAME, {
-                    "messages_processed": message_count,
-                    "bookshelves_found": bookshelf_count,
-                    "books_found": book_count,
-                    "errors_count": error_count
-                }, db_tables=db_tables)
-            except Exception as heartbeat_error:
-                logger.warning(f"Failed to send heartbeat: {heartbeat_error}")
+            queue_process_heartbeat(PROCESS_NAME, {
+                "messages_processed": message_count,
+                "bookshelves_found": bookshelf_count,
+                "books_found": book_count,
+                "errors_count": error_count
+            }, db_tables=db_tables)
             
             if message_count % 100 == 0:
-                try:
-                    log_process_event(PROCESS_NAME, f"Processed {message_count} messages total", "INFO", "activity", db_tables=db_tables)
-                except Exception as log_error:
-                    logger.warning(f"Failed to log process event: {log_error}")
+                queue_process_log(PROCESS_NAME, f"Processed {message_count} messages total", "INFO", "activity", db_tables=db_tables)
 
     except Exception as e:
         error_count += 1
         logger.error(f"Error handling firehose message: {e}", exc_info=True)
-        log_process_event(PROCESS_NAME, f"Critical error in message handler: {e}", "ERROR", "error", db_tables=db_tables)
+        queue_process_log(PROCESS_NAME, f"Critical error in message handler: {e}", "ERROR", "error", db_tables=db_tables)
 
 def setup_signal_handlers(db_tables):
     """Setup signal handlers for graceful shutdown."""
@@ -474,10 +472,13 @@ async def main():
     
     db_tables = await db_manager.get_connection()
     
+    # Initialize the write queue for high-frequency database writes
+    init_write_queue(db_tables)
+    
     # Setup signal handlers
     setup_signal_handlers(db_tables)
     
-    # Update process status to starting
+    # Update process status to starting (use direct call for critical startup events)
     update_process_status(PROCESS_NAME, "starting", pid=os.getpid(), db_tables=db_tables)
     log_process_event(PROCESS_NAME, "Firehose ingester starting", "INFO", "start", db_tables=db_tables)
     
@@ -545,11 +546,17 @@ async def main():
     # Final status update
     update_process_status(PROCESS_NAME, "stopped", db_tables=db_tables)
     log_process_event(PROCESS_NAME, "Firehose monitoring terminated", "INFO", "stop", db_tables=db_tables)
+    
+    # Gracefully shutdown the write queue to flush remaining writes
+    shutdown_write_queue()
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Firehose monitoring terminated")
-        update_process_status(PROCESS_NAME, "stopped", db_tables=db_tables)
-        log_process_event(PROCESS_NAME, "Process terminated by interrupt", "INFO", "stop", db_tables=db_tables)
+        if db_tables:
+            update_process_status(PROCESS_NAME, "stopped", db_tables=db_tables)
+            log_process_event(PROCESS_NAME, "Process terminated by interrupt", "INFO", "stop", db_tables=db_tables)
+        # Ensure write queue is flushed on interrupt
+        shutdown_write_queue()
