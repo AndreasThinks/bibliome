@@ -229,12 +229,20 @@ class ServiceManager:
         return status_info
     
     def start_all_services(self):
-        """Start all enabled services."""
+        """Start all enabled services with staggered delays to prevent database contention."""
         logger.info("Starting all enabled services...")
+        
+        # Stagger service startups to prevent SQLite database locking during initialization
+        startup_delay = int(os.getenv('SERVICE_STARTUP_DELAY_SECONDS', '5'))
+        first_service = True
         
         for service_name in self.services:
             if self.services[service_name]['enabled']:
+                if not first_service and startup_delay > 0:
+                    logger.info(f"Waiting {startup_delay}s before starting {service_name} to prevent database contention...")
+                    time.sleep(startup_delay)
                 self.start_service(service_name)
+                first_service = False
             else:
                 logger.info(f"Skipping disabled service: {service_name}")
     
