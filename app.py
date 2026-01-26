@@ -1537,18 +1537,26 @@ async def logout_handler(sess):
 @app.get("/client-metadata.json")
 def client_metadata():
     """Serve OAuth client metadata."""
+    cors_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Cache-Control": "public, max-age=3600"
+    }
+    
     if not oauth_client:
         return Response(
             json.dumps({"error": "OAuth not configured"}),
             status_code=500,
-            media_type="application/json"
+            media_type="application/json",
+            headers=cors_headers
         )
 
     metadata = get_client_metadata(oauth_client_id, oauth_redirect_uri, oauth_scope)
     return Response(
         json.dumps(metadata, indent=2),
         media_type="application/json",
-        headers={"Cache-Control": "public, max-age=3600"}
+        headers=cors_headers
     )
 
 @app.get("/auth/oauth/start")
