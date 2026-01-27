@@ -503,6 +503,24 @@ def ShelfPreviewCard(shelf):
     if getattr(shelf, 'self_join', False):
         contribution_badge = Div("🤝 Open to contributions", cls="shelf-preview-contribution-badge")
 
+    # Format created date subtly
+    created_text = None
+    if hasattr(shelf, 'created_at') and shelf.created_at:
+        try:
+            if isinstance(shelf.created_at, str):
+                created_dt = datetime.fromisoformat(shelf.created_at.replace('Z', '+00:00'))
+            else:
+                created_dt = shelf.created_at
+            created_text = format_time_ago(created_dt)
+        except:
+            created_text = None
+
+    # Build metadata items for footer right section
+    metadata_items = []
+    if created_text:
+        metadata_items.append(Span(created_text, cls="shelf-created-date"))
+    metadata_items.append(Span(f"{getattr(shelf, 'book_count', 0)} books", cls="book-count"))
+
     return A(
         href=f"/shelf/{shelf.slug}",
         cls="shelf-preview-card"
@@ -517,7 +535,7 @@ def ShelfPreviewCard(shelf):
                     owner_info,
                     cls="shelf-footer-left"
                 ),
-                Span(f"{getattr(shelf, 'book_count', 0)} books", cls="book-count"),
+                Div(*metadata_items, cls="shelf-footer-meta"),
                 cls="shelf-card-footer"
             )
         )

@@ -4,7 +4,7 @@ from fasthtml.common import *
 from models import (
     setup_database, can_view_bookshelf, can_edit_bookshelf,
     get_public_shelves_with_stats, get_user_shelves, get_shelf_by_slug,
-    get_public_shelves, get_recent_community_books
+    get_public_shelves, get_recent_community_books, get_public_shelves_count
 )
 from api_clients import BookAPIClient
 from static_utils import get_cached_css_url
@@ -1858,6 +1858,10 @@ def explore_page(auth, req, query: str = "", privacy: str = "public", sort_by: s
     elif open_to_contributions == "false":
         open_to_contributions_filter = False
     
+    # Get total count for pagination and display
+    total_shelf_count = get_public_shelves_count(db_tables)
+    total_pages = max(1, (total_shelf_count + limit - 1) // limit)
+    
     if auth:
         # Logged-in users get enhanced explore with search functionality
         if query or sort_by != "smart_mix" or open_to_contributions or book_title or book_author or book_isbn:
@@ -1898,7 +1902,8 @@ def explore_page(auth, req, query: str = "", privacy: str = "public", sort_by: s
                 query=query,
                 privacy=privacy,
                 sort_by=sort_by,
-                open_to_contributions=open_to_contributions
+                open_to_contributions=open_to_contributions,
+                total_shelf_count=total_shelf_count
             )
         ]
     else:
@@ -1939,7 +1944,7 @@ def explore_page(auth, req, query: str = "", privacy: str = "public", sort_by: s
         content = [
             UnifiedExploreHero(auth=None),
             simple_search,
-            PublicShelvesGrid(shelves, page=page, total_pages=1)  # Simplified pagination for anonymous users
+            PublicShelvesGrid(shelves, page=page, total_pages=total_pages, total_count=total_shelf_count)
         ]
     
     # Generate meta tags for explore page
