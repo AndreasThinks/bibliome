@@ -4127,7 +4127,7 @@ def validate_delete_name(slug: str, confirmation_name: str, auth):
         shelf = db_tables['bookshelves']("slug=?", (slug,))[0] if db_tables['bookshelves']("slug=?", (slug,)) else None
         if not shelf:
             return Div("Bookshelf not found.", cls="error")
-        expected_name = shelf.name
+        expected_name = shelf.name.strip()
     except Exception as e:
         return Div(f"Error: {str(e)}", cls="error")
     
@@ -4283,8 +4283,8 @@ def delete_shelf(slug: str, confirmation_name: str, auth, sess):
             sess['error'] = "Only the owner can delete a bookshelf."
             return RedirectResponse(f'/shelf/{shelf.slug}', status_code=303)
         
-        # Validate confirmation name
-        if confirmation_name.strip() != shelf.name:
+        # Validate confirmation name (strip both to handle trailing/leading spaces)
+        if confirmation_name.strip() != shelf.name.strip():
             sess['error'] = "Confirmation name doesn't match. Deletion cancelled."
             return RedirectResponse(f'/shelf/{slug}/manage', status_code=303)
         
