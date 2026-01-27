@@ -30,7 +30,7 @@ class BlueskyAuth:
 
         return (
             Title("Login - Bibliome"),
-            Favicon(light_icon='static/bibliome.ico', dark_icon='static/bibliome.ico'),
+            Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
             NavBar(),
             Div(
                 Div(
