@@ -191,7 +191,8 @@ class BlueskyAuth:
                 'avatar_url': profile.avatar or '',
                 'session_string': self.client.export_session_string(),
                 'access_jwt': getattr(self.client.me, 'access_jwt', ''),
-                'refresh_jwt': getattr(self.client.me, 'refresh_jwt', '')
+                'refresh_jwt': getattr(self.client.me, 'refresh_jwt', ''),
+                'pds_service': service  # Store PDS endpoint for session restoration
             }
             logger.info(f"Authentication successful for user: {user_data['handle']}")
             return user_data
@@ -219,8 +220,22 @@ class BlueskyAuth:
         return service
 
     def get_client_from_session(self, session_data: dict) -> AtprotoClient:
-        """Restore a client instance from a session string."""
-        client = AtprotoClient()
+        """Restore a client instance from a session string.
+        
+        Uses the stored PDS service endpoint if available to ensure
+        write operations (like deletes) go to the correct server.
+        """
+        # Get stored PDS service endpoint if available
+        pds_service = session_data.get('pds_service')
+        
+        # Create client with the appropriate PDS endpoint
+        if pds_service and not pds_service.endswith("bsky.network"):
+            client = AtprotoClient(pds_service)
+            logger.debug(f"Restored client with custom PDS: {pds_service}")
+        else:
+            client = AtprotoClient()
+            logger.debug("Restored client with default PDS")
+        
         client.login(session_string=session_data['session_string'])
         return client
     

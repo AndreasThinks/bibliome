@@ -4088,8 +4088,7 @@ def get_delete_confirmation(slug: str, auth):
                     required=True,
                     hx_post=f"/api/shelf/{slug}/validate-delete",
                     hx_target="#delete-validation",
-                    hx_trigger="input delay:300ms",
-                    hx_vals=f'{{"expected_name": "{shelf.name}"}}',
+                    hx_trigger="input changed delay:300ms",
                     style="width: 100%; margin-bottom: 1rem;"
                 ),
                 Div(id="delete-validation"),
@@ -4118,10 +4117,19 @@ def get_delete_confirmation(slug: str, auth):
         return Div(f"Error: {str(e)}", cls="error")
 
 @rt("/api/shelf/{slug}/validate-delete", methods=["POST"])
-def validate_delete_name(slug: str, confirmation_name: str, expected_name: str, auth):
+def validate_delete_name(slug: str, confirmation_name: str, auth):
     """HTMX endpoint to validate the delete confirmation name."""
     if not auth:
         return ""
+    
+    # Look up the expected name from the database
+    try:
+        shelf = db_tables['bookshelves']("slug=?", (slug,))[0] if db_tables['bookshelves']("slug=?", (slug,)) else None
+        if not shelf:
+            return Div("Bookshelf not found.", cls="error")
+        expected_name = shelf.name
+    except Exception as e:
+        return Div(f"Error: {str(e)}", cls="error")
     
     if confirmation_name.strip() == expected_name:
         return Script("""
