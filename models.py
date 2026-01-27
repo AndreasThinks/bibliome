@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from typing import Optional
 import secrets
 import string
+import threading
+import random
 from fasthtml.common import *
 from fastcore.all import patch
 from atproto import Client, models as at_models
@@ -12,6 +14,67 @@ from atproto_client.exceptions import UnauthorizedError, BadRequestError
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+# Thread-local storage for database connections
+# This ensures each thread gets its own isolated SQLite connection,
+# preventing cursor invalidation issues from concurrent access
+_thread_local = threading.local()
+_connection_lock = threading.Lock()
+
+
+class ThreadLocalConnectionPool:
+    """
+    Manages thread-local database connections to prevent cursor invalidation.
+    
+    SQLite connections are not thread-safe by default. When multiple threads
+    share a connection, cursor operations can be invalidated by other threads.
+    This class provides each thread with its own dedicated connection.
+    """
+    
+    def __init__(self, db_path: str = 'data/bookdit.db'):
+        self.db_path = db_path
+        self._main_db = None
+        
+    def set_main_db(self, db):
+        """Set the main database connection (used for table references)."""
+        self._main_db = db
+        
+    def get_connection(self):
+        """Get or create a thread-local database connection."""
+        if not hasattr(_thread_local, 'connection') or _thread_local.connection is None:
+            import sqlite3
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            # Apply the same SQLite optimizations as the main connection
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA busy_timeout=30000")
+            conn.execute("PRAGMA cache_size=10000")
+            conn.execute("PRAGMA temp_store=memory")
+            _thread_local.connection = conn
+            logger.debug(f"Created new thread-local connection for thread {threading.current_thread().name}")
+        return _thread_local.connection
+    
+    def close_connection(self):
+        """Close the thread-local connection if it exists."""
+        if hasattr(_thread_local, 'connection') and _thread_local.connection:
+            try:
+                _thread_local.connection.close()
+            except Exception:
+                pass
+            _thread_local.connection = None
+
+
+# Global connection pool instance
+_connection_pool = None
+
+
+def get_connection_pool():
+    """Get the global connection pool instance."""
+    global _connection_pool
+    if _connection_pool is None:
+        _connection_pool = ThreadLocalConnectionPool()
+    return _connection_pool
 
 
 def safe_execute_query(db, query: str, params: tuple = (), max_retries: int = 5) -> list[dict]:
@@ -23,9 +86,12 @@ def safe_execute_query(db, query: str, params: tuple = (), max_retries: int = 5)
     "Can't get description for statements that have completed execution" happens
     when another thread/request uses the connection between execute() and
     accessing cursor.description.
+    
+    Uses thread-local connections and improved retry logic with exponential
+    backoff and jitter to handle concurrent access scenarios.
 
     Args:
-        db: Database connection object
+        db: Database connection object (may be ignored in favor of thread-local connection)
         query: SQL query to execute
         params: Query parameters
         max_retries: Number of retry attempts for cursor errors (default: 5)
@@ -36,9 +102,19 @@ def safe_execute_query(db, query: str, params: tuple = (), max_retries: int = 5)
     import time
     import sqlite3
 
+    # Try to use thread-local connection first for isolation
+    pool = get_connection_pool()
+    use_thread_local = pool._main_db is not None
+    
     for attempt in range(max_retries):
         try:
-            cursor = db.execute(query, params)
+            # Choose connection based on availability
+            if use_thread_local:
+                conn = pool.get_connection()
+                cursor = conn.execute(query, params)
+            else:
+                cursor = db.execute(query, params)
+                
             # Immediately capture description and rows to minimize race window
             description = cursor.description
             if description is None:
@@ -52,8 +128,12 @@ def safe_execute_query(db, query: str, params: tuple = (), max_retries: int = 5)
             error_msg = str(e).lower()
             if 'completed execution' in error_msg:
                 if attempt < max_retries - 1:
-                    logger.warning(f"Cursor invalidated (attempt {attempt + 1}/{max_retries}), retrying...")
-                    time.sleep(0.1 * (attempt + 1))  # Increased backoff
+                    # Exponential backoff with jitter to reduce collision probability
+                    base_delay = 0.1 * (2 ** attempt)
+                    jitter = random.uniform(0, 0.1 * (attempt + 1))
+                    delay = base_delay + jitter
+                    logger.warning(f"Cursor invalidated (attempt {attempt + 1}/{max_retries}), retrying in {delay:.3f}s...")
+                    time.sleep(delay)
                     continue
                 else:
                     # On final attempt, log and return empty rather than raising
@@ -64,8 +144,12 @@ def safe_execute_query(db, query: str, params: tuple = (), max_retries: int = 5)
             error_msg = str(e).lower()
             if ('database is locked' in error_msg or 'busy' in error_msg):
                 if attempt < max_retries - 1:
-                    logger.warning(f"Database busy (attempt {attempt + 1}/{max_retries}), retrying...")
-                    time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
+                    # Exponential backoff with jitter
+                    base_delay = 0.2 * (2 ** attempt)
+                    jitter = random.uniform(0, 0.2 * (attempt + 1))
+                    delay = base_delay + jitter
+                    logger.warning(f"Database busy (attempt {attempt + 1}/{max_retries}), retrying in {delay:.3f}s...")
+                    time.sleep(delay)
                     continue
                 else:
                     logger.error(f"Database remained busy after {max_retries} attempts, returning empty result")
@@ -77,8 +161,12 @@ def safe_execute_query(db, query: str, params: tuple = (), max_retries: int = 5)
             error_msg = str(e).lower()
             if 'completed execution' in error_msg or 'description' in error_msg:
                 if attempt < max_retries - 1:
-                    logger.warning(f"Cursor error via wrapped exception (attempt {attempt + 1}/{max_retries}), retrying...")
-                    time.sleep(0.1 * (attempt + 1))
+                    # Exponential backoff with jitter
+                    base_delay = 0.1 * (2 ** attempt)
+                    jitter = random.uniform(0, 0.1 * (attempt + 1))
+                    delay = base_delay + jitter
+                    logger.warning(f"Cursor error via wrapped exception (attempt {attempt + 1}/{max_retries}), retrying in {delay:.3f}s...")
+                    time.sleep(delay)
                     continue
                 else:
                     logger.error(f"Cursor error persisted after {max_retries} attempts, returning empty result")
@@ -703,6 +791,12 @@ def setup_database(db_path: str = 'data/bookdit.db', migrations_dir: str = 'migr
     except Exception as e:
         print(f"⚠ Warning: Process monitoring table validation failed: {e}")
         # Don't fail the entire setup, just log the warning
+    
+    # Initialize thread-local connection pool with database path
+    pool = get_connection_pool()
+    pool.db_path = db_path if db_path != ':memory:' else 'data/bookdit.db'
+    pool.set_main_db(db)
+    print("✓ Thread-local connection pool initialized for concurrent access safety")
     
     return {
         'db': db,
