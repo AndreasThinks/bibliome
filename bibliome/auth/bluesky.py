@@ -45,32 +45,34 @@ class BlueskyAuth:
                     # Error message if present
                     Alert(error_msg, "error") if error_msg else None,
 
-                    # OAuth login option
+                    # OAuth login option - Currently disabled with "Coming Soon" message
                     (Div(
                         H3("OAuth Login", cls="oauth-section-title"),
-                        P("Sign in securely with your Bluesky account", cls="oauth-section-subtitle"),
-                        Form(
+                        Span("Coming Soon", cls="coming-soon-badge", style="background: #d4941e; color: white; padding: 0.25rem 0.75rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem;"),
+                        P("Secure OAuth login is being finalized. Please use app password login below for now.", 
+                          cls="oauth-section-subtitle", style="color: #666; font-style: italic;"),
+                        Div(
                             Fieldset(
                                 Label("Bluesky Handle", Input(
                                     name="handle",
                                     type="text",
                                     placeholder="your-handle.bsky.social",
-                                    required=True,
-                                    cls="login-input"
+                                    disabled=True,
+                                    cls="login-input",
+                                    style="background: #f5f5f5; cursor: not-allowed;"
                                 )),
                                 cls="login-fieldset"
                             ),
-                            Button("Sign In with Bluesky", type="submit", cls="login-btn-primary"),
-                            action="/auth/oauth/start",
-                            method="get",
+                            Button("Sign In with Bluesky", type="button", disabled=True, 
+                                   cls="login-btn-primary", style="opacity: 0.5; cursor: not-allowed;"),
                             cls="login-form"
                         ),
-                        cls="oauth-section"
+                        cls="oauth-section", style="opacity: 0.7;"
                     ) if oauth_enabled else None),
 
                     # Divider
                     (Div(
-                        Span("OR", cls="divider-text"),
+                        Span("USE APP PASSWORD INSTEAD", cls="divider-text"),
                         cls="login-divider"
                     ) if oauth_enabled else None),
 
