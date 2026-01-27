@@ -4088,7 +4088,7 @@ def get_delete_confirmation(slug: str, auth):
                     required=True,
                     hx_post=f"/api/shelf/{slug}/validate-delete",
                     hx_target="#delete-validation",
-                    hx_trigger="input changed delay:300ms",
+                    hx_trigger="input, change delay:300ms",
                     style="width: 100%; margin-bottom: 1rem;"
                 ),
                 Div(id="delete-validation"),

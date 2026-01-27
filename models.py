@@ -45,9 +45,9 @@ class ThreadLocalConnectionPool:
         if not hasattr(_thread_local, 'connection') or _thread_local.connection is None:
             import sqlite3
             conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            # Apply the same SQLite optimizations as the main connection
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
+            # Note: WAL mode and synchronous are database-wide settings already
+            # configured by setup_database(). Only set connection-specific pragmas
+            # here to avoid blocking operations that can hang the async event loop.
             conn.execute("PRAGMA busy_timeout=30000")
             conn.execute("PRAGMA cache_size=10000")
             conn.execute("PRAGMA temp_store=memory")
