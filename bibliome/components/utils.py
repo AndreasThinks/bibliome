@@ -14,7 +14,7 @@ def format_time_ago(dt):
     diff = now - dt
     
     if diff.days > 7:
-        return dt.strftime("%b %d")
+        return dt.strftime("%b %d, %Y")
     elif diff.days > 0:
         return f"{diff.days}d ago"
     elif diff.seconds > 3600:
