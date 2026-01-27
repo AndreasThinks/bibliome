@@ -492,18 +492,29 @@ class ProcessMonitor:
                 send_alert(f"Cannot access process {name}: {e}", "CRITICAL")
                 return
         
-        # Check heartbeat age
+        # Check heartbeat age - use dynamic thresholds based on process config
         if process.last_heartbeat:
             heartbeat_age = datetime.now() - process.last_heartbeat
-            if heartbeat_age > timedelta(minutes=10):  # 10 minutes without heartbeat = unhealthy
-                self.logger.warning(f"Process {name} has stale heartbeat (age: {heartbeat_age})")
+            
+            # Get expected activity interval from process config (default: 5 minutes)
+            expected_interval = 300  # 5 minutes default
+            if process.config_data and isinstance(process.config_data, dict):
+                expected_interval = process.config_data.get('expected_activity_interval', 300)
+            
+            # Warning threshold: 2x expected interval (gives processes time to recover)
+            warning_threshold_seconds = expected_interval * 2
+            # Failure threshold: 6x expected interval (gives ample time before marking failed)
+            failure_threshold_seconds = expected_interval * 6
+            
+            if heartbeat_age > timedelta(seconds=warning_threshold_seconds):
+                self.logger.warning(f"Process {name} has stale heartbeat (age: {heartbeat_age}, expected interval: {expected_interval}s)")
                 self.log_event(name, LogLevel.WARNING, EventType.ERROR,
                              f"Stale heartbeat detected (age: {heartbeat_age})",
-                             {"heartbeat_age_seconds": heartbeat_age.total_seconds()})
+                             {"heartbeat_age_seconds": heartbeat_age.total_seconds(),
+                              "expected_interval_seconds": expected_interval})
                 
-                # Don't mark as failed yet, just warn
-                # If heartbeat is > 30 minutes old, then mark as failed
-                if heartbeat_age > timedelta(minutes=30):
+                # Mark as failed if heartbeat exceeds failure threshold
+                if heartbeat_age > timedelta(seconds=failure_threshold_seconds):
                     self.update_process_status(name, ProcessStatus.FAILED,
                                              error_message=f"No heartbeat for {heartbeat_age}")
                     send_alert(f"Process {name} has not sent a heartbeat for {heartbeat_age}", "CRITICAL")

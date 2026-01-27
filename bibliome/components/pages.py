@@ -556,19 +556,30 @@ def ExplorePageHero():
     )
 
 
-def PublicShelvesGrid(shelves, page=1, total_pages=1):
-    """Grid of public bookshelves with pagination."""
+def PublicShelvesGrid(shelves, page=1, total_pages=1, total_count=None):
+    """Grid of public bookshelves with pagination.
+    
+    Args:
+        shelves: List of shelf objects to display
+        page: Current page number
+        total_pages: Total number of pages
+        total_count: Total number of shelves (for header display). If None, uses len(shelves).
+    """
     if not shelves:
         return EmptyState(
             "No Public Shelves Found",
             "There are no public bookshelves to display at the moment. Why not create one?"
         )
     
+    # Use total_count if provided, otherwise fall back to len(shelves)
+    display_count = total_count if total_count is not None else len(shelves)
+    
+    header = H3(f"Bookshelves ({display_count})", cls="search-section-title")
     grid = Div(*[ShelfPreviewCard(shelf) for shelf in shelves], cls="public-shelves-grid")
     
     pagination = Pagination(current_page=page, total_pages=total_pages, base_url="/explore")
     
-    return Div(grid, pagination, id="public-shelves-grid")
+    return Div(header, grid, pagination, id="public-shelves-grid")
 
 
 def SearchPageHero():
@@ -610,9 +621,22 @@ def CommunityReadingSection(books):
     )
 
 
-def SearchResultsGrid(shelves, users=None, search_type="all", page: int = 1, query: str = "", privacy: str = "public", sort_by: str = "updated_at", open_to_contributions: str = ""):
-    """Grid of search results with tabs for different content types."""
-    shelf_count = len(shelves) if shelves else 0
+def SearchResultsGrid(shelves, users=None, search_type="all", page: int = 1, query: str = "", privacy: str = "public", sort_by: str = "updated_at", open_to_contributions: str = "", total_shelf_count: int = None):
+    """Grid of search results with tabs for different content types.
+    
+    Args:
+        shelves: List of shelf objects to display
+        users: List of user objects to display
+        search_type: Type of search ("all", "shelves", "users")
+        page: Current page number
+        query: Search query string
+        privacy: Privacy filter
+        sort_by: Sort order
+        open_to_contributions: Open to contributions filter
+        total_shelf_count: Total number of shelves (for header display). If None, uses len(shelves).
+    """
+    # Use total_shelf_count if provided, otherwise fall back to len(shelves)
+    shelf_count = total_shelf_count if total_shelf_count is not None else (len(shelves) if shelves else 0)
     user_count = len(users) if users else 0
     
     # Create result sections

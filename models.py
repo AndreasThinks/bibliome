@@ -71,6 +71,19 @@ def safe_execute_query(db, query: str, params: tuple = (), max_retries: int = 5)
                     logger.error(f"Database remained busy after {max_retries} attempts, returning empty result")
                     return []
             raise
+        
+        except Exception as e:
+            # Catch FastLite or other wrapped exceptions that may contain cursor errors
+            error_msg = str(e).lower()
+            if 'completed execution' in error_msg or 'description' in error_msg:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Cursor error via wrapped exception (attempt {attempt + 1}/{max_retries}), retrying...")
+                    time.sleep(0.1 * (attempt + 1))
+                    continue
+                else:
+                    logger.error(f"Cursor error persisted after {max_retries} attempts, returning empty result")
+                    return []
+            raise
 
     return []
 

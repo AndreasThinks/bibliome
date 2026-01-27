@@ -45,24 +45,34 @@ class BlueskyAuth:
                     # Error message if present
                     Alert(error_msg, "error") if error_msg else None,
 
-                    # OAuth login option (temporarily disabled)
-                    Div(
-                        H3("🔒 OAuth Login", cls="oauth-section-title", style="opacity: 0.6;"),
+                    # OAuth login option - Currently disabled with "Coming Soon" message
+                    (Div(
+                        H3("OAuth Login", cls="oauth-section-title"),
+                        Span("Coming Soon", cls="coming-soon-badge", style="background: #d4941e; color: white; padding: 0.25rem 0.75rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem;"),
+                        P("Secure OAuth login is being finalized. Please use app password login below for now.", 
+                          cls="oauth-section-subtitle", style="color: #666; font-style: italic;"),
                         Div(
-                            P("✨ Coming Soon!", style="font-weight: bold; color: #6366f1; margin-bottom: 0.5rem;"),
-                            P("OAuth authentication is being finalized and will be available shortly.", 
-                              style="font-size: 0.9rem; color: #666;"),
-                            P("For now, please use an App Password to sign in.", 
-                              style="font-size: 0.85rem; color: #888; margin-top: 0.5rem;"),
-                            style="background: #f0f0ff; border: 1px dashed #6366f1; border-radius: 0.5rem; padding: 1rem; text-align: center;"
+                            Fieldset(
+                                Label("Bluesky Handle", Input(
+                                    name="handle",
+                                    type="text",
+                                    placeholder="your-handle.bsky.social",
+                                    disabled=True,
+                                    cls="login-input",
+                                    style="background: #f5f5f5; cursor: not-allowed;"
+                                )),
+                                cls="login-fieldset"
+                            ),
+                            Button("Sign In with Bluesky", type="button", disabled=True, 
+                                   cls="login-btn-primary", style="opacity: 0.5; cursor: not-allowed;"),
+                            cls="login-form"
                         ),
-                        cls="oauth-section",
-                        style="opacity: 0.8;"
-                    ),
+                        cls="oauth-section", style="opacity: 0.7;"
+                    ) if oauth_enabled else None),
 
                     # Divider
                     (Div(
-                        Span("OR", cls="divider-text"),
+                        Span("USE APP PASSWORD INSTEAD", cls="divider-text"),
                         cls="login-divider"
                     ) if oauth_enabled else None),
 

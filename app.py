@@ -4,7 +4,7 @@ from fasthtml.common import *
 from models import (
     setup_database, can_view_bookshelf, can_edit_bookshelf,
     get_public_shelves_with_stats, get_user_shelves, get_shelf_by_slug,
-    get_public_shelves, get_recent_community_books
+    get_public_shelves, get_recent_community_books, get_public_shelves_count
 )
 from api_clients import BookAPIClient
 from static_utils import get_cached_css_url
@@ -72,13 +72,15 @@ async def before_handler(req, sess):
     if db_tables is None:
         from database_manager import db_manager
         db_tables = await db_manager.get_connection()
-        
+
         # Initialize process monitoring with the database connection
         if process_monitor is None:
             process_monitor = init_process_monitoring(db_tables)
-    return auth_beforeware(req, sess, db_tables)
+    return auth_beforeware(req, sess, db_tables, oauth_client)
 
 # Initialize FastHTML app with persistent sessions
+# Use HTTPS-only cookies in production (controlled by environment variable)
+sess_https_only = os.getenv('SESSION_HTTPS_ONLY', 'true').lower() == 'true'
 app, rt = fast_app(
     before=Beforeware(before_handler, skip=[r'/static/.*', r'/favicon\.ico', r'/client-metadata\.json', r'/\.well-known/.*']),
     htmlkw={'data-theme':'light'},
@@ -86,7 +88,7 @@ app, rt = fast_app(
     max_age=30*24*60*60,  # 30 days in seconds
     session_cookie='bibliome_session',
     same_site='lax',  # Good balance of security and functionality
-    sess_https_only=False,  # Set to True in production with HTTPS
+    sess_https_only=sess_https_only,  # Defaults to True for production security
     hdrs=(
         picolink,
         Link(rel="preconnect", href="https://fonts.googleapis.com"),
@@ -1486,8 +1488,48 @@ async def login_handler(handle: str, password: str, sess):
         return RedirectResponse('/auth/login', status_code=303)
 
 @rt("/auth/logout")
-def logout_handler(sess):
-    """Handle logout."""
+async def logout_handler(sess):
+    """Handle logout with OAuth token revocation."""
+    auth_data = sess.get('auth', {})
+
+    # Revoke OAuth tokens if this was an OAuth session
+    if auth_data.get('oauth_enabled') and oauth_client:
+        try:
+            user_did = auth_data.get('did')
+            if user_did and db_tables:
+                user = db_tables['users'].get(user_did)
+                if user:
+                    refresh_token = getattr(user, 'oauth_refresh_token', None)
+                    dpop_private_key = getattr(user, 'oauth_dpop_private_jwk', None)
+                    dpop_nonce = getattr(user, 'oauth_dpop_nonce_authserver', None)
+                    pds_url = getattr(user, 'oauth_pds_url', None)
+
+                    if refresh_token and pds_url:
+                        try:
+                            auth_metadata = oauth_client.get_authorization_server_metadata(pds_url)
+                            oauth_client.revoke_token(
+                                auth_metadata=auth_metadata,
+                                token=refresh_token,
+                                token_type_hint='refresh_token',
+                                dpop_private_key=dpop_private_key,
+                                dpop_nonce=dpop_nonce
+                            )
+                            logger.info(f"Successfully revoked OAuth tokens for user: {user.handle}")
+                        except Exception as e:
+                            logger.warning(f"Failed to revoke OAuth tokens: {e}")
+
+                    # Clear OAuth tokens from database
+                    db_tables['users'].update({
+                        'oauth_access_token': None,
+                        'oauth_refresh_token': None,
+                        'oauth_token_expires_at': None,
+                        'oauth_dpop_private_jwk': None,
+                        'oauth_dpop_nonce_authserver': None,
+                        'oauth_dpop_nonce_pds': None
+                    }, user_did)
+        except Exception as e:
+            logger.error(f"Error during OAuth logout cleanup: {e}", exc_info=True)
+
     sess.clear()
     return RedirectResponse('/', status_code=303)
 
@@ -1495,18 +1537,26 @@ def logout_handler(sess):
 @app.get("/client-metadata.json")
 def client_metadata():
     """Serve OAuth client metadata."""
+    cors_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Cache-Control": "public, max-age=3600"
+    }
+    
     if not oauth_client:
         return Response(
             json.dumps({"error": "OAuth not configured"}),
             status_code=500,
-            media_type="application/json"
+            media_type="application/json",
+            headers=cors_headers
         )
 
     metadata = get_client_metadata(oauth_client_id, oauth_redirect_uri, oauth_scope)
     return Response(
         json.dumps(metadata, indent=2),
         media_type="application/json",
-        headers={"Cache-Control": "public, max-age=3600"}
+        headers=cors_headers
     )
 
 @app.get("/auth/oauth/start")
@@ -1808,6 +1858,10 @@ def explore_page(auth, req, query: str = "", privacy: str = "public", sort_by: s
     elif open_to_contributions == "false":
         open_to_contributions_filter = False
     
+    # Get total count for pagination and display
+    total_shelf_count = get_public_shelves_count(db_tables)
+    total_pages = max(1, (total_shelf_count + limit - 1) // limit)
+    
     if auth:
         # Logged-in users get enhanced explore with search functionality
         if query or sort_by != "smart_mix" or open_to_contributions or book_title or book_author or book_isbn:
@@ -1848,7 +1902,8 @@ def explore_page(auth, req, query: str = "", privacy: str = "public", sort_by: s
                 query=query,
                 privacy=privacy,
                 sort_by=sort_by,
-                open_to_contributions=open_to_contributions
+                open_to_contributions=open_to_contributions,
+                total_shelf_count=total_shelf_count
             )
         ]
     else:
@@ -1889,7 +1944,7 @@ def explore_page(auth, req, query: str = "", privacy: str = "public", sort_by: s
         content = [
             UnifiedExploreHero(auth=None),
             simple_search,
-            PublicShelvesGrid(shelves, page=page, total_pages=1)  # Simplified pagination for anonymous users
+            PublicShelvesGrid(shelves, page=page, total_pages=total_pages, total_count=total_shelf_count)
         ]
     
     # Generate meta tags for explore page

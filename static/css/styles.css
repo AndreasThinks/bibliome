@@ -3294,6 +3294,39 @@ section + section {
     align-items: flex-start;
 }
 
+/* Shelf footer metadata (created date + book count) */
+.shelf-footer-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.shelf-footer-meta .shelf-created-date {
+    font-size: 0.75rem;
+    color: var(--brand-muted);
+    font-weight: 400;
+    background: none;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+    height: auto;
+    opacity: 0.8;
+    transition: opacity 0.2s ease;
+}
+
+.shelf-preview-card:hover .shelf-footer-meta .shelf-created-date {
+    opacity: 1;
+}
+
+/* Separator between created date and book count */
+.shelf-footer-meta .shelf-created-date::after {
+    content: "•";
+    margin-left: 0.5rem;
+    color: var(--brand-border);
+}
+
 .shelf-owner-info {
     display: flex;
     align-items: center;
@@ -3659,6 +3692,27 @@ section + section {
 }
 
 @media (max-width: 768px) {
+    /* Shelf preview card footer mobile adjustments */
+    .shelf-card-footer {
+        flex-direction: column;
+        gap: 0.75rem;
+        align-items: flex-start;
+    }
+    
+    .shelf-footer-meta {
+        width: 100%;
+        justify-content: flex-start;
+        gap: 0.375rem;
+    }
+    
+    .shelf-footer-meta .shelf-created-date {
+        font-size: 0.7rem;
+    }
+    
+    .shelf-footer-meta .shelf-created-date::after {
+        margin-left: 0.375rem;
+    }
+    
     /* Enhanced Explore Page Mobile Styles */
     .explore-hero {
         padding: 2rem 0;
