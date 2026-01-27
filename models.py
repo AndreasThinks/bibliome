@@ -1635,10 +1635,27 @@ def calculate_shelf_activity_score(shelf_id: int, db_tables) -> float:
         return 0.0
 
 def get_mixed_public_shelves(db_tables, limit: int = 20, offset: int = 0):
-    """Get a smart mix of new and popular/active public bookshelves."""
+    """Get a smart mix of new and popular/active public bookshelves.
+    
+    This function properly supports pagination by fetching enough data
+    to satisfy the requested offset + limit, then applying the smart
+    mix algorithm before slicing to the requested page.
+    """
     try:
-        # Get all public shelves with basic stats
-        public_shelves = get_public_shelves_with_stats(db_tables, limit=limit*2, offset=0)  # Get more to mix from
+        # Calculate how many shelves we need to fetch to satisfy pagination
+        # We need at least offset + limit shelves after mixing
+        total_needed = offset + limit
+        
+        # Fetch extra shelves to have enough for mixing algorithm
+        # Get 2x what we need to ensure good mixing variety
+        fetch_limit = total_needed * 2
+        
+        # Get all public shelves with basic stats (always from offset=0 for consistent mixing)
+        public_shelves = get_public_shelves_with_stats(db_tables, limit=fetch_limit, offset=0)
+        
+        # If we don't have enough shelves for the requested page, return empty
+        if len(public_shelves) <= offset:
+            return []
         
         # Calculate activity scores for each shelf
         shelves_with_scores = []
@@ -1650,26 +1667,24 @@ def get_mixed_public_shelves(db_tables, limit: int = 20, offset: int = 0):
         # Sort by activity score (descending)
         shelves_with_scores.sort(key=lambda s: s.activity_score, reverse=True)
         
-        # Get the most active shelves (top 60%)
-        active_count = int(limit * 0.6)
+        # Get the most active shelves (top 60% of total_needed)
+        active_count = int(total_needed * 0.6)
         active_shelves = shelves_with_scores[:active_count]
         
-        # Get newest shelves (remaining 40%)
+        # Get newest shelves (remaining 40% of total_needed)
         newest_shelves = sorted(
             [s for s in shelves_with_scores if s not in active_shelves],
             key=lambda s: s.created_at or datetime.min,
             reverse=True
-        )[:limit - active_count]
+        )[:total_needed - active_count]
         
         # Combine and shuffle for variety
         mixed_shelves = active_shelves + newest_shelves
         import random
         random.shuffle(mixed_shelves)
         
-        # Apply pagination
-        start_idx = offset
-        end_idx = offset + limit
-        return mixed_shelves[start_idx:end_idx]
+        # Apply pagination - slice to get the requested page
+        return mixed_shelves[offset:offset + limit]
         
     except Exception as e:
         print(f"Error getting mixed public shelves: {e}")
