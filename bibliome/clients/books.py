@@ -3,13 +3,31 @@
 import httpx
 import os
 import logging
+import time
 from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
 from rate_limiter import ExponentialBackoffRateLimiter
+from performance_monitor import get_performance_monitor
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+
+def _track_api_call(service: str, endpoint: str, duration_ms: float,
+                    success: bool = True, status_code: int = None,
+                    error_message: str = None):
+    """Helper to track API calls to the performance monitor."""
+    monitor = get_performance_monitor()
+    if monitor:
+        monitor.record_api_call(
+            service=service,
+            endpoint=endpoint,
+            duration_ms=duration_ms,
+            status_code=status_code,
+            success=success,
+            error_message=error_message
+        )
 
 
 class BookAPIClient:
@@ -39,11 +57,24 @@ class BookAPIClient:
     
     async def search_books(self, query: str, max_results: int = 10) -> List[Dict[str, Any]]:
         """Search for books using Google Books API with Open Library fallback."""
-        google_results = await self._search_google_books(query, max_results)
-        if google_results:
-            return google_results
-        
-        return await self._search_open_library(query, max_results)
+        start_time = time.perf_counter()
+        try:
+            google_results = await self._search_google_books(query, max_results)
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            if google_results:
+                _track_api_call('google_books', 'search', duration_ms, success=True)
+                return google_results
+
+            # Google failed or returned empty, try Open Library
+            ol_start = time.perf_counter()
+            ol_results = await self._search_open_library(query, max_results)
+            ol_duration = (time.perf_counter() - ol_start) * 1000
+            _track_api_call('open_library', 'search', ol_duration, success=bool(ol_results))
+            return ol_results
+        except Exception as e:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            _track_api_call('google_books', 'search', duration_ms, success=False, error_message=str(e))
+            raise
     
     async def _search_google_books(self, query: str, max_results: int) -> List[Dict[str, Any]]:
         """Search Google Books API with title-focused search and rate limiting."""
