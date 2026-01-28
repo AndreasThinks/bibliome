@@ -24,6 +24,8 @@ from dotenv import load_dotenv
 from auth import BlueskyAuth, get_current_user_did, auth_beforeware, is_admin, require_admin
 from atproto_oauth import OAuthClient, ATProtoOAuthError, generate_state, get_client_metadata
 import json
+import asyncio
+from starlette.background import BackgroundTask
 from bluesky_automation import trigger_automation
 from bibliome_scanner import trigger_login_sync
 from admin_operations import get_database_path, backup_database, upload_database
@@ -1456,22 +1458,27 @@ async def login_handler(handle: str, password: str, sess):
         # Store full auth data (including JWTs) in session
         sess['auth'] = user_data
         
-        # Trigger AT Proto sync for user's books and network in background
-        try:
-            import asyncio
-            following_dids = bluesky_auth.get_following_list(user_data)
-            asyncio.create_task(trigger_login_sync(user_data['did'], following_dids))
-            logger.info(f"Triggered login sync for {user_data['handle']} with {len(following_dids)} following")
-        except Exception as e:
-            logger.warning(f"Could not trigger login sync for {user_data['handle']}: {e}")
-        
+        # Background task to sync user's books and network
+        # Following list is fetched in background to avoid blocking login
+        async def sync_following_in_background(user_data_copy, auth_instance):
+            try:
+                following_dids = auth_instance.get_following_list(user_data_copy)
+                await trigger_login_sync(user_data_copy['did'], following_dids)
+                logger.info(f"Background sync completed for {user_data_copy['handle']} with {len(following_dids)} following")
+            except Exception as e:
+                logger.warning(f"Background sync failed for {user_data_copy['handle']}: {e}")
+
+        # Create background task for network sync
+        task = BackgroundTask(sync_following_in_background, user_data_copy=user_data.copy(), auth_instance=bluesky_auth)
+        logger.info(f"Started background sync task for {user_data['handle']}")
+
         # Check for pending redirect (like invite links)
         next_url = sess.pop('next_url', None)
         if next_url:
             logger.info(f"Redirecting user {user_data['handle']} to pending URL: {next_url}")
-            return RedirectResponse(next_url, status_code=303)
+            return RedirectResponse(next_url, status_code=303), task
         else:
-            return RedirectResponse('/', status_code=303)
+            return RedirectResponse('/', status_code=303), task
     else:
         logger.warning(f"Authentication failed for handle: {handle}")
         
@@ -2888,32 +2895,6 @@ def add_book_api(bookshelf_id: int, title: str, author: str, isbn: str, descript
             
             created_book = db_tables['books'].insert(book)
             
-            # 3. Cache the cover image if available
-            if cover_url and cover_url.strip():
-                try:
-                    import asyncio
-                    from cover_cache import cover_cache
-                    
-                    # Cache the cover asynchronously
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    cached_path = loop.run_until_complete(
-                        cover_cache.download_and_cache_cover(created_book.id, cover_url)
-                    )
-                    loop.close()
-                    
-                    # Update the book record with cache info if successful
-                    if cached_path:
-                        db_tables['books'].update({
-                            'cached_cover_path': cached_path,
-                            'cover_cached_at': datetime.now()
-                        }, created_book.id)
-                        logger.info(f"Cover cached for book {created_book.id}: {cached_path}")
-                    
-                except Exception as e:
-                    logger.warning(f"Failed to cache cover for book {created_book.id}: {e}")
-                    # Don't fail the whole request, just log the error
-            
             # Create the initial upvote record from the person who added the book
             upvote = Upvote(
                 book_id=created_book.id,
@@ -2952,7 +2933,27 @@ def add_book_api(bookshelf_id: int, title: str, author: str, isbn: str, descript
             # Set the computed attributes and return the book card
             created_book.upvote_count = 1
             created_book.user_has_upvoted = True
-            return created_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=1)
+            response = created_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=1)
+
+            # Cache cover image in background (non-blocking)
+            if cover_url and cover_url.strip():
+                async def cache_cover_in_background(book_id, url, tables):
+                    try:
+                        from cover_cache import cover_cache
+                        cached_path = await cover_cache.download_and_cache_cover(book_id, url)
+                        if cached_path:
+                            tables['books'].update({
+                                'cached_cover_path': cached_path,
+                                'cover_cached_at': datetime.now()
+                            }, book_id)
+                            logger.info(f"Cover cached for book {book_id}: {cached_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to cache cover for book {book_id}: {e}")
+
+                task = BackgroundTask(cache_cover_in_background, book_id=created_book.id, url=cover_url, tables=db_tables)
+                return response, task
+
+            return response
         
     except Exception as e:
         return Div(f"Error adding book: {str(e)}", cls="error")
