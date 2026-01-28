@@ -2895,32 +2895,6 @@ def add_book_api(bookshelf_id: int, title: str, author: str, isbn: str, descript
             
             created_book = db_tables['books'].insert(book)
             
-            # 3. Cache the cover image if available
-            if cover_url and cover_url.strip():
-                try:
-                    import asyncio
-                    from cover_cache import cover_cache
-                    
-                    # Cache the cover asynchronously
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    cached_path = loop.run_until_complete(
-                        cover_cache.download_and_cache_cover(created_book.id, cover_url)
-                    )
-                    loop.close()
-                    
-                    # Update the book record with cache info if successful
-                    if cached_path:
-                        db_tables['books'].update({
-                            'cached_cover_path': cached_path,
-                            'cover_cached_at': datetime.now()
-                        }, created_book.id)
-                        logger.info(f"Cover cached for book {created_book.id}: {cached_path}")
-                    
-                except Exception as e:
-                    logger.warning(f"Failed to cache cover for book {created_book.id}: {e}")
-                    # Don't fail the whole request, just log the error
-            
             # Create the initial upvote record from the person who added the book
             upvote = Upvote(
                 book_id=created_book.id,
@@ -2959,7 +2933,27 @@ def add_book_api(bookshelf_id: int, title: str, author: str, isbn: str, descript
             # Set the computed attributes and return the book card
             created_book.upvote_count = 1
             created_book.user_has_upvoted = True
-            return created_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=1)
+            response = created_book.as_interactive_card(can_upvote=True, user_has_upvoted=True, upvote_count=1)
+
+            # Cache cover image in background (non-blocking)
+            if cover_url and cover_url.strip():
+                async def cache_cover_in_background(book_id, url, tables):
+                    try:
+                        from cover_cache import cover_cache
+                        cached_path = await cover_cache.download_and_cache_cover(book_id, url)
+                        if cached_path:
+                            tables['books'].update({
+                                'cached_cover_path': cached_path,
+                                'cover_cached_at': datetime.now()
+                            }, book_id)
+                            logger.info(f"Cover cached for book {book_id}: {cached_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to cache cover for book {book_id}: {e}")
+
+                task = BackgroundTask(cache_cover_in_background, book_id=created_book.id, url=cover_url, tables=db_tables)
+                return response, task
+
+            return response
         
     except Exception as e:
         return Div(f"Error adding book: {str(e)}", cls="error")
