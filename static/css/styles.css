@@ -6829,8 +6829,8 @@ section + section {
 }
 
 /* Previous/Next button enhancements */
-.pagination a[href*="previous"],
-.pagination a[href*="next"] {
+.pagination a.pagination-prev,
+.pagination a.pagination-next {
     font-weight: 600;
     background: var(--brand-white);
     border-color: var(--brand-amber);
@@ -6838,8 +6838,8 @@ section + section {
     min-width: 52px;
 }
 
-.pagination a[href*="previous"]:hover,
-.pagination a[href*="next"]:hover {
+.pagination a.pagination-prev:hover,
+.pagination a.pagination-next:hover {
     background: var(--brand-amber);
     color: var(--brand-navy);
     border-color: var(--brand-amber);
@@ -6847,12 +6847,12 @@ section + section {
 }
 
 /* Arrow indicators for Prev/Next */
-.pagination a[href*="previous"]::before {
+.pagination a.pagination-prev::before {
     content: "← ";
     font-weight: bold;
 }
 
-.pagination a[href*="next"]::after {
+.pagination a.pagination-next::after {
     content: " →";
     font-weight: bold;
 }
@@ -6929,33 +6929,33 @@ section + section {
         font-size: 0.9rem;
     }
 
-    .pagination a[href*="previous"],
-    .pagination a[href*="next"] {
+    .pagination a.pagination-prev,
+    .pagination a.pagination-next {
         min-width: 56px;
         font-size: 0.85rem;
     }
 
-    /* Simplify text for mobile */
-    .pagination a[href*="previous"] {
+    /* Simplify text for tablet */
+    .pagination a.pagination-prev {
         font-size: 0;
     }
 
-    .pagination a[href*="previous"]::before {
+    .pagination a.pagination-prev::before {
         content: "←";
         font-size: 1.2rem;
     }
 
-    .pagination a[href*="next"] {
+    .pagination a.pagination-next {
         font-size: 0;
     }
 
-    .pagination a[href*="next"]::after {
+    .pagination a.pagination-next::after {
         content: "→";
         font-size: 1.2rem;
     }
 
-    /* Hide some page numbers on very small screens */
-    .pagination a:nth-child(n+6):not([href*="previous"]):not([href*="next"]):not(.current-page) {
+    /* Hide page numbers beyond 5th on tablet - keeps UI clean */
+    .pagination a:nth-child(n+6):not(.pagination-prev):not(.pagination-next):not(.current-page) {
         display: none;
     }
 
@@ -6983,15 +6983,17 @@ section + section {
         flex: 1;
     }
 
-    .pagination a[href*="previous"],
-    .pagination a[href*="next"] {
+    .pagination a.pagination-prev,
+    .pagination a.pagination-next {
         flex: 0 0 auto;
         min-width: 48px;
     }
 
-    /* Hide most page numbers on very small screens, show only current + prev/next */
-    .pagination a:not([href*="previous"]):not([href*="next"]):not(.current-page) {
-        display: none;
+    /* Show page numbers on mobile - pagination component already limits to ~5 pages */
+    .pagination a:not(.pagination-prev):not(.pagination-next) {
+        flex: 0 1 auto;
+        min-width: 36px;
+        padding: 0.5rem 0.5rem;
     }
 
     .pagination .current-page {
@@ -7022,8 +7024,8 @@ section + section {
         font-size: 1rem;
     }
 
-    .pagination a[href*="previous"],
-    .pagination a[href*="next"] {
+    .pagination a.pagination-prev,
+    .pagination a.pagination-next {
         min-width: 64px;
         font-weight: 600;
     }
