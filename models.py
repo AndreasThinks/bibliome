@@ -12,6 +12,7 @@ from fastcore.all import patch
 from atproto import Client, models as at_models
 from atproto_client.exceptions import UnauthorizedError, BadRequestError
 import logging
+from performance_monitor import track_query_func
 
 logger = logging.getLogger(__name__)
 
@@ -1077,6 +1078,7 @@ def log_activity(user_did: str, activity_type: str, db_tables, bookshelf_id: int
     except Exception as e:
         print(f"Error logging activity: {e}")
 
+@track_query_func('get_network_activity', 'select')
 def get_network_activity(auth_data: dict, db_tables, bluesky_auth, limit: int = 20, offset: int = 0, activity_type: str = "all", date_filter: str = "all"):
     """Get recent activity from users in the current user's network with filtering and pagination."""
     try:
@@ -1345,6 +1347,7 @@ def get_user_shelves_count(user_did: str, db_tables) -> int:
         return 0
 
 
+@track_query_func('get_user_shelves', 'select')
 def get_user_shelves(user_did: str, db_tables, limit: int = 20, offset: int = 0):
     """Fetch a paginated list of a user's bookshelves (owned + member shelves)."""
     try:
@@ -1382,6 +1385,7 @@ def get_user_shelves(user_did: str, db_tables, limit: int = 20, offset: int = 0)
         # Fallback to just owned shelves if there's an error
         return db_tables['bookshelves']("owner_did=?", (user_did,), limit=limit, offset=offset, order_by='updated_at DESC')
 
+@track_query_func('get_public_shelves_with_stats', 'select')
 def get_public_shelves_with_stats(db_tables, limit: int = 20, offset: int = 0, include_empty: bool = False):
     """Get public shelves with book counts and recent book covers for display.
     
@@ -1634,9 +1638,10 @@ def calculate_shelf_activity_score(shelf_id: int, db_tables) -> float:
         print(f"Error calculating activity score for shelf {shelf_id}: {e}")
         return 0.0
 
+@track_query_func('get_mixed_public_shelves', 'select')
 def get_mixed_public_shelves(db_tables, limit: int = 20, offset: int = 0):
     """Get a smart mix of new and popular/active public bookshelves.
-    
+
     This function properly supports pagination by fetching enough data
     to satisfy the requested offset + limit, then applying the smart
     mix algorithm before slicing to the requested page.

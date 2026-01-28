@@ -32,6 +32,7 @@ from admin_operations import get_database_path, backup_database, upload_database
 from process_monitor import init_process_monitoring, get_process_monitor
 from dependency_graph import get_dependencies
 from database_cleanup import init_database_cleanup, get_cleanup_monitor
+from performance_monitor import init_performance_monitoring, get_performance_monitor
 from models import get_book_by_id, get_book_comments, get_book_activity, get_book_shelves
 
 load_dotenv()
@@ -46,6 +47,9 @@ db_tables = None
 
 # Initialize process monitoring
 process_monitor = None
+
+# Initialize performance monitoring
+perf_monitor = None
 
 # Initialize external services
 bluesky_auth = BlueskyAuth()
@@ -70,7 +74,7 @@ if oauth_client_id and oauth_redirect_uri:
 
 # Beforeware function that includes database tables
 async def before_handler(req, sess):
-    global db_tables, process_monitor
+    global db_tables, process_monitor, perf_monitor
     if db_tables is None:
         from database_manager import db_manager
         db_tables = await db_manager.get_connection()
@@ -78,6 +82,10 @@ async def before_handler(req, sess):
         # Initialize process monitoring with the database connection
         if process_monitor is None:
             process_monitor = init_process_monitoring(db_tables)
+
+        # Initialize performance monitoring with the database connection
+        if perf_monitor is None:
+            perf_monitor = init_performance_monitoring(db_tables)
     return auth_beforeware(req, sess, db_tables, oauth_client)
 
 # Initialize FastHTML app with persistent sessions
@@ -101,6 +109,52 @@ app, rt = fast_app(
         Script(src="https://unpkg.com/htmx.org@1.9.10")
     )
 )
+
+
+# Performance tracking middleware
+import time
+from starlette.middleware.base import BaseHTTPMiddleware
+
+
+class PerformanceMiddleware(BaseHTTPMiddleware):
+    """Middleware to track request performance metrics."""
+
+    async def dispatch(self, request, call_next):
+        # Skip static files and health checks for performance tracking
+        path = request.url.path
+        if path.startswith('/static/') or path.endswith('.ico') or path == '/admin/health':
+            return await call_next(request)
+
+        start_time = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - start_time) * 1000
+
+        # Record the metric
+        monitor = get_performance_monitor()
+        if monitor:
+            # Get user DID from auth if available
+            user_did = None
+            try:
+                auth = request.state.auth if hasattr(request.state, 'auth') else None
+                if auth and hasattr(auth, 'did'):
+                    user_did = auth.did
+            except Exception:
+                pass
+
+            monitor.record_request(
+                route=path,
+                method=request.method,
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+                user_did=user_did
+            )
+
+        return response
+
+
+# Add performance monitoring middleware
+app.add_middleware(PerformanceMiddleware)
+
 
 # Static file serving
 @rt("/{fname:path}.{ext:static}")
@@ -365,6 +419,7 @@ def admin_page(auth):
         ),
         Div(
             A("Full Process Monitor", href="/admin/processes", cls="btn btn-primary"),
+            A("Performance Monitor", href="/admin/performance", cls="btn btn-primary", style="margin-left: 0.5rem;"),
             A("Debug Info", href="/admin/debug", cls="btn btn-secondary", style="margin-left: 0.5rem;"),
             style="text-align: center; margin-top: 1rem;"
         ),
@@ -1408,6 +1463,104 @@ def get_process_card(service_name: str, auth):
         style="border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;",
         id=f"process-card-{service_name}"
     )
+
+
+# Performance monitoring routes
+@rt("/admin/performance")
+def admin_performance(auth):
+    """Performance monitoring dashboard."""
+    if not is_admin(auth):
+        return RedirectResponse('/', status_code=303)
+
+    from components import PerformanceDashboard
+
+    monitor = get_performance_monitor()
+    if monitor:
+        stats = monitor.get_overview_stats(hours=24)
+    else:
+        stats = {
+            'requests': {'total': 0, 'avg_ms': 0, 'max_ms': 0, 'errors': 0, 'slow': 0},
+            'queries': {'total': 0, 'avg_ms': 0, 'max_ms': 0, 'slow': 0},
+            'api_calls': {'total': 0, 'avg_ms': 0, 'errors': 0},
+            'period_hours': 24
+        }
+
+    return (
+        Title("Performance Monitor - Bibliome Admin"),
+        Favicon(light_icon='/static/bibliome.ico', dark_icon='/static/bibliome.ico'),
+        NavBar(auth),
+        Container(PerformanceDashboard(stats)),
+        UniversalFooter()
+    )
+
+
+@rt("/admin/performance/routes")
+def admin_performance_routes(auth):
+    """HTMX endpoint for route performance table."""
+    if not is_admin(auth):
+        return ""
+
+    from components import PerformanceRouteTable
+
+    monitor = get_performance_monitor()
+    if monitor:
+        routes = monitor.get_request_stats(hours=24)
+    else:
+        routes = []
+
+    return PerformanceRouteTable(routes)
+
+
+@rt("/admin/performance/queries")
+def admin_performance_queries(auth):
+    """HTMX endpoint for query performance table."""
+    if not is_admin(auth):
+        return ""
+
+    from components import PerformanceQueryTable
+
+    monitor = get_performance_monitor()
+    if monitor:
+        queries = monitor.get_query_stats(hours=24)
+    else:
+        queries = []
+
+    return PerformanceQueryTable(queries)
+
+
+@rt("/admin/performance/apis")
+def admin_performance_apis(auth):
+    """HTMX endpoint for API performance table."""
+    if not is_admin(auth):
+        return ""
+
+    from components import PerformanceApiTable
+
+    monitor = get_performance_monitor()
+    if monitor:
+        apis = monitor.get_api_stats(hours=24)
+    else:
+        apis = []
+
+    return PerformanceApiTable(apis)
+
+
+@rt("/admin/performance/slow-requests")
+def admin_performance_slow_requests(auth):
+    """HTMX endpoint for slow requests list."""
+    if not is_admin(auth):
+        return ""
+
+    from components import SlowRequestsList
+
+    monitor = get_performance_monitor()
+    if monitor:
+        slow_reqs = monitor.get_slow_requests(limit=20)
+    else:
+        slow_reqs = []
+
+    return SlowRequestsList(slow_reqs)
+
 
 # Authentication routes
 @app.get("/auth/login")
