@@ -108,6 +108,12 @@ from .admin import (
     AdminDatabaseSection,
     DatabaseUploadForm,
     BackupHistoryCard,
+    PerformanceDashboard,
+    PerformanceOverviewCard,
+    PerformanceRouteTable,
+    PerformanceQueryTable,
+    PerformanceApiTable,
+    SlowRequestsList,
 )
 
 __all__ = [
@@ -195,4 +201,10 @@ __all__ = [
     "AdminDatabaseSection",
     "DatabaseUploadForm",
     "BackupHistoryCard",
+    "PerformanceDashboard",
+    "PerformanceOverviewCard",
+    "PerformanceRouteTable",
+    "PerformanceQueryTable",
+    "PerformanceApiTable",
+    "SlowRequestsList",
 ]

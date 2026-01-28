@@ -257,3 +257,276 @@ def BackupHistoryCard():
         Div(id="backup-list", hx_get="/admin/list-backups", hx_trigger="load", hx_swap="innerHTML"),
         cls="backup-history-card"
     )
+
+
+def PerformanceDashboard(stats: Dict[str, Any]):
+    """Performance monitoring dashboard component."""
+    requests = stats.get('requests', {})
+    queries = stats.get('queries', {})
+    api_calls = stats.get('api_calls', {})
+    period = stats.get('period_hours', 24)
+
+    return Div(
+        H1("Performance Monitor"),
+        P(f"Metrics for the last {period} hours", cls="subtitle"),
+
+        # Overview cards
+        Div(
+            PerformanceOverviewCard(
+                "Requests",
+                requests.get('total', 0),
+                f"Avg: {requests.get('avg_ms', 0):.0f}ms",
+                f"Slow: {requests.get('slow', 0)}",
+                "fa-globe",
+                "success" if requests.get('slow', 0) == 0 else "warning"
+            ),
+            PerformanceOverviewCard(
+                "DB Queries",
+                queries.get('total', 0),
+                f"Avg: {queries.get('avg_ms', 0):.0f}ms",
+                f"Slow: {queries.get('slow', 0)}",
+                "fa-database",
+                "success" if queries.get('slow', 0) == 0 else "warning"
+            ),
+            PerformanceOverviewCard(
+                "API Calls",
+                api_calls.get('total', 0),
+                f"Avg: {api_calls.get('avg_ms', 0):.0f}ms",
+                f"Errors: {api_calls.get('errors', 0)}",
+                "fa-cloud",
+                "success" if api_calls.get('errors', 0) == 0 else "danger"
+            ),
+            cls="performance-overview-grid",
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;"
+        ),
+
+        # Detailed sections loaded via HTMX
+        Div(
+            # Slowest Routes Section
+            Section(
+                H2("Slowest Routes"),
+                Div(
+                    "Loading...",
+                    id="slowest-routes",
+                    hx_get="/admin/performance/routes",
+                    hx_trigger="load",
+                    hx_swap="innerHTML"
+                ),
+                cls="performance-section"
+            ),
+
+            # Slowest Queries Section
+            Section(
+                H2("Slowest Queries"),
+                Div(
+                    "Loading...",
+                    id="slowest-queries",
+                    hx_get="/admin/performance/queries",
+                    hx_trigger="load",
+                    hx_swap="innerHTML"
+                ),
+                cls="performance-section"
+            ),
+
+            # External API Performance Section
+            Section(
+                H2("External API Performance"),
+                Div(
+                    "Loading...",
+                    id="api-performance",
+                    hx_get="/admin/performance/apis",
+                    hx_trigger="load",
+                    hx_swap="innerHTML"
+                ),
+                cls="performance-section"
+            ),
+
+            # Recent Slow Requests Section
+            Section(
+                H2("Recent Slow Requests"),
+                Div(
+                    "Loading...",
+                    id="slow-requests",
+                    hx_get="/admin/performance/slow-requests",
+                    hx_trigger="load",
+                    hx_swap="innerHTML"
+                ),
+                cls="performance-section"
+            ),
+
+            style="display: flex; flex-direction: column; gap: 2rem;"
+        ),
+
+        cls="performance-dashboard"
+    )
+
+
+def PerformanceOverviewCard(title: str, count: int, detail1: str, detail2: str, icon: str, status: str = "success"):
+    """Card showing overview stats for performance section."""
+    status_colors = {
+        "success": "#28a745",
+        "warning": "#ffc107",
+        "danger": "#dc3545"
+    }
+    border_color = status_colors.get(status, "#dee2e6")
+
+    return Div(
+        Div(
+            I(cls=f"fas {icon} fa-2x", style=f"color: {border_color};"),
+            cls="performance-card-icon"
+        ),
+        Div(
+            H3(f"{count:,}", cls="performance-card-value", style="margin: 0; font-size: 1.5rem;"),
+            P(title, cls="performance-card-title", style="margin: 0.25rem 0; font-weight: 600;"),
+            P(detail1, cls="performance-card-detail", style="margin: 0; font-size: 0.85rem; color: #6c757d;"),
+            P(detail2, cls="performance-card-detail", style="margin: 0; font-size: 0.85rem; color: #6c757d;"),
+            cls="performance-card-info"
+        ),
+        cls="performance-overview-card",
+        style=f"border: 1px solid {border_color}; border-radius: 0.5rem; padding: 1rem; background: #fff; display: flex; align-items: center; gap: 1rem;"
+    )
+
+
+def PerformanceRouteTable(routes):
+    """Table showing route performance metrics."""
+    if not routes:
+        return P("No request data available yet.", style="color: #6c757d; text-align: center; padding: 1rem;")
+
+    rows = []
+    for route in routes[:15]:
+        avg_ms = route.get('avg_duration_ms', 0)
+        # Color code based on response time
+        if avg_ms > 1000:
+            time_style = "color: #dc3545; font-weight: bold;"
+        elif avg_ms > 500:
+            time_style = "color: #ffc107; font-weight: bold;"
+        else:
+            time_style = "color: #28a745;"
+
+        rows.append(Tr(
+            Td(Code(route.get('method', 'GET')), style="width: 60px;"),
+            Td(route.get('route', ''), style="font-family: monospace; font-size: 0.85rem;"),
+            Td(f"{route.get('request_count', 0):,}", style="text-align: right;"),
+            Td(f"{avg_ms:.0f}ms", style=f"text-align: right; {time_style}"),
+            Td(f"{route.get('max_duration_ms', 0):.0f}ms", style="text-align: right;"),
+            Td(f"{route.get('error_count', 0)}", style="text-align: right; color: #dc3545;" if route.get('error_count', 0) > 0 else "text-align: right;"),
+        ))
+
+    return Table(
+        Thead(Tr(
+            Th("Method"),
+            Th("Route"),
+            Th("Count", style="text-align: right;"),
+            Th("Avg Time", style="text-align: right;"),
+            Th("Max Time", style="text-align: right;"),
+            Th("Errors", style="text-align: right;"),
+        )),
+        Tbody(*rows),
+        cls="performance-table",
+        style="width: 100%; border-collapse: collapse; font-size: 0.9rem;"
+    )
+
+
+def PerformanceQueryTable(queries):
+    """Table showing query performance metrics."""
+    if not queries:
+        return P("No query data available yet.", style="color: #6c757d; text-align: center; padding: 1rem;")
+
+    rows = []
+    for query in queries[:15]:
+        avg_ms = query.get('avg_duration_ms', 0)
+        if avg_ms > 100:
+            time_style = "color: #dc3545; font-weight: bold;"
+        elif avg_ms > 50:
+            time_style = "color: #ffc107; font-weight: bold;"
+        else:
+            time_style = "color: #28a745;"
+
+        rows.append(Tr(
+            Td(query.get('query_name', 'unknown'), style="font-family: monospace; font-size: 0.85rem;"),
+            Td(f"{query.get('query_count', 0):,}", style="text-align: right;"),
+            Td(f"{avg_ms:.1f}ms", style=f"text-align: right; {time_style}"),
+            Td(f"{query.get('max_duration_ms', 0):.1f}ms", style="text-align: right;"),
+            Td(f"{query.get('total_rows', 0):,}", style="text-align: right;"),
+        ))
+
+    return Table(
+        Thead(Tr(
+            Th("Query"),
+            Th("Count", style="text-align: right;"),
+            Th("Avg Time", style="text-align: right;"),
+            Th("Max Time", style="text-align: right;"),
+            Th("Total Rows", style="text-align: right;"),
+        )),
+        Tbody(*rows),
+        cls="performance-table",
+        style="width: 100%; border-collapse: collapse; font-size: 0.9rem;"
+    )
+
+
+def PerformanceApiTable(apis):
+    """Table showing external API performance metrics."""
+    if not apis:
+        return P("No API call data available yet.", style="color: #6c757d; text-align: center; padding: 1rem;")
+
+    rows = []
+    for api in apis[:15]:
+        avg_ms = api.get('avg_duration_ms', 0)
+        error_rate = api.get('error_rate', 0)
+
+        if avg_ms > 2000:
+            time_style = "color: #dc3545; font-weight: bold;"
+        elif avg_ms > 1000:
+            time_style = "color: #ffc107; font-weight: bold;"
+        else:
+            time_style = "color: #28a745;"
+
+        rows.append(Tr(
+            Td(api.get('service', ''), style="font-weight: 600;"),
+            Td(api.get('endpoint', ''), style="font-family: monospace; font-size: 0.85rem;"),
+            Td(f"{api.get('call_count', 0):,}", style="text-align: right;"),
+            Td(f"{avg_ms:.0f}ms", style=f"text-align: right; {time_style}"),
+            Td(f"{api.get('error_count', 0)}", style="text-align: right; color: #dc3545;" if api.get('error_count', 0) > 0 else "text-align: right;"),
+            Td(f"{error_rate:.1f}%", style="text-align: right; color: #dc3545;" if error_rate > 5 else "text-align: right;"),
+        ))
+
+    return Table(
+        Thead(Tr(
+            Th("Service"),
+            Th("Endpoint"),
+            Th("Calls", style="text-align: right;"),
+            Th("Avg Time", style="text-align: right;"),
+            Th("Errors", style="text-align: right;"),
+            Th("Error Rate", style="text-align: right;"),
+        )),
+        Tbody(*rows),
+        cls="performance-table",
+        style="width: 100%; border-collapse: collapse; font-size: 0.9rem;"
+    )
+
+
+def SlowRequestsList(requests):
+    """List of recent slow requests."""
+    if not requests:
+        return P("No slow requests in this period.", style="color: #28a745; text-align: center; padding: 1rem;")
+
+    items = []
+    for req in requests[:10]:
+        duration = req.get('duration_ms', 0)
+        items.append(
+            Div(
+                Div(
+                    Code(f"{req.get('method', 'GET')} {req.get('route', '')}"),
+                    Span(f"{duration:.0f}ms", style="color: #dc3545; font-weight: bold; margin-left: 1rem;"),
+                    style="display: flex; justify-content: space-between; align-items: center;"
+                ),
+                Div(
+                    Span(f"Status: {req.get('status_code', '-')}", style="margin-right: 1rem; font-size: 0.85rem; color: #6c757d;"),
+                    Span(req.get('timestamp', ''), style="font-size: 0.85rem; color: #6c757d;"),
+                    style="margin-top: 0.25rem;"
+                ),
+                style="padding: 0.75rem; border-bottom: 1px solid #dee2e6;"
+            )
+        )
+
+    return Div(*items, style="border: 1px solid #dee2e6; border-radius: 0.5rem; background: #fff;")
