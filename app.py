@@ -24,6 +24,8 @@ from dotenv import load_dotenv
 from auth import BlueskyAuth, get_current_user_did, auth_beforeware, is_admin, require_admin
 from atproto_oauth import OAuthClient, ATProtoOAuthError, generate_state, get_client_metadata
 import json
+import asyncio
+from starlette.background import BackgroundTask
 from bluesky_automation import trigger_automation
 from bibliome_scanner import trigger_login_sync
 from admin_operations import get_database_path, backup_database, upload_database
@@ -1456,22 +1458,27 @@ async def login_handler(handle: str, password: str, sess):
         # Store full auth data (including JWTs) in session
         sess['auth'] = user_data
         
-        # Trigger AT Proto sync for user's books and network in background
-        try:
-            import asyncio
-            following_dids = bluesky_auth.get_following_list(user_data)
-            asyncio.create_task(trigger_login_sync(user_data['did'], following_dids))
-            logger.info(f"Triggered login sync for {user_data['handle']} with {len(following_dids)} following")
-        except Exception as e:
-            logger.warning(f"Could not trigger login sync for {user_data['handle']}: {e}")
-        
+        # Background task to sync user's books and network
+        # Following list is fetched in background to avoid blocking login
+        async def sync_following_in_background(user_data_copy, auth_instance):
+            try:
+                following_dids = auth_instance.get_following_list(user_data_copy)
+                await trigger_login_sync(user_data_copy['did'], following_dids)
+                logger.info(f"Background sync completed for {user_data_copy['handle']} with {len(following_dids)} following")
+            except Exception as e:
+                logger.warning(f"Background sync failed for {user_data_copy['handle']}: {e}")
+
+        # Create background task for network sync
+        task = BackgroundTask(sync_following_in_background, user_data_copy=user_data.copy(), auth_instance=bluesky_auth)
+        logger.info(f"Started background sync task for {user_data['handle']}")
+
         # Check for pending redirect (like invite links)
         next_url = sess.pop('next_url', None)
         if next_url:
             logger.info(f"Redirecting user {user_data['handle']} to pending URL: {next_url}")
-            return RedirectResponse(next_url, status_code=303)
+            return RedirectResponse(next_url, status_code=303), task
         else:
-            return RedirectResponse('/', status_code=303)
+            return RedirectResponse('/', status_code=303), task
     else:
         logger.warning(f"Authentication failed for handle: {handle}")
         
