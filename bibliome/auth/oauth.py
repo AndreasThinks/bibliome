@@ -41,9 +41,10 @@ class ATProtoOAuthError(Exception):
 
 
 class OAuthClient:
-    """ATProto OAuth 2.0 client implementation."""
+    """ATProto OAuth 2.0 client implementation (confidential client)."""
 
-    def __init__(self, client_id: str, redirect_uri: str, scope: str = "atproto"):
+    def __init__(self, client_id: str, redirect_uri: str, scope: str = "atproto",
+                 private_key_pem: Optional[str] = None):
         """
         Initialize OAuth client.
 
@@ -51,6 +52,7 @@ class OAuthClient:
             client_id: Client identifier (HTTPS URL to client metadata)
             redirect_uri: OAuth redirect URI
             scope: OAuth scope (default: "atproto")
+            private_key_pem: PEM-encoded EC private key for client assertions (confidential client)
 
         Raises:
             ATProtoOAuthError: If OAuth dependencies are not available
@@ -64,7 +66,64 @@ class OAuthClient:
         self.client_id = client_id
         self.redirect_uri = redirect_uri
         self.scope = scope
+        self.private_key_pem = private_key_pem
         self.http_client = httpx.Client(timeout=30.0, follow_redirects=True)
+        
+        # If private key provided, derive the public JWK for client metadata
+        self._public_jwk = None
+        if private_key_pem:
+            try:
+                key = JsonWebKey.import_key(private_key_pem, {'kty': 'EC'})
+                self._public_jwk = key.as_dict(is_private=False)
+                # Ensure required fields
+                if 'kid' not in self._public_jwk:
+                    # Generate a kid from the key thumbprint
+                    import logging
+                    logging.getLogger(__name__).info("Confidential client configured with private_key_jwt")
+            except Exception as e:
+                raise ATProtoOAuthError(f"Failed to load client private key: {e}")
+
+    @property
+    def is_confidential(self) -> bool:
+        """Whether this client is configured as a confidential client."""
+        return self.private_key_pem is not None
+
+    def get_public_jwk(self) -> Optional[Dict[str, Any]]:
+        """Get the public JWK for client metadata JWKS."""
+        return self._public_jwk
+
+    def create_client_assertion(self, audience: str) -> str:
+        """
+        Create a client_assertion JWT for private_key_jwt auth.
+
+        Args:
+            audience: The token endpoint URL (used as 'aud' claim)
+
+        Returns:
+            Signed JWT string
+        """
+        if not self.private_key_pem:
+            raise ATProtoOAuthError("No private key configured for client assertions")
+
+        key = JsonWebKey.import_key(self.private_key_pem, {'kty': 'EC'})
+        public_jwk = key.as_dict(is_private=False)
+
+        now = int(time.time())
+        header = {
+            'typ': 'jwt',
+            'alg': 'ES256',
+            'kid': public_jwk.get('kid', ''),
+        }
+        payload = {
+            'iss': self.client_id,
+            'sub': self.client_id,
+            'aud': audience,
+            'iat': now,
+            'exp': now + 300,  # 5 minute expiry
+            'jti': secrets.token_urlsafe(32),
+        }
+
+        return jwt.encode(header, payload, key).decode('utf-8')
 
     def __del__(self):
         """Clean up HTTP client."""
@@ -383,6 +442,11 @@ class OAuthClient:
         if resource:
             params['resource'] = resource
 
+        # Add client assertion for confidential clients
+        if self.is_confidential:
+            params['client_assertion_type'] = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+            params['client_assertion'] = self.create_client_assertion(auth_metadata['issuer'])
+
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded',
             'DPoP': dpop_jwt
@@ -510,6 +574,11 @@ class OAuthClient:
             'code_verifier': code_verifier
         }
 
+        # Add client assertion for confidential clients
+        if self.is_confidential:
+            data['client_assertion_type'] = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+            data['client_assertion'] = self.create_client_assertion(auth_metadata['issuer'])
+
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded',
             'DPoP': dpop_jwt
@@ -608,6 +677,11 @@ class OAuthClient:
             'refresh_token': refresh_token,
             'client_id': self.client_id
         }
+
+        # Add client assertion for confidential clients
+        if self.is_confidential:
+            data['client_assertion_type'] = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+            data['client_assertion'] = self.create_client_assertion(auth_metadata['issuer'])
 
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -805,7 +879,8 @@ def generate_state() -> str:
     return secrets.token_urlsafe(32)
 
 
-def get_client_metadata(client_id: str, redirect_uri: str, scope: str = "atproto") -> Dict[str, Any]:
+def get_client_metadata(client_id: str, redirect_uri: str, scope: str = "atproto",
+                        public_jwk: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Generate client metadata document.
 
@@ -813,11 +888,12 @@ def get_client_metadata(client_id: str, redirect_uri: str, scope: str = "atproto
         client_id: Client ID (HTTPS URL)
         redirect_uri: OAuth redirect URI
         scope: OAuth scope
+        public_jwk: Public JWK for confidential client (if provided, uses private_key_jwt)
 
     Returns:
         Client metadata document
     """
-    return {
+    metadata = {
         "client_id": client_id,
         "client_name": "Bibliome",
         "client_uri": client_id.rsplit('/client-metadata.json', 1)[0],
@@ -825,10 +901,20 @@ def get_client_metadata(client_id: str, redirect_uri: str, scope: str = "atproto
         "scope": scope,
         "grant_types": ["authorization_code", "refresh_token"],
         "response_types": ["code"],
-        "token_endpoint_auth_method": "none",  # Public client
         "application_type": "web",
-        "dpop_bound_access_tokens": True
+        "dpop_bound_access_tokens": True,
     }
+
+    if public_jwk:
+        # Confidential client with private_key_jwt
+        metadata["token_endpoint_auth_method"] = "private_key_jwt"
+        metadata["token_endpoint_auth_signing_alg"] = "ES256"
+        metadata["jwks"] = {"keys": [public_jwk]}
+    else:
+        # Public client
+        metadata["token_endpoint_auth_method"] = "none"
+
+    return metadata
 
 
 # Export availability flag

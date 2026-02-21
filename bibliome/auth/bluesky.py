@@ -45,29 +45,29 @@ class BlueskyAuth:
                     # Error message if present
                     Alert(error_msg, "error") if error_msg else None,
 
-                    # OAuth login option - Currently disabled with "Coming Soon" message
+                    # OAuth login option - primary login method
                     (Div(
-                        H3("OAuth Login", cls="oauth-section-title"),
-                        Span("Coming Soon", cls="coming-soon-badge", style="background: #d4941e; color: white; padding: 0.25rem 0.75rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem;"),
-                        P("Secure OAuth login is being finalized. Please use app password login below for now.", 
-                          cls="oauth-section-subtitle", style="color: #666; font-style: italic;"),
-                        Div(
+                        H3("Sign in with Bluesky", cls="oauth-section-title"),
+                        P("Securely authenticate with your Bluesky account via OAuth.", 
+                          cls="oauth-section-subtitle"),
+                        Form(
                             Fieldset(
                                 Label("Bluesky Handle", Input(
                                     name="handle",
                                     type="text",
                                     placeholder="your-handle.bsky.social",
-                                    disabled=True,
+                                    required=True,
                                     cls="login-input",
-                                    style="background: #f5f5f5; cursor: not-allowed;"
+                                    autocomplete="username"
                                 )),
                                 cls="login-fieldset"
                             ),
-                            Button("Sign In with Bluesky", type="button", disabled=True, 
-                                   cls="login-btn-primary", style="opacity: 0.5; cursor: not-allowed;"),
+                            Button("Sign In with Bluesky", type="submit", cls="login-btn-primary"),
+                            action="/auth/oauth/start",
+                            method="get",
                             cls="login-form"
                         ),
-                        cls="oauth-section", style="opacity: 0.7;"
+                        cls="oauth-section"
                     ) if oauth_enabled else None),
 
                     # Divider

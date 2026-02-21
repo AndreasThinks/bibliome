@@ -121,6 +121,7 @@ celerybeat.pid
 
 # Environments
 .env
+railway.env
 .env.local
 .env.development.local
 .env.test.local

@@ -55,15 +55,22 @@ perf_monitor = None
 bluesky_auth = BlueskyAuth()
 book_api = BookAPIClient()
 
-# Initialize OAuth client
+# Initialize OAuth client (confidential client with private_key_jwt)
 oauth_client_id = os.getenv('OAUTH_CLIENT_ID', '')
 oauth_redirect_uri = os.getenv('OAUTH_REDIRECT_URI', '')
 oauth_scope = os.getenv('OAUTH_SCOPE', 'atproto')
+oauth_private_key_pem = os.getenv('OAUTH_CLIENT_PRIVATE_KEY_PEM', '') or os.getenv('OAUTH_PRIVATE_KEY_PEM', '')
 oauth_client = None
 if oauth_client_id and oauth_redirect_uri:
     try:
-        oauth_client = OAuthClient(oauth_client_id, oauth_redirect_uri, oauth_scope)
-        logger.info("OAuth client initialized successfully")
+        oauth_client = OAuthClient(
+            oauth_client_id, oauth_redirect_uri, oauth_scope,
+            private_key_pem=oauth_private_key_pem if oauth_private_key_pem else None
+        )
+        if oauth_client.is_confidential:
+            logger.info("OAuth client initialized as CONFIDENTIAL client (private_key_jwt)")
+        else:
+            logger.info("OAuth client initialized as PUBLIC client (no private key)")
     except ATProtoOAuthError as e:
         logger.warning(f"OAuth client initialization failed: {e}")
         logger.warning("OAuth authentication will not be available. App password login will still work.")
@@ -1712,7 +1719,8 @@ def client_metadata():
             headers=cors_headers
         )
 
-    metadata = get_client_metadata(oauth_client_id, oauth_redirect_uri, oauth_scope)
+    public_jwk = oauth_client.get_public_jwk() if oauth_client else None
+    metadata = get_client_metadata(oauth_client_id, oauth_redirect_uri, oauth_scope, public_jwk=public_jwk)
     return Response(
         json.dumps(metadata, indent=2),
         media_type="application/json",
